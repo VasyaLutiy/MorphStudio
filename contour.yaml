@@ -1357,8 +1357,9 @@ System:
         Package mcpserver in mcpserver/: the remote MCP server of morphd on the official Go SDK — the user-level
         server (registry tools), the per-project PM server and the per-session server for the VPS session, each bound
         to its project by the URL and guarded by its token. Tests drive the servers over the SDK's in-memory
-        transports and the HTTP mount with httptest.NewRecorder. Imports the SDK's mcp package, morphstudio/control,
-        morphstudio/queue, context, crypto/subtle, encoding/json, fmt, net/http, strings.
+        transports and the HTTP mount with httptest.NewRecorder. Imports the SDK's mcp package
+        (github.com/modelcontextprotocol/go-sdk/mcp), morphstudio/control, morphstudio/queue, context, crypto/subtle,
+        encoding/json, errors, fmt, net/http, slices, strings.
       language: go
       uses:
         - github.com/modelcontextprotocol/go-sdk
@@ -1369,77 +1370,86 @@ System:
             Declares in mcpserver/pm.go: `const ServerName = "morphd"`, `const ServerVersion = "0.1.0"`,
             `func UserServer(c control.Control) *mcp.Server` and `func PMServer(c control.Control, project string) *mcp.Server`,
             both mcp.NewServer(&mcp.Implementation{Name: ServerName, Version: ServerVersion}, nil) with tools added by mcp.AddTool
-            with typed inputs (struct fields with json and jsonschema tags). Every tool returns the json.Marshal of its view
-            as one mcp.TextContent (and nothing structured); a Control error → a result with IsError true and one TextContent
-            "<code>: <err.Error()>" where code is control.Code''s (never a protocol error, so the model sees it).
-            UserServer tools: projects_list (no input) → {"projects":[…]}; project_create {name, language, repo_url} → the
-            ProjectView. PMServer tools, none with a project argument: status → Status; order {text} → OrderResult; pending →
-            {"question": Question or null}; answer {option int} → {"ok":true}; interrupt → {"ok":true}; usage → Usage; restart
-            {force bool} → {"ok":true}; plan_load {approved string, phases []{id, stop_after, caps{claude_usd, hours, executor_usd}}}
-            → QueueView; continue → {"ok":true}; stop_check → {"stop": Stop or null}. Tool names are exactly these, tool
-            descriptions one sentence each. `func ToolNames(s *mcp.Server) []string` is not needed: tests list tools through a
-            client session.
+            with typed inputs (struct fields with json and jsonschema tags; a tool without input takes an empty struct) and
+            the output type `any`. Every tool returns the json.Marshal of its view as one mcp.TextContent (and nothing
+            structured: StructuredContent stays nil, so the text keeps the view's field order); a Control error → a result
+            with IsError true and one TextContent "<code>: <err.Error()>" where code is the second value of control.Code
+            (never a protocol error, so the model sees it). UserServer tools: projects_list (no input) → {"projects":[…]}
+            (a nil list as []); project_create {name, language, repo_url} → Control.CreateProject(ctx, …) → the
+            ProjectView. PMServer tools, none with a project argument (the project is PMServer's): status → Status; order
+            {text} → OrderResult; pending → {"question": Question or null}; answer {option int} → {"ok":true}; interrupt →
+            {"ok":true}; usage → Usage; restart {force bool} → {"ok":true}; plan_load {approved string, phases []{id,
+            stop_after, caps{claude_usd, hours, executor_usd}}} → Control.PlanLoad(project, the queue.Plan of exactly the
+            values given, no default filled) → QueueView; continue → {"ok":true}; stop_check → {"stop": Stop or null}.
+            Required input fields (json tag without omitempty): name, language, repo_url, text, option, approved, phases and
+            a phase's id; optional (omitempty): force (absent = false), a phase's stop_after and caps, and each of
+            claude_usd, hours, executor_usd (absent = 0). Tool names are exactly these, tool descriptions one sentence
+            each. `func ToolNames(s *mcp.Server) []string` is not needed: tests list tools through a client session.
           steps:
             - uses: control
             - produces: mcp.Server
           examples:
-            - given: 'c := the fake Control of HTTP Handlers; s := PMServer(c, "demo"); ct, st := mcp.NewInMemoryTransports(); s.Connect(ctx, st, nil); cs := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)'
+            - given: 'c := a fake Control (a struct of the test file implementing the 17 methods of control.Control, with configurable results and a recorded call list); s := PMServer(c, "demo"); ct, st := mcp.NewInMemoryTransports(); s.Connect(ctx, st, nil); cs := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)'
               when: 'cs.ListTools(ctx, nil)'
               then: 'the tool names, sorted, exactly ["answer", "continue", "interrupt", "order", "pending", "plan_load", "restart", "status", "stop_check", "usage"]'
-            - given: 'the session of example 1; cs.CallTool(ctx, &mcp.CallToolParams{Name: "status"})'
+            - given: 'the session of example 1, the fake''s Status returning control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}; cs.CallTool(ctx, &mcp.CallToolParams{Name: "status"})'
               when: CallTool
-              then: 'IsError false; Content has one *mcp.TextContent whose Text decodes equal to the Status of Control Contract example 1 (state "busy", phase "P18", minutes 37, cost_usd 1.92, five_hour 22, seven_day 60); the fake saw Status("demo")'
-            - given: 'the session of example 1; CallTool "order" with Arguments {"text": "smoke checked green. Resume with P12b"} (the fake answers {Queued: 1}); then "answer" with {"option": 1}; then "plan_load" with Arguments = the object of tests/fixtures/plan/queue-3.json'
+              then: 'IsError false; StructuredContent nil; Content has one *mcp.TextContent whose Text is exactly {"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}; the fake saw Status("demo")'
+            - given: 'the session of example 1; CallTool "order" with Arguments {"text": "smoke checked green. Resume with P12b"} (the fake answers session.OrderResult{Queued: 1}); then "answer" with {"option": 1}; then "plan_load" with Arguments = the object of tests/fixtures/plan/queue-3.json decoded into map[string]any (the fake''s PlanLoad returning control.QueueView{State: "queued", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17"})'
               when: CallTool
-              then: 'Text exactly {"queued":1}; the fake saw Order("demo", "smoke checked green. Resume with P12b"); then Text exactly {"ok":true} and Answer("demo", 1); then Text = the QueueView JSON the fake returned and the fake''s recorded plan has 3 phases with Phases[1].Caps.ClaudeUSD 12'
+              then: 'Text exactly {"queued":1}; the fake saw Order("demo", "smoke checked green. Resume with P12b"); then Text exactly {"ok":true} and Answer("demo", 1); then Text exactly {"state":"queued","approved":"7b31dfe","index":0,"phases":3,"current":"P17","reason":""} and the fake''s recorded plan equals queue.Plan{Approved: "7b31dfe", Phases: []queue.Phase{{ID: "P17", StopAfter: "none"}, {ID: "P18", StopAfter: "smoke", Caps: queue.Caps{ClaudeUSD: 12}}, {ID: "P19", StopAfter: "none"}}} (P17 has no caps in the file: the optional fields pass the schema)'
               ref: tests/fixtures/plan/queue-3.json
-            - given: 'the session of example 1 with the fake returning control.ErrNoQuestion from Answer; CallTool "answer" {"option": 1}; then "status" on a fake returning errors.New("disk full")'
+            - given: 's := PMServer(c, "beta") connected as in example 1, the fake returning control.ErrNoQuestion from Answer; CallTool "answer" {"option": 1}; then "status" on the fake returning errors.New("disk full")'
               when: CallTool
-              then: 'IsError true, one TextContent "no_question: no pending question"; then IsError true, "internal: disk full"'
-            - given: 'the session of example 1; CallTool "pending" with the fake returning nil; "stop_check" with nil; "interrupt"; "continue"; "restart" {"force": true}; "usage"'
+              then: 'IsError true, one TextContent "no_question: no pending question" and the fake saw Answer("beta", 1); then IsError true, "internal: disk full" and Status("beta")'
+            - given: 'the session of example 1; CallTool "pending" with the fake returning nil; "stop_check" with nil; "interrupt"; "continue"; "restart" {"force": true}; "usage" with the fake returning control.Usage{FiveHour: 22, SevenDay: 60, FiveHourResetsAt: 1791469200, SevenDayResetsAt: 1791853200, SessionCostUSD: 0.0064, StretchCostUSD: 5.2609, LimitsAt: 2026-10-08T13:09:03Z}'
               when: CallTool
-              then: 'Texts exactly {"question":null}; {"stop":null}; {"ok":true}; {"ok":true}; {"ok":true} with the fake seeing Restart("demo", true); the Usage JSON of Control Contract example 7 when the fake returns that Usage'
-            - given: 'u := UserServer(c) connected the same way; ListTools; CallTool "projects_list"; CallTool "project_create" {"name": "demo", "language": "go", "repo_url": "https://github.com/o/demo"} with the fake returning ProjectView{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", State: "idle", CreatedAt: 2026-10-08T15:00:00Z}'
+              then: 'Texts exactly {"question":null}; {"stop":null}; {"ok":true}; {"ok":true}; {"ok":true}; {"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}; the fake saw, in order, Pending("demo"), StopCheck("demo"), Interrupt("demo"), Continue("demo"), Restart("demo", true), Usage("demo")'
+            - given: 'u := UserServer(c) connected the same way, the fake''s Projects returning []control.ProjectView{{Name: "alpha", Language: "ts", RepoURL: "https://github.com/o/alpha", State: "idle", CreatedAt: 2026-10-07T09:00:00Z}} and its CreateProject returning ProjectView{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", State: "idle", CreatedAt: 2026-10-08T15:00:00Z}; ListTools; CallTool "projects_list"; CallTool "project_create" {"name": "demo", "language": "go", "repo_url": "https://github.com/o/demo"}'
               when: 'ListTools; CallTool'
-              then: 'names exactly ["project_create", "projects_list"]; {"projects":[…the fake''s views…]}; Text exactly {"name":"demo","language":"go","repo_url":"https://github.com/o/demo","state":"idle","created_at":"2026-10-08T15:00:00Z"} and the fake saw CreateProject("demo", "go", "https://github.com/o/demo")'
-            - given: 'the session of example 1; CallTool "answer" with Arguments {"option": "one"} (a string)'
+              then: 'names exactly ["project_create", "projects_list"]; Text exactly {"projects":[{"name":"alpha","language":"ts","repo_url":"https://github.com/o/alpha","state":"idle","created_at":"2026-10-07T09:00:00Z"}]}; Text exactly {"name":"demo","language":"go","repo_url":"https://github.com/o/demo","state":"idle","created_at":"2026-10-08T15:00:00Z"} and the fake saw CreateProject("demo", "go", "https://github.com/o/demo")'
+            - given: 'the session of example 1; CallTool "answer" with Arguments {"option": "one"} (a string); then "answer" with {"option": 2}'
               when: CallTool
-              then: 'an error from CallTool or a result with IsError true — the SDK validates the input against the schema; the fake saw no Answer'
+              then: 'an error from CallTool or a result with IsError true — the SDK validates the input against the schema — and the fake saw no Answer; then IsError false, Text exactly {"ok":true} and the fake saw only Answer("demo", 2)'
         - name: Session Tools
           description: The per-session MCP server the VPS session reports through — phase_done, wait_operator, milestone.
           behavior: >
             Declares in mcpserver/session.go: `func SessionServer(c control.Control, project, token string) *mcp.Server`, built as
-            the servers of mcpserver/pm.go, with three tools that pass project and token to the Control: phase_done {phase, next}
-            → Control.PhaseDone → {"ok":true}; wait_operator {kind, reason, issue_url} → Control.WaitOperator → {"ok":true};
-            milestone {kind, headline, numbers} → Control.Milestone → {"ok":true}. Errors as in PM Tools (IsError true,
-            "<code>: <message>"); kind of wait_operator must be one of "smoke", "gate", "emergency", "no-next" else the result
-            IsError true with text "bad_input: kind must be one of smoke, gate, emergency, no-next" and the Control not called;
-            kind of milestone must be a key of telegram.Icons — the server does not import telegram: the list is
+            the servers of mcpserver/pm.go (the same name, version, output type `any` and text results), with three tools
+            that pass project and token to the Control: phase_done {phase, next} → Control.PhaseDone → {"ok":true};
+            wait_operator {kind, reason, issue_url} → Control.WaitOperator → {"ok":true}; milestone {kind, headline,
+            numbers} → Control.Milestone → {"ok":true}. Required input fields: phase, kind, reason, headline; optional
+            (omitempty, absent = ""): next (the last phase has none), issue_url, numbers. Errors as in PM Tools (IsError
+            true, "<code>: <err.Error()>" with the code of control.Code); kind of wait_operator must be one of "smoke",
+            "gate", "emergency", "no-next" else the result IsError true with text "bad_input: kind must be one of smoke,
+            gate, emergency, no-next" and the Control not called; kind of milestone must be a key of telegram.Icons — the
+            server does not import telegram: the list is
             `var MilestoneKinds = []string{"start", "gate", "run", "fail", "merge", "smoke", "stop", "debt", "end", "info", "watchdog", "idle", "ask"}`
-            and a kind outside it → IsError true "bad_input: unknown milestone kind \"<kind>\"".
+            and a kind outside it → IsError true "bad_input: unknown milestone kind \"<kind>\"" (the kind quoted as by
+            %q) and the Control not called.
           steps:
             - calls: PM Tools
             - uses: control
             - produces: mcp.Server
           examples:
-            - given: 's := SessionServer(c, "demo", "id-2") connected over in-memory transports as PM Tools example 1'
-              when: ListTools
+            - given: 'c := a fake Control (a struct of the test file implementing the 17 methods of control.Control, recording each call with its arguments and returning configurable errors); s := SessionServer(c, "demo", "id-2"); ct, st := mcp.NewInMemoryTransports(); s.Connect(ctx, st, nil); cs := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)'
+              when: 'cs.ListTools(ctx, nil)'
               then: 'names sorted exactly ["milestone", "phase_done", "wait_operator"]'
-            - given: 'CallTool "phase_done" {"phase": "P17", "next": "P18"}'
+            - given: 'the session of example 1; CallTool "phase_done" {"phase": "P17", "next": "P18"}; then {"phase": "P19"} (next omitted: the last phase)'
               when: CallTool
-              then: 'Text {"ok":true}, IsError false; the fake saw PhaseDone("demo", "id-2", "P17", "P18")'
-            - given: 'the fake returning control.ErrBadToken; CallTool "phase_done" {"phase": "P17", "next": "P18"}; then the fake returning fmt.Errorf("%w: phase_done \"P16\" while running \"P17\"", supervisor.ErrPhaseMismatch) — any non-sentinel error'
+              then: 'Text {"ok":true}, IsError false; the fake saw PhaseDone("demo", "id-2", "P17", "P18"); then Text {"ok":true} and PhaseDone("demo", "id-2", "P19", "")'
+            - given: 's := SessionServer(c, "beta", "id-9") connected as in example 1, the fake returning control.ErrBadToken; CallTool "phase_done" {"phase": "P17", "next": "P18"}; then the fake returning fmt.Errorf("%w: phase_done \"P16\" while running \"P17\"", supervisor.ErrPhaseMismatch) — any non-sentinel error'
               when: CallTool
-              then: 'IsError true "bad_session_token: session token mismatch"; then IsError true "internal: phase mismatch: phase_done \"P16\" while running \"P17\""'
-            - given: 'CallTool "wait_operator" {"kind": "smoke", "reason": "P17 smoke: curl status", "issue_url": ""}; then {"kind": "pause", "reason": "x"}'
+              then: 'IsError true "bad_session_token: session token mismatch" and the fake saw PhaseDone("beta", "id-9", "P17", "P18"); then IsError true "internal: phase mismatch: phase_done \"P16\" while running \"P17\""'
+            - given: 'the session of example 1; CallTool "wait_operator" {"kind": "smoke", "reason": "P17 smoke: curl status", "issue_url": ""}; then {"kind": "pause", "reason": "x"}'
               when: CallTool
               then: '{"ok":true} and WaitOperator("demo", "id-2", "smoke", "P17 smoke: curl status", ""); then IsError true "bad_input: kind must be one of smoke, gate, emergency, no-next" and the fake not called'
-            - given: 'CallTool "milestone" {"kind": "gate", "headline": "P17 gate passed", "numbers": "10 cards · $0.12"}; then {"kind": "party", "headline": "h", "numbers": ""}'
+            - given: 'the session of example 1; CallTool "milestone" {"kind": "gate", "headline": "P17 gate passed", "numbers": "10 cards · $0.12"}; then {"kind": "party", "headline": "h", "numbers": ""}'
               when: CallTool
-              then: '{"ok":true} and Milestone("demo", "id-2", {gate, "P17 gate passed", "10 cards · $0.12"}); then IsError true "bad_input: unknown milestone kind \"party\"" and the fake not called'
-            - given: 'CallTool "milestone" {"kind": "info", "headline": "h"} (numbers omitted)'
+              then: '{"ok":true} and Milestone("demo", "id-2", control.Milestone{Kind: "gate", Headline: "P17 gate passed", Numbers: "10 cards · $0.12"}); then IsError true "bad_input: unknown milestone kind \"party\"" and the fake not called'
+            - given: 'the session of example 1; CallTool "milestone" {"kind": "info", "headline": "h"} (numbers omitted)'
               when: CallTool
-              then: '{"ok":true} with Numbers ""'
+              then: '{"ok":true} and Milestone("demo", "id-2", control.Milestone{Kind: "info", Headline: "h", Numbers: ""})'
         - name: MCP Mount
           description: The HTTP mount of the three MCP endpoints with their tokens, over the SDK's streamable HTTP handler.
           behavior: >
@@ -1448,13 +1458,16 @@ System:
             "POST /mcp" → UserServer; "POST /mcp/{project}" → PMServer(c, project); "POST /mcp/{project}/session" →
             SessionServer(c, project, the session token); each served by mcp.NewStreamableHTTPHandler(getServer,
             &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true}) where getServer builds the server for the
-            request''s project. Before the SDK sees a request: the bearer token (scheme case-insensitive, constant-time
-            compare) must equal t.API for /mcp and /mcp/{project}, and the project''s session token (t.Session; false → 401)
-            for /mcp/{project}/session; a mismatch → 401 with Content-Type application/json and body exactly
-            {"error":{"code":"unauthorized","message":"bearer token required"}} + "\n"; an unknown project (!known) → 404
-            {"error":{"code":"unknown_project","message":"unknown project"}} + "\n". GET and DELETE on these paths → the
-            mux''s 405. A JSON-RPC request is a POST with Content-Type application/json and Accept "application/json,
-            text/event-stream"; the stateless server answers application/json.
+            request''s project. Before the SDK sees a request: the bearer token (the header's first 7 bytes equal "Bearer "
+            ignoring case, the rest compared whole with subtle.ConstantTimeCompare, no trim) must equal t.API for /mcp and
+            /mcp/{project}, and the project''s session token (t.Session; false → 401) for /mcp/{project}/session; an empty
+            expected token refuses (ConstantTimeCompare of two empty slices is 1); a mismatch → 401 with Content-Type
+            application/json and body exactly {"error":{"code":"unauthorized","message":"bearer token required"}} + "\n";
+            then, the token accepted, an unknown project (!known) → 404 with Content-Type application/json and body exactly
+            {"error":{"code":"unknown_project","message":"unknown project"}} + "\n" (the token is checked before the
+            project). Both bodies written by json.NewEncoder. GET and DELETE on these paths → the mux''s 405. A JSON-RPC
+            request is a POST with Content-Type application/json and Accept "application/json, text/event-stream"; the
+            stateless server answers application/json.
           steps:
             - calls: PM Tools
             - calls: Session Tools
@@ -1462,21 +1475,21 @@ System:
           preconditions:
             - "PM Tools · a stateless POST needs Accept application/json, text/event-stream · else the SDK answers 400"
           examples:
-            - given: 'h := Handler(fake, known = project == "demo", Tokens{API: "tok-1", Session: "demo" → ("id-2", true)}); POST /mcp/demo with Authorization "Bearer tok-1", Content-Type application/json, Accept "application/json, text/event-stream", body {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+            - given: 'fake := a fake Control (a struct of the test file implementing the 17 methods of control.Control, recording calls) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}; h := Handler(fake, known = func(p string) bool { return p == "demo" }, Tokens{API: "tok-1", Session: a func returning ("id-2", true) for "demo" and ("", false) otherwise}); POST /mcp/demo with Authorization "Bearer tok-1", Content-Type application/json, Accept "application/json, text/event-stream", body {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
               when: served on httptest.NewRecorder
               then: 'status 200, Content-Type begins application/json; the body decodes to a JSON-RPC response with id 1 whose result.tools names, sorted, are ["answer", "continue", "interrupt", "order", "pending", "plan_load", "restart", "status", "stop_check", "usage"]'
             - given: 'h of example 1; POST /mcp/demo with the same headers and body {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"status","arguments":{}}}'
               when: served
-              then: 'status 200; result.content[0].type "text" and its text decodes equal to the Status of Control Contract example 1; result.isError absent or false'
+              then: 'status 200; result.content[0].type "text" and its text exactly {"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}; result.isError absent or false; the fake saw Status("demo")'
             - given: 'h of example 1; POST /mcp/demo/session with Authorization "Bearer id-2" and the tools/call body for "milestone" with arguments {"kind":"gate","headline":"P17 gate passed","numbers":"10 cards · $0.12"}'
               when: served
-              then: 'status 200; result.content[0].text exactly {"ok":true}; the fake saw Milestone("demo", "id-2", …)'
+              then: 'status 200; result.content[0].text exactly {"ok":true}; the fake saw Milestone("demo", "id-2", control.Milestone{Kind: "gate", Headline: "P17 gate passed", Numbers: "10 cards · $0.12"})'
             - given: 'h of example 1; the tools/list body in turn: POST /mcp/demo with no Authorization; with "Bearer wrong"; POST /mcp/demo/session with "Bearer tok-1" (the API token, not the session''s); POST /mcp/other/session (no session token known) with "Bearer id-2"'
               when: served
-              then: 'each status 401 with body exactly {"error":{"code":"unauthorized","message":"bearer token required"}} + "\n"'
-            - given: 'h of example 1; POST /mcp/nope with "Bearer tok-1" and the tools/list body'
+              then: 'each status 401, Content-Type application/json, body exactly {"error":{"code":"unauthorized","message":"bearer token required"}} + "\n"; the fake saw nothing'
+            - given: 'h of example 1; POST /mcp/nope with "Bearer tok-1" and the tools/list body; then POST /mcp/nope with no Authorization'
               when: served
-              then: 'status 404, body exactly {"error":{"code":"unknown_project","message":"unknown project"}} + "\n"'
+              then: 'status 404, Content-Type application/json, body exactly {"error":{"code":"unknown_project","message":"unknown project"}} + "\n"; then status 401 with the unauthorized body (the token is checked first)'
             - given: 'h of example 1; POST /mcp with "Bearer tok-1" and the tools/list body'
               when: served
               then: 'status 200; result.tools names sorted ["project_create", "projects_list"]'

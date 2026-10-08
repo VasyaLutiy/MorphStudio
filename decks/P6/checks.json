@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "phase": "P6",
+  "parts": "decks/P6/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "bootstrap",
+    "registry",
+    "gitrules",
+    "control",
+    "supervisor",
+    "api"
+  ],
+  "cards": [
+    {
+      "id": "pm-tools",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./mcpserver) || exit 1; for i in $I; do case $i in context|crypto/subtle|encoding/json|errors|fmt|net/http|slices|strings|github.com/modelcontextprotocol/go-sdk/mcp|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package mcpserver imports $i (allowed: context, crypto/subtle, encoding/json, errors, fmt, net/http, slices, strings, github.com/modelcontextprotocol/go-sdk/mcp, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' mcpserver/pm.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' mcpserver/pm.go 2>&1); [ -z \"$C\" ] || { echo \"clock: mcpserver/pm.go reads time.Now or time.Since (package mcpserver reads no clock)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" mcpserver/pm.go 2>&1); [ -z \"$C\" ] || { echo \"net: mcpserver/pm.go uses $x (no HTTP client and never a listener in package mcpserver)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "session-tools",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./mcpserver) || exit 1; for i in $I; do case $i in context|crypto/subtle|encoding/json|errors|fmt|net/http|slices|strings|github.com/modelcontextprotocol/go-sdk/mcp|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package mcpserver imports $i (allowed: context, crypto/subtle, encoding/json, errors, fmt, net/http, slices, strings, github.com/modelcontextprotocol/go-sdk/mcp, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' mcpserver/session.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' mcpserver/session.go 2>&1); [ -z \"$C\" ] || { echo \"clock: mcpserver/session.go reads time.Now or time.Since (package mcpserver reads no clock)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" mcpserver/session.go 2>&1); [ -z \"$C\" ] || { echo \"net: mcpserver/session.go uses $x (no HTTP client and never a listener in package mcpserver)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "mcp-mount",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./mcpserver) || exit 1; for i in $I; do case $i in context|crypto/subtle|encoding/json|errors|fmt|net/http|slices|strings|github.com/modelcontextprotocol/go-sdk/mcp|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package mcpserver imports $i (allowed: context, crypto/subtle, encoding/json, errors, fmt, net/http, slices, strings, github.com/modelcontextprotocol/go-sdk/mcp, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' mcpserver/mount.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' mcpserver/mount.go 2>&1); [ -z \"$C\" ] || { echo \"clock: mcpserver/mount.go reads time.Now or time.Since (package mcpserver reads no clock)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" mcpserver/mount.go 2>&1); [ -z \"$C\" ] || { echo \"net: mcpserver/mount.go uses $x (no HTTP client and never a listener in package mcpserver)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "pm-tools-judge",
+      "files": [
+        {
+          "file": "mcpserver/pm_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestPMToolsExample1",
+            "TestPMToolsExample2",
+            "TestPMToolsExample3",
+            "TestPMToolsExample4",
+            "TestPMToolsExample5",
+            "TestPMToolsExample6",
+            "TestPMToolsExample7",
+            "NewInMemoryTransports",
+            "answer",
+            "continue",
+            "interrupt",
+            "order",
+            "pending",
+            "plan_load",
+            "restart",
+            "status",
+            "stop_check",
+            "usage",
+            "projects_list",
+            "project_create",
+            "../tests/fixtures/plan/queue-3.json",
+            "smoke checked green. Resume with P12b",
+            "no_question: no pending question",
+            "internal: disk full",
+            "beta",
+            "one",
+            "7b31dfe",
+            "1.92",
+            "2026-10-08T15:00:00Z",
+            "1791469200",
+            "1791853200",
+            "5.2609",
+            "2026-10-08T13:09:03Z",
+            "https://github.com/o/demo",
+            "https://github.com/o/alpha",
+            "2026-10-07T09:00:00Z",
+            "StructuredContent"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "session-tools-judge",
+      "files": [
+        {
+          "file": "mcpserver/session_examples_test.go",
+          "min": 6,
+          "max": 12,
+          "new": true,
+          "lits": [
+            "TestSessionToolsExample1",
+            "TestSessionToolsExample2",
+            "TestSessionToolsExample3",
+            "TestSessionToolsExample4",
+            "TestSessionToolsExample5",
+            "TestSessionToolsExample6",
+            "NewInMemoryTransports",
+            "milestone",
+            "phase_done",
+            "wait_operator",
+            "demo",
+            "id-2",
+            "beta",
+            "id-9",
+            "P17",
+            "P18",
+            "P19",
+            "bad_session_token: session token mismatch",
+            "ErrPhaseMismatch",
+            "while running ",
+            "internal: phase mismatch: phase_done ",
+            "P17 smoke: curl status",
+            "pause",
+            "bad_input: kind must be one of smoke, gate, emergency, no-next",
+            "P17 gate passed",
+            "10 cards · $0.12",
+            "bad_input: unknown milestone kind ",
+            "party",
+            "info"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mcp-mount-judge",
+      "files": [
+        {
+          "file": "mcpserver/mount_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestMCPMountExample1",
+            "TestMCPMountExample2",
+            "TestMCPMountExample3",
+            "TestMCPMountExample4",
+            "TestMCPMountExample5",
+            "TestMCPMountExample6",
+            "TestMCPMountExample7",
+            "ServeHTTP",
+            "NewRecorder",
+            "tok-1",
+            "id-2",
+            "Bearer tok-1",
+            "Bearer wrong",
+            "Bearer id-2",
+            "/mcp/demo",
+            "/mcp/demo/session",
+            "/mcp/other/session",
+            "/mcp/nope",
+            "application/json, text/event-stream",
+            "tools/list",
+            "tools/call",
+            "unauthorized",
+            "bearer token required",
+            "unknown_project",
+            "unknown project",
+            "answer",
+            "stop_check",
+            "usage",
+            "project_create",
+            "projects_list",
+            "P17 gate passed",
+            "10 cards · $0.12",
+            "1.92",
+            "2026-10-08T15:00:00Z",
+            "DELETE",
+            "405",
+            "404",
+            "401"
+          ]
+        }
+      ]
+    }
+  ]
+}

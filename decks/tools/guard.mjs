@@ -76,13 +76,28 @@ function fileImports(text) {
     }
   return out;
 }
+// The direct requirements of go.mod (the record's declared dependencies, vendored): a test of a Component that uses
+// one drives it through that module's API (MorphStudio P6: the go-sdk's in-memory transports).
+function declaredModules() {
+  const text = fs.existsSync("go.mod") ? fs.readFileSync("go.mod", "utf8") : "";
+  const out = [];
+  for (const m of text.matchAll(/^require\s+(\S+)\s+\S+[ \t]*$/gm)) out.push(m[1]);
+  for (const m of text.matchAll(/^require\s*\(([\s\S]*?)^\)/gm))
+    for (const line of m[1].split("\n")) {
+      const s = /^\s*(\S+)\s+\S+\s*$/.exec(line);
+      if (s) out.push(s[1]);
+    }
+  return out;
+}
 function checkTest(file, min, max, lits) {
   if (!fs.existsSync(file)) { bad.push(`guard: ${file} missing`); return; }
   const text = fs.readFileSync(file, "utf8");
   const mod = modulePath();
+  const deps = declaredModules();
   for (const imp of fileImports(text))
-    if (!isStd(imp) && !(imp === mod + "/internal/testhelp" || imp.startsWith(mod + "/")))
-      bad.push(`guard: ${file} imports ${imp} (the standard library and ${mod}/internal/testhelp only)`);
+    if (!isStd(imp) && !(imp === mod + "/internal/testhelp" || imp.startsWith(mod + "/")) &&
+        !deps.some((m) => imp === m || imp.startsWith(m + "/")))
+      bad.push(`guard: ${file} imports ${imp} (the standard library, ${mod}/internal/testhelp${deps.length ? ", " + deps.join(", ") : ""} only)`);
   const code = text.split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
   for (const m of code.matchAll(/\.(Skip|Skipf|SkipNow)\(|\btesting\.Short\(/g))
     bad.push(`guard: ${file} calls ${m[1] ?? "testing.Short"} (a test runs or fails, it is never skipped)`);

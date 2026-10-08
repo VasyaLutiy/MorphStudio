@@ -1,0 +1,255 @@
+package eventlog
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+)
+
+var (
+	at1 = time.Date(2026, 10, 8, 13, 9, 1, 189000000, time.UTC)
+	at2 = time.Date(2026, 10, 8, 13, 9, 2, 0, time.UTC)
+	at3 = time.Date(2026, 10, 8, 13, 9, 3, 0, time.UTC)
+	at4 = time.Date(2026, 10, 8, 13, 9, 4, 0, time.UTC)
+	at5 = time.Date(2026, 10, 8, 13, 9, 5, 0, time.UTC)
+)
+
+// example3Entries are the entries example 3's log holds, Seq 1..3.
+var example3Entries = []Entry{
+	{Seq: 1, T: 1791464941.189, Dir: "in", Msg: json.RawMessage(`{"type":"user"}`)},
+	{Seq: 2, T: 1791464942, Dir: "out", Msg: json.RawMessage(`{"a":1,"b":[1,2]}`)},
+	{Seq: 3, T: 1791464943, Dir: "out", Msg: json.RawMessage(`{"c":3}`)},
+}
+
+// openLog opens path and closes the log when the test ends.
+func openLog(t *testing.T, path string) *Log {
+	t.Helper()
+	l, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open(%s): %v", path, err)
+	}
+	t.Cleanup(func() {
+		if err := l.f.Close(); err != nil {
+			t.Errorf("close %s: %v", path, err)
+		}
+	})
+	return l
+}
+
+// example1Log opens the example 1 log and returns it with its path.
+func example1Log(t *testing.T) (*Log, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "demo", "sessions", "s1.jsonl")
+	return openLog(t, path), path
+}
+
+// example3Log builds the example 3 log and returns it with its path.
+func example3Log(t *testing.T) (*Log, string) {
+	t.Helper()
+	l, path := example1Log(t)
+	if _, err := l.Append("in", []byte(`{"type":"user"}`), at1); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if _, err := l.Append("out", []byte(`{"a": 1, "b": [1, 2]}`), at2); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if _, err := l.Append("out", []byte(`{"c":3}`), at3); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	return l, path
+}
+
+// readLines returns the newline-terminated lines of path as strings.
+func readLines(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+}
+
+func TestEventLogExample1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "demo", "sessions", "s1.jsonl")
+
+	l, err := Open(path)
+	testhelp.Equal(t, "error", err, nil)
+	if l == nil {
+		t.Fatal("Open returned a nil *Log")
+	}
+	t.Cleanup(func() { l.f.Close() })
+
+	testhelp.Equal(t, "Last", l.Last(), int64(0))
+	got := l.Since(0, 10)
+	testhelp.Equal(t, "Since", got, []Entry{})
+	testhelp.Equal(t, "Since non-nil", got != nil, true)
+	testhelp.Equal(t, "Path", l.Path(), path)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(%s): %v", path, err)
+	}
+	testhelp.Equal(t, "file size", info.Size(), int64(0))
+}
+
+func TestEventLogExample2(t *testing.T) {
+	l, path := example1Log(t)
+
+	e, err := l.Append("in", []byte(`{"type":"user"}`), at1)
+	testhelp.Equal(t, "error", err, nil)
+	testhelp.Equal(t, "entry", e, Entry{
+		Seq: 1,
+		T:   1791464941.189,
+		Dir: "in",
+		Msg: json.RawMessage(`{"type":"user"}`),
+	})
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	testhelp.Equal(t, "file", string(data), `{"seq":1,"t":1791464941.189,"dir":"in","msg":{"type":"user"}}`+"\n")
+	testhelp.Equal(t, "Last", l.Last(), int64(1))
+}
+
+func TestEventLogExample3(t *testing.T) {
+	l, path := example1Log(t)
+
+	if _, err := l.Append("in", []byte(`{"type":"user"}`), at1); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	e2, err := l.Append("out", []byte(`{"a": 1, "b": [1, 2]}`), at2)
+	testhelp.Equal(t, "error", err, nil)
+	testhelp.Equal(t, "Seq", e2.Seq, int64(2))
+	testhelp.Equal(t, "Msg", e2.Msg, json.RawMessage(`{"a":1,"b":[1,2]}`))
+	testhelp.Equal(t, "T", e2.T, 1791464942.0)
+
+	e3, err := l.Append("out", []byte(`{"c":3}`), at3)
+	testhelp.Equal(t, "error", err, nil)
+	testhelp.Equal(t, "Seq", e3.Seq, int64(3))
+
+	lines := readLines(t, path)
+	testhelp.Equal(t, "line count", len(lines), 3)
+	testhelp.Equal(t, "line 2", lines[1], `{"seq":2,"t":1791464942,"dir":"out","msg":{"a":1,"b":[1,2]}}`)
+}
+
+func TestEventLogExample4(t *testing.T) {
+	l, _ := example3Log(t)
+
+	testhelp.Equal(t, "Since(1, 0)", l.Since(1, 0), example3Entries[1:])
+	testhelp.Equal(t, "Since(0, 2)", l.Since(0, 2), example3Entries[:2])
+	testhelp.Equal(t, "Since(3, 10)", l.Since(3, 10), []Entry{})
+	testhelp.Equal(t, "Since(5, 10)", l.Since(5, 10), []Entry{})
+}
+
+func TestEventLogExample5(t *testing.T) {
+	_, path := example3Log(t)
+
+	l := openLog(t, path)
+	testhelp.Equal(t, "Last", l.Last(), int64(3))
+	testhelp.Equal(t, "Since", l.Since(0, 10), example3Entries)
+
+	e4, err := l.Append("in", []byte(`{}`), at4)
+	testhelp.Equal(t, "error", err, nil)
+	testhelp.Equal(t, "Seq", e4.Seq, int64(4))
+	testhelp.Equal(t, "line count", len(readLines(t, path)), 4)
+}
+
+func TestEventLogExample6(t *testing.T) {
+	path := testhelp.WriteFile(t, "s.jsonl", `{"seq":1,"t":1,"dir":"in","msg":{}}`+"\n"+"not json"+"\n")
+
+	l, err := Open(path)
+	testhelp.Equal(t, "log", l, (*Log)(nil))
+	if err == nil {
+		t.Fatal("Open returned a nil error")
+	}
+	testhelp.Equal(t, "error prefix", strings.HasPrefix(err.Error(), "eventlog: read "+path+" line 2: "), true)
+}
+
+func TestEventLogExample7(t *testing.T) {
+	path := filepath.Join(testhelp.WriteFile(t, "f", "x"), "s.jsonl")
+
+	l, err := Open(path)
+	testhelp.Equal(t, "log", l, (*Log)(nil))
+	if err == nil {
+		t.Fatal("Open returned a nil error")
+	}
+	testhelp.Equal(t, "error prefix", strings.HasPrefix(err.Error(), "eventlog: open "), true)
+}
+
+func TestEventLogExample8(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	l := openLog(t, path)
+
+	at := time.Date(2026, 10, 8, 13, 0, 0, 0, time.UTC)
+	for n := 1; n <= 2500; n++ {
+		if _, err := l.Append("in", json.RawMessage(fmt.Sprintf(`{"i":%d}`, n)), at); err != nil {
+			t.Fatalf("Append %d: %v", n, err)
+		}
+	}
+
+	got := l.Since(0, 0)
+	testhelp.Equal(t, "len(Since(0, 0))", len(got), 200)
+	if len(got) == 200 {
+		testhelp.Equal(t, "Since(0, 0) first Seq", got[0].Seq, int64(501))
+		testhelp.Equal(t, "Since(0, 0) last Seq", got[199].Seq, int64(700))
+	}
+	testhelp.Equal(t, "Since(2498, 0)", l.Since(2498, 0), []Entry{
+		{Seq: 2499, T: 1791464400, Dir: "in", Msg: json.RawMessage(`{"i":2499}`)},
+		{Seq: 2500, T: 1791464400, Dir: "in", Msg: json.RawMessage(`{"i":2500}`)},
+	})
+	testhelp.Equal(t, "Last", l.Last(), int64(2500))
+	testhelp.Equal(t, "line count", len(readLines(t, path)), 2500)
+}
+
+func TestEventLogExample9(t *testing.T) {
+	l, path := example1Log(t)
+
+	e, err := l.Append("in", []byte(`{"a":`), at1)
+	testhelp.Equal(t, "entry", e, Entry{})
+	if err == nil {
+		t.Fatal("Append returned a nil error")
+	}
+	testhelp.Equal(t, "error prefix", strings.HasPrefix(err.Error(), "eventlog: bad msg"), true)
+	testhelp.Equal(t, "Last", l.Last(), int64(0))
+
+	info, serr := os.Stat(path)
+	if serr != nil {
+		t.Fatalf("Stat(%s): %v", path, serr)
+	}
+	testhelp.Equal(t, "file size", info.Size(), int64(0))
+}
+
+func TestEventLogExample10(t *testing.T) {
+	l, path := example1Log(t)
+
+	msg := []byte(`{"s":"` + strings.Repeat("a", 100000) + `"}`)
+	testhelp.Equal(t, "msg length", len(msg), 100008)
+
+	if _, err := l.Append("out", msg, at5); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", path, err)
+	}
+	testhelp.Equal(t, "file length", len(data), 100052)
+
+	l2 := openLog(t, path)
+	testhelp.Equal(t, "Last", l2.Last(), int64(1))
+	got := l2.Since(0, 10)
+	testhelp.Equal(t, "len(Since)", len(got), 1)
+	if len(got) == 1 {
+		testhelp.Equal(t, "Seq", got[0].Seq, int64(1))
+		testhelp.Equal(t, "Dir", got[0].Dir, "out")
+		testhelp.Equal(t, "Msg", got[0].Msg, json.RawMessage(msg))
+	}
+}

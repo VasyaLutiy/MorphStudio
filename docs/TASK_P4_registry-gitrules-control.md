@@ -220,8 +220,8 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
 
 ### Preparation (before the gate)
 
-- Orchestrator: Opus 5.5 agent (fresh context); its tokens, tool calls and minutes are measured by the session from the
-  agent's run.
+- Orchestrator: Opus 5.5 agent (fresh context), 64 tool calls, 234k tokens, 20 min (measured by the session from the
+  agent's run).
 - `morph plan` exit 0; `morph deck check` errors 0, warnings 0, hazards 0; generations [3, 5, 2]; the cut holds exactly
   the 10 phase cards.
 - Largest slice at the cut: control-contract-judge, 18 899 B of existing files (≈ 24 KB with the written control.go);
@@ -237,3 +237,24 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
   Project Registry example 7 (writes to returned values); the import lists of registry, gitrules, control. Map: 5
   budgets, 5 judge instructions.
 - 0 lines of product code by hand (the reference and the stubs lived only in a scratch worktree, removed).
+
+### Run 20261008-185347 (processor ds, binary copy /tmp/morph-bin-P4 of MorphV2 bc311aa)
+
+- 10 / 10 written, 0 burned; 12 requests; 71 270 input / 58 272 output tokens; $0.0444 executor; 276 s (4.6 min).
+- Attempts: control-contract-judge 2 (v1 red at `== vet`/`== own`: "multiple-value Code(nil) (value of type (int,
+  string)) in single-value context" — the test used Code as one value; r1 green); phase-end-check-judge 2 (v1 rejected
+  at `== guard`: "does not mention the example literal \"../tests/fixtures/git/measure.md\""; r1 green); every other
+  card 1. Every finish reason `stop`. No failure class, no fix needed.
+- The predicted regenerations (secret-files mode, registry List aliasing, start-check Run error, control reflect) did
+  not happen: those code cards were green at the first attempt.
+- Judges: 5 / 5 green at `== own` on the accepted code; judge defects 0; guard rejections 1 (above); neighbour-red 0.
+- Verify on the run branch: `git status --short` empty; gofmt, `go vet ./...`, `go build ./...` clean;
+  `go test -count=1 ./...` green, 127 example tests (P1 31 + P2 32 + P3 29 + P4 35).
+- Read against §2.2 and the record: gitrules and control follow the record line by line. Three §2.2 gaps no example
+  pins came out otherwise, recorded as known risks, not fixed by hand:
+  1. Project Registry: Add appends to the in-memory list before the write, so a failed write leaves the project in
+     memory (a retry says ErrExists while projects.json lacks it; §2.2: "a failed write leaves the list unchanged").
+  2. Project Registry: Open returns a read error other than not-exist as is, unwrapped (§2.2: "registry: read <path>:
+     …"); the record's "every error of the file system is returned as is" allows it; only the decode error is pinned.
+  3. Secret Files: DeleteSecret of an unknown project returns nil (§2.2: ErrNotFound); the record says only
+     "missing → nil".

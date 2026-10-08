@@ -505,8 +505,8 @@ System:
             it is not ""; then every Extra verbatim. Bin and Dir are not in the argv.
             MCPConfigJSON is the json.Marshal of {"mcpServers":{"morphd":{"type":"http","url":<url>,"headers":{"Authorization":"Bearer " + token}}}}
             (struct fields in that order) followed by "\n". WriteMCPConfig writes it to filepath.Join(dir, project + "-mcp.json")
-            with mode 0o600 (dir created 0o700 when missing) and returns that path; a write error → ("", an error beginning
-            "claude: mcp config: ").
+            with mode 0o600 (dir created 0o700 when missing; an existing file is overwritten and left with mode 0o600, an
+            os.Chmod after the write) and returns that path; a write error → ("", an error beginning "claude: mcp config: ").
           steps:
             - produces: argv
           examples:
@@ -547,10 +547,16 @@ System:
             (nil, an error beginning "claude: start "). When the process exits: Lines() is closed, then one ExitStatus{Code:
             the exit code, or -1 when killed by a signal, Stderr: the kept bytes} is sent on Exit() (a buffered channel of 1)
             and Exit() closed. Write appends nothing (the caller gives the newline) and writes under a mutex; after the exit
-            it returns ErrExited. Stop closes stdin (the CLI exits on EOF). Kill sends SIGKILL. PID is the OS pid.
-            Fake: Emit delivers a line on Lines(); Written returns a copy of every Write in order; Finish(code) closes Lines()
-            and delivers ExitStatus{Code: code}; Write after Finish → ErrExited; Kill sets Killed and, if not finished,
-            Finish(-1); Stop finishes with 0 if not finished.
+            it returns ErrExited. Stop closes stdin (the CLI exits on EOF). The process leads its own group:
+            cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}; Kill sends SIGKILL to the whole group
+            (syscall.Kill(-pid, syscall.SIGKILL)) and cmd.Cancel (the context's end) does the same — /bin/sh (dash) does not
+            exec a script's last command, and a child left alive holds the stdout and stderr pipes, so Lines() would never
+            close. PID is the OS pid.
+            Fake: Lines() is a buffered channel (1024 lines), so Emit never blocks before a reader; Emit delivers a line on
+            Lines(); Written returns a copy of every Write in order; Finish(code) closes Lines() and delivers
+            ExitStatus{Code: code}; Write after Finish → ErrExited; Kill sets Killed and, if not finished, Finish(-1); Stop
+            finishes with 0 if not finished; after the finish, Emit is dropped and Finish, Stop, Kill deliver nothing more
+            (never a panic). Every Fake method is safe for concurrent use.
           steps:
             - produces: ExitStatus
           examples:
@@ -560,9 +566,9 @@ System:
             - given: 'the script "#!/bin/sh\necho oops >&2\nexit 2\n"'
               when: 'Start, then <-p.Exit()'
               then: 'ExitStatus{Code: 2, Stderr: "oops\n"}; a Write after it → ErrExited'
-            - given: 'the script "#!/bin/sh\nsleep 30\n"'
-              when: 'Start; p.Kill(); <-p.Exit() within 2 s'
-              then: 'ExitStatus.Code -1'
+            - given: 'the script "#!/bin/sh\nsleep 30 &\necho started\nwait\n" (the background sleep holds stdout)'
+              when: 'Start; first <-p.Lines(); p.Kill(); <-p.Exit() within 2 s'
+              then: 'the first line "started"; ExitStatus.Code -1 (the whole group is killed: a SIGKILL to sh alone leaves the sleep holding stdout, and Exit would come only after 30 s)'
             - given: 'Start(ctx, "/nonexistent/claude", nil, t.TempDir(), nil); Start(ctx, "sh", nil, "/nonexistent/dir", nil)'
               when: Start
               then: 'each (nil, an error beginning "claude: start ")'
@@ -591,7 +597,8 @@ System:
             "git@github.com:<owner>/<repo>.git"; owner and repo are non-empty and hold no "/"; anything else → ("", "",
             error "github: not a github repository url: " + repoURL). CredentialLine = "https://x-access-token:" + token + "@github.com\n".
             Check: token "" → Access{Checked: true, Reason: "no token", CheckedAt: now}; Parse fails → {Checked: true, Reason:
-            that error's text, CheckedAt: now}; else GET https://api.github.com/repos/<owner>/<repo> with headers Authorization
+            that error's text, CheckedAt: now}; a nil do → {Checked: true, Reason: "network: no Do", CheckedAt: now} (never a
+            panic); else GET https://api.github.com/repos/<owner>/<repo> with headers Authorization
             "Bearer " + token, Accept "application/vnd.github+json", User-Agent "morphd"; the body is read and closed; by status:
             200 → Reachable true, Push = permissions.push of the JSON body (false when absent), Reason ""; 401 → Reason "401 bad
             credentials"; 403 → "403 forbidden"; 404 → "404 not found or no access"; any other → "<status> unexpected"; Do

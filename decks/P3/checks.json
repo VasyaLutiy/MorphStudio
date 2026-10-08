@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "phase": "P3",
+  "parts": "decks/P3/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram"
+  ],
+  "cards": [
+    {
+      "id": "launch-args",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./claude) || exit 1; for i in $I; do case $i in bufio|bytes|context|encoding/json|errors|fmt|io|os|os/exec|path/filepath|strconv|strings|sync|syscall|time) ;; *) echo \"imports: package claude imports $i (allowed: bufio, bytes, context, encoding/json, errors, fmt, io, os, os/exec, path/filepath, strconv, strings, sync, syscall, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' claude/args.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' claude/args.go 2>&1); [ -z \"$C\" ] || { echo \"clock: claude/args.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "process",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./claude) || exit 1; for i in $I; do case $i in bufio|bytes|context|encoding/json|errors|fmt|io|os|os/exec|path/filepath|strconv|strings|sync|syscall|time) ;; *) echo \"imports: package claude imports $i (allowed: bufio, bytes, context, encoding/json, errors, fmt, io, os, os/exec, path/filepath, strconv, strings, sync, syscall, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' claude/process.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' claude/process.go 2>&1); [ -z \"$C\" ] || { echo \"clock: claude/process.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "repo-access",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./github) || exit 1; for i in $I; do case $i in context|encoding/json|errors|fmt|io|net/http|net/url|strings|time) ;; *) echo \"imports: package github imports $i (allowed: context, encoding/json, errors, fmt, io, net/http, net/url, strings, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' github/access.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' github/access.go 2>&1); [ -z \"$C\" ] || { echo \"clock: github/access.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head; do C=$(gofmt -l -r \"$x -> http.NoBody\" github/access.go 2>&1); [ -z \"$C\" ] || { echo \"net: github/access.go uses $x (every HTTP call goes through the injected Do)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "project-create",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./bootstrap) || exit 1; for i in $I; do case $i in context|errors|fmt|os|path/filepath|regexp|strings|morphstudio/github|morphstudio/runner) ;; *) echo \"imports: package bootstrap imports $i (allowed: context, errors, fmt, os, path/filepath, regexp, strings, morphstudio/github, morphstudio/runner)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' bootstrap/create.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' bootstrap/create.go 2>&1); [ -z \"$C\" ] || { echo \"clock: bootstrap/create.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "launch-args-judge",
+      "files": [
+        {
+          "file": "claude/args_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestLaunchArgsExample1",
+            "TestLaunchArgsExample2",
+            "TestLaunchArgsExample3",
+            "TestLaunchArgsExample4",
+            "TestLaunchArgsExample5",
+            "TestLaunchArgsExample6",
+            "TestLaunchArgsExample7",
+            "11111111-2222-3333-4444-555555555555",
+            "--dangerously-skip-permissions",
+            "/tmp/demo-mcp.json",
+            "12.5",
+            "--effort",
+            "s-3",
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1",
+            "http://127.0.0.1:7080/mcp/demo/session",
+            "Bearer tok-1",
+            "demo-mcp.json",
+            "tok-2",
+            "claude: mcp config: "
+          ]
+        }
+      ]
+    },
+    {
+      "id": "process-judge",
+      "files": [
+        {
+          "file": "claude/process_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestProcessExample1",
+            "TestProcessExample2",
+            "TestProcessExample3",
+            "TestProcessExample4",
+            "TestProcessExample5",
+            "TestProcessExample6",
+            "TestProcessExample7",
+            "subtype",
+            "exit 4",
+            "oops",
+            "sleep 30",
+            "started",
+            "/nonexistent/claude",
+            "/nonexistent/dir",
+            "claude: start ",
+            "70000",
+            "short",
+            "ErrExited",
+            "NewFake",
+            "4242",
+            "Killed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "repo-access-judge",
+      "files": [
+        {
+          "file": "github/access_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestRepoAccessExample1",
+            "TestRepoAccessExample2",
+            "TestRepoAccessExample3",
+            "TestRepoAccessExample4",
+            "TestRepoAccessExample5",
+            "TestRepoAccessExample6",
+            "TestRepoAccessExample7",
+            "TestRepoAccessExample8",
+            "VasyaLutiy",
+            "MorphStudio",
+            "git@github.com:o/r.git",
+            "https://gitlab.com/o/r",
+            "github: not a github repository url: ",
+            "https://x-access-token:ghp_abc@github.com",
+            "https://api.github.com/repos/o/r",
+            "application/vnd.github+json",
+            "morphd",
+            "401 bad credentials",
+            "403 forbidden",
+            "404 not found or no access",
+            "500 unexpected",
+            "no token",
+            "dial tcp: refused ***"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project-create-judge",
+      "files": [
+        {
+          "file": "bootstrap/create_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestProjectCreateExample1",
+            "TestProjectCreateExample2",
+            "TestProjectCreateExample3",
+            "TestProjectCreateExample4",
+            "TestProjectCreateExample5",
+            "TestProjectCreateExample6",
+            "TestProjectCreateExample7",
+            "/usr/local/bin/morph",
+            "--module demo",
+            "store --file=/st/demo/git-credentials",
+            "morphd@localhost",
+            "https://github.com/o/demo",
+            "morph init: demo (go)",
+            "bootstrap: bad project name ",
+            "bootstrap: unknown language ",
+            "bootstrap: morph binary not configured",
+            "bootstrap: directory exists: ",
+            "bootstrap: step 8 failed (exit 1): nothing to commit",
+            "git rev-parse --verify -q origin/main",
+            "git push -q -u origin main",
+            "bootstrap: push failed (exit 1): error: failed to push some refs",
+            "GIT_TERMINAL_PROMPT=0",
+            "bootstrap: step 1: runner: exec: ",
+            "a-1-b",
+            "typescript"
+          ]
+        }
+      ]
+    }
+  ]
+}

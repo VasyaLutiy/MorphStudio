@@ -1,0 +1,126 @@
+```
+package telegram
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+// Icons maps a milestone kind to the emoji used in the message.
+var Icons = map[string]string{
+	"start":    "🚀",
+	"gate":     "🚦",
+	"run":      "🏁",
+	"fail":     "❌",
+	"merge":    "🔀",
+	"smoke":    "🧪",
+	"stop":     "🛑",
+	"debt":     "💸",
+	"end":      "🎉",
+	"info":     "💬",
+	"watchdog": "🐕",
+	"idle":     "💤",
+	"ask":      "🔔",
+}
+
+// Status is the outcome of a Post call.
+type Status struct {
+	Sent       bool `json:"sent"`
+	Skipped    bool `json:"skipped"`
+	HTTPStatus int  `json:"http_status"`
+}
+
+// Client posts milestone lines to a Telegram chat.
+type Client struct {
+	Token  string
+	ChatID string
+	Do     func(*http.Request) (*http.Response, error)
+}
+
+// Escape escapes s for HTML: & first, then <, then >.
+func Escape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
+}
+
+// truncate cuts s to at most n runes.
+func truncate(s string, n int) string {
+	if n < 0 {
+		n = 0
+	}
+	r := []rune(s)
+	if len(r) > n {
+		r = r[:n]
+	}
+	return string(r)
+}
+
+// Text formats a milestone line with its project prefix and icon.
+func Text(project, kind, headline, numbers string) string {
+	icon, ok := Icons[kind]
+	if !ok {
+		icon = Icons["info"]
+	}
+	out := "[" + project + "] " + icon + " <b>" + Escape(truncate(headline, 300)) + "</b>"
+	if numbers != "" {
+		out += "\n" + Escape(truncate(numbers, 3500))
+	}
+	return out
+}
+
+// Post sends the formatted milestone line to Telegram.
+func (c Client) Post(ctx context.Context, project, kind, headline, numbers string) (Status, error) {
+	if c.Token == "" || c.ChatID == "" {
+		return Status{Skipped: true}, nil
+	}
+
+	form := url.Values{
+		"chat_id":                  {c.ChatID},
+		"text":                     {Text(project, kind, headline, numbers)},
+		"parse_mode":               {"HTML"},
+		"disable_web_page_preview": {"true"},
+	}
+
+	endpoint := "https://api.telegram.org/bot" + c.Token + "/sendMessage"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return Status{}, fmt.Errorf("telegram: post failed: %s", redact(err.Error(), c.Token))
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return Status{}, fmt.Errorf("telegram: post failed: %s", redact(err.Error(), c.Token))
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Status{}, fmt.Errorf("telegram: post failed: %s", redact(err.Error(), c.Token))
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		return Status{Sent: true, HTTPStatus: http.StatusOK}, nil
+	}
+
+	preview := body
+	if len(preview) > 200 {
+		preview = preview[:200]
+	}
+	return Status{HTTPStatus: resp.StatusCode}, fmt.Errorf("telegram: status %d: %s", resp.StatusCode, string(preview))
+}
+
+// redact removes every occurrence of the token from s.
+func redact(s, token string) string {
+	if token == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, token, "***")
+}
+```

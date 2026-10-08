@@ -1,0 +1,10 @@
+morph run: event-log.v1 accepted stage 9 frozen finish stop chars 3326
+morph run: milestone-post.v1 truncated stage 0 finish stop chars 8545
+morph run: session-machine.v1 accepted stage 9 frozen finish stop chars 3653
+morph run: milestone-post.r1.v1 accepted stage 9 frozen finish stop chars 3100
+morph run: event-log-judge.v1 accepted stage 6 frozen finish stop chars 7652
+morph run: milestone-post-judge.v1 accepted stage 6 frozen finish stop chars 4633
+morph run: order-queue.v1 accepted stage 9 frozen finish stop chars 2081
+morph run: session-machine-judge.v1 accepted stage 6 frozen finish stop chars 8337
+morph run: order-queue-judge.v1 rejected stage 3 guard session/orders_examples_test.go finish stop chars 10140
+morph run: order-queue-judge.r1.v1 accepted stage 6 frozen finish stop chars 10260

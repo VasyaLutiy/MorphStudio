@@ -1,0 +1,333 @@
+```
+package telegram
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+var Icons = map[string]string{
+	"start":    "🚀",
+	"gate":     "🚦",
+	"run":      "🏁",
+	"fail":     "❌",
+	"merge":    "🔀",
+	"smoke":    "🧪",
+	"stop":     "🛑",
+	"debt":     "💸",
+	"end":      "🎉",
+	"info":     "💬",
+	"watchdog": "🐕",
+	"idle":     "💤",
+	"ask":      "🔔",
+}
+
+type Status struct {
+	Sent       bool `json:"sent"`
+	Skipped    bool `json:"skipped"`
+	HTTPStatus int  `json:"http_status"`
+}
+
+type Client struct {
+	Token  string
+	ChatID string
+	Do     func(*http.Request) (*http.Response, error)
+}
+
+func Escape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
+}
+
+func firstRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
+func Text(project, kind, headline, numbers string) string {
+	icon, ok := Icons[kind]
+	if !ok {
+		icon = "💬"
+	}
+	out := "[" + project + "] " + icon + " <b>" + Escape(firstRunes(headline, 300)) + "</b>"
+	if numbers != "" {
+		out += "\n" + Escape(firstRunes(numbers, 3500))
+	}
+	return out
+}
+
+func (c Client) Post(ctx context.Context, project, kind, headline, numbers string) (Status, error) {
+	if c.Token == "" || c.ChatID == "" {
+		return Status{Skipped: true}, nil
+	}
+	form := url.Values{
+		"chat_id":                  {c.ChatID},
+		"text":                     {Text(project, kind, headline, numbers)},
+		"parse_mode":               {"HTML"},
+		"disable_web_page_preview": {"true"},
+	}
+	endpoint := "https://api.telegram.org/bot" + c.Token + "/sendMessage"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return Status{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.Do(req)
+	if err != nil {
+		return Status{}, errFrom("telegram: post failed: "+err.Error(), c.Token)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == 200 {
+		return Status{Sent: true, HTTPStatus: 200}, nil
+	}
+	return Status{HTTPStatus: resp.StatusCode}, errFrom("telegram: status "+itoa(resp.StatusCode)+": "+firstBytes(body, 200), c.Token)
+}
+
+func firstBytes(b []byte, n int) string {
+	if len(b) > n {
+		b = b[:n]
+	}
+	return string(b)
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
+}
+
+func errFrom(msg, token string) error {
+	if token != "" {
+		msg = strings.ReplaceAll(msg, token, "***")
+	}
+	return &postError{msg}
+}
+
+type postError struct{ s string }
+
+func (e *postError) Error() string { return e.s }
+```
+
+Wait — requirement says "Do returning an error → (Status{}, error "telegram: post failed: " + err.Error() with every occurrence of Token replaced by "***")". And the status non-200 error also says "the token never appears in a returned error", so applying errFrom to both is safe (the body is unlikely to contain the token, but harmless).
+
+Let me double check the status 403 example: error text exactly "telegram: status 403: {body}". My itoa works.
+
+But maybe simpler to use strconv. The requirement says stdlib only, strconv is stdlib. Let me just use strconv.Itoa and errors.New. Cleaner.
+
+Let me rewrite.
+
+Also check example 4 body encoding. url.Values.Encode sorts keys: chat_id, disable_web_page_preview, parse_mode, text. Good.
+
+Text for example 4: "[demo] 🚀 <b>P18 started</b>\n$2.10 · 3 min". URL-encoded. Good.
+
+Escape order: & first, then <, then >. My code does that. Good.
+
+firstRunes with n=300 for the é case: headline "é"×301 → 300 é. Good. numbers 3501 ж → 3500. Good.
+
+Let me use strconv.Itoa and errors.New instead of custom helpers.
+
+Actually, I'll keep it minimal:
+
+```go
+package telegram
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+var Icons = map[string]string{...}
+
+type Status struct{...}
+
+type Client struct{...}
+
+func Escape(s string) string {...}
+
+func cut(s string, n int) string {...}
+
+func Text(...) string {...}
+
+func (c Client) Post(...) (Status, error) {
+	if c.Token == "" || c.ChatID == "" {
+		return Status{Skipped: true}, nil
+	}
+	form := url.Values{...}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.telegram.org/bot"+c.Token+"/sendMessage", strings.NewReader(form.Encode()))
+	if err != nil {
+		return Status{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.Do(req)
+	if err != nil {
+		return Status{}, errors.New(c.redact("telegram: post failed: " + err.Error()))
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusOK {
+		return Status{Sent: true, HTTPStatus: http.StatusOK}, nil
+	}
+	return Status{HTTPStatus: resp.StatusCode}, errors.New(c.redact(
+		"telegram: status " + strconv.Itoa(resp.StatusCode) + ": " + firstBytes(body, 200)))
+}
+
+func (c Client) redact(s string) string {
+	if c.Token != "" {
+		s = strings.ReplaceAll(s, c.Token, "***")
+	}
+	return s
+}
+```
+
+Wait, but the non-200 error case: requirement says the token never appears in a returned error. My redact handles it. But example 7 error text: "telegram: status 403: {\"ok\":false,\"description\":\"Forbidden: bot was blocked\"}" — no token in there. Good.
+
+Hmm, but for the error from Do, the token in URL is replaced. Requirement 8 exact: "telegram: post failed: Post \"https://api.telegram.org/bot***/sendMessage\": dial tcp: refused". My code returns exactly that. Good.
+
+captured variable in closure for the recorder — I don't write the test, just the impl.
+
+Now, "Another status → (Status{HTTPStatus: n}, error ...)" — I return Status{HTTPStatus: resp.StatusCode} without Sent. Good.
+
+One consideration: the requirement says "the response body is read and closed". I do ioutil.ReadAll then Close via defer. Good.
+
+Let me finalize.```
+package telegram
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+var Icons = map[string]string{
+	"start":    "🚀",
+	"gate":     "🚦",
+	"run":      "🏁",
+	"fail":     "❌",
+	"merge":    "🔀",
+	"smoke":    "🧪",
+	"stop":     "🛑",
+	"debt":     "💸",
+	"end":      "🎉",
+	"info":     "💬",
+	"watchdog": "🐕",
+	"idle":     "💤",
+	"ask":      "🔔",
+}
+
+type Status struct {
+	Sent       bool `json:"sent"`
+	Skipped    bool `json:"skipped"`
+	HTTPStatus int  `json:"http_status"`
+}
+
+type Client struct {
+	Token  string
+	ChatID string
+	Do     func(*http.Request) (*http.Response, error)
+}
+
+func Escape(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
+}
+
+func cutRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
+func cutBytes(b []byte, n int) string {
+	if len(b) > n {
+		b = b[:n]
+	}
+	return string(b)
+}
+
+func Text(project, kind, headline, numbers string) string {
+	icon, ok := Icons[kind]
+	if !ok {
+		icon = "💬"
+	}
+	out := "[" + project + "] " + icon + " <b>" + Escape(cutRunes(headline, 300)) + "</b>"
+	if numbers != "" {
+		out += "\n" + Escape(cutRunes(numbers, 3500))
+	}
+	return out
+}
+
+func (c Client) redact(s string) string {
+	if c.Token != "" {
+		s = strings.ReplaceAll(s, c.Token, "***")
+	}
+	return s
+}
+
+func (c Client) Post(ctx context.Context, project, kind, headline, numbers string) (Status, error) {
+	if c.Token == "" || c.ChatID == "" {
+		return Status{Skipped: true}, nil
+	}
+	form := url.Values{
+		"chat_id":                  {c.ChatID},
+		"text":                     {Text(project, kind, headline, numbers)},
+		"parse_mode":               {"HTML"},
+		"disable_web_page_preview": {"true"},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		"https://api.telegram.org/bot"+c.Token+"/sendMessage",
+		strings.NewReader(form.Encode()))
+	if err != nil {
+		return Status{}, errors.New(c.redact(err.Error()))
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.Do(req)
+	if err != nil {
+		return Status{}, errors.New(c.redact("telegram: post failed: " + err.Error()))
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusOK {
+		return Status{Sent: true, HTTPStatus: http.StatusOK}, nil
+	}
+	return Status{HTTPStatus: resp.StatusCode}, errors.New(c.redact(
+		"telegram: status " + strconv.Itoa(resp.StatusCode) + ": " + cutBytes(body, 200)))
+}
+```

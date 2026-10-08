@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "phase": "P5",
+  "parts": "decks/P5/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "bootstrap",
+    "registry",
+    "gitrules",
+    "control"
+  ],
+  "cards": [
+    {
+      "id": "phase-loop",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./supervisor) || exit 1; for i in $I; do case $i in errors|fmt|strconv|strings|time|morphstudio/queue|morphstudio/gitrules|morphstudio/control|morphstudio/stream) ;; *) echo \"imports: package supervisor imports $i (allowed: errors, fmt, strconv, strings, time, morphstudio/queue, morphstudio/gitrules, morphstudio/control, morphstudio/stream)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' supervisor/loop.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' supervisor/loop.go 2>&1); [ -z \"$C\" ] || { echo \"clock: supervisor/loop.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "runtime-guard",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./supervisor) || exit 1; for i in $I; do case $i in errors|fmt|strconv|strings|time|morphstudio/queue|morphstudio/gitrules|morphstudio/control|morphstudio/stream) ;; *) echo \"imports: package supervisor imports $i (allowed: errors, fmt, strconv, strings, time, morphstudio/queue, morphstudio/gitrules, morphstudio/control, morphstudio/stream)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' supervisor/guard.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' supervisor/guard.go 2>&1); [ -z \"$C\" ] || { echo \"clock: supervisor/guard.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "http-handlers",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./api) || exit 1; for i in $I; do case $i in crypto/subtle|encoding/json|errors|io|mime|net/http|strconv|strings|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package api imports $i (allowed: crypto/subtle, encoding/json, errors, io, mime, net/http, strconv, strings, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' api/handlers.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' api/handlers.go 2>&1); [ -z \"$C\" ] || { echo \"clock: api/handlers.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" api/handlers.go 2>&1); [ -z \"$C\" ] || { echo \"net: api/handlers.go uses $x (no HTTP client and never a listener in package api)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "router",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./api) || exit 1; for i in $I; do case $i in crypto/subtle|encoding/json|errors|io|mime|net/http|strconv|strings|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package api imports $i (allowed: crypto/subtle, encoding/json, errors, io, mime, net/http, strconv, strings, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' api/router.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' api/router.go 2>&1); [ -z \"$C\" ] || { echo \"clock: api/router.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" api/router.go 2>&1); [ -z \"$C\" ] || { echo \"net: api/router.go uses $x (no HTTP client and never a listener in package api)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "phase-loop-judge",
+      "files": [
+        {
+          "file": "supervisor/loop_examples_test.go",
+          "min": 9,
+          "max": 15,
+          "new": true,
+          "lits": [
+            "TestPhaseLoopExample1",
+            "TestPhaseLoopExample2",
+            "TestPhaseLoopExample3",
+            "TestPhaseLoopExample4",
+            "TestPhaseLoopExample5",
+            "TestPhaseLoopExample6",
+            "TestPhaseLoopExample7",
+            "TestPhaseLoopExample8",
+            "TestPhaseLoopExample9",
+            "../tests/fixtures/plan/queue-3.json",
+            "start_check",
+            "first_line",
+            "end_check",
+            "kill",
+            "spawn",
+            "/morph-orchestrator P17",
+            "session id-1 · cap $30 · 3 h",
+            "P18 resumed",
+            "session id-7 · local ahead of origin/main",
+            "id-3",
+            "P17 not started: git",
+            "local aaa111 and origin/main ccc333 diverged",
+            "ErrPhaseMismatch",
+            "while running ",
+            "while waiting ",
+            "P17 not pushed",
+            "not pushed: HEAD bbb222, origin/main aaa111",
+            "not_pushed",
+            "P18 done: stop after smoke",
+            "next P19 · waiting for continue",
+            "P19 done: plan complete",
+            "stretch $1.5000",
+            "queue: cannot start in state ",
+            "queue: nothing to continue (state ",
+            "P17: wait_operator gate",
+            "forecast $1.4 over the cap",
+            "card x red after fix · https://github.com/o/r/issues/12",
+            "ErrNoSession",
+            "1.92"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runtime-guard-judge",
+      "files": [
+        {
+          "file": "supervisor/guard_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestRuntimeGuardExample1",
+            "TestRuntimeGuardExample2",
+            "TestRuntimeGuardExample3",
+            "TestRuntimeGuardExample4",
+            "TestRuntimeGuardExample5",
+            "TestRuntimeGuardExample6",
+            "TestRuntimeGuardExample7",
+            "TestRuntimeGuardExample8",
+            "../tests/fixtures/plan/queue-3.json",
+            "MaxResumesPerHour",
+            "UsageAlertPercent",
+            "watchdog",
+            "P17: session exited (code 4), resuming",
+            "resume 1 of 3 this hour",
+            "P17: session keeps exiting",
+            "exited 3 times within an hour (last code 1)",
+            "resume 3 of 3 this hour",
+            "crash",
+            "P17: stretch cap",
+            "stretch cap $30.00 reached ($30.2500)",
+            "P17: weekly usage 60%",
+            "resets 2026-10-13T01:00:00Z",
+            "1791469200",
+            "1791853200",
+            "P17: usage limit, paused",
+            "until 2026-10-08T14:20:00Z",
+            "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset.",
+            "P17: resumed after the limit",
+            "P17: no events for 30 min",
+            "one nudge sent",
+            "Nothing has happened for 30 minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first.",
+            "P17: wall clock cap",
+            "wall clock cap 3 h reached"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "http-handlers-judge",
+      "files": [
+        {
+          "file": "api/handlers_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestHTTPHandlersExample1",
+            "TestHTTPHandlersExample2",
+            "TestHTTPHandlersExample3",
+            "TestHTTPHandlersExample4",
+            "TestHTTPHandlersExample5",
+            "TestHTTPHandlersExample6",
+            "TestHTTPHandlersExample7",
+            "TestHTTPHandlersExample8",
+            "application/json",
+            "SetPathValue",
+            "/projects/demo/status",
+            "unknown_project",
+            "unknown project",
+            "smoke checked green. Resume with P12b",
+            "application/json; charset=utf-8",
+            "text/plain",
+            "application/xml",
+            "unsupported_media_type",
+            "Content-Type must be application/json",
+            "bad_json",
+            "bad json",
+            "option out of range: 3 of 1..2",
+            "bad_option",
+            "since=2&max=5",
+            "since=x",
+            "since must be an integer",
+            "bad_input",
+            "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+            "Which option do you want: A or B?",
+            "../tests/fixtures/plan/queue-3.json",
+            "7b31dfe",
+            "ghp_abc",
+            "401 bad credentials",
+            "/projects/demo/github-token",
+            "/projects/demo/restart",
+            "disk full",
+            "internal",
+            "1.92"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "router-judge",
+      "files": [
+        {
+          "file": "api/router_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestRouterExample1",
+            "TestRouterExample2",
+            "TestRouterExample3",
+            "TestRouterExample4",
+            "TestRouterExample5",
+            "TestRouterExample6",
+            "TestRouterExample7",
+            "/healthz",
+            "tok-1",
+            "Bearer wrong",
+            "Basic dG9rLTE=",
+            "Bearer tok-1 ",
+            "bearer tok-1",
+            "unauthorized",
+            "bearer token required",
+            "/projects/nope/status",
+            "/projects/demo/messages",
+            "/projects/demo/pending",
+            "/projects/demo/interrupt",
+            "/projects/demo/usage",
+            "/projects/demo/continue",
+            "/projects/demo/stop",
+            "/projects/demo/github-token",
+            "DELETE",
+            "/nowhere",
+            "mcp /mcp/demo/session",
+            "/mcp/demo",
+            "299",
+            "405",
+            "ServeHTTP"
+          ]
+        }
+      ]
+    }
+  ]
+}

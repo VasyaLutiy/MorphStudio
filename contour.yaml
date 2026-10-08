@@ -949,7 +949,7 @@ System:
         Package supervisor in supervisor/: the phase loop of one project as a pure machine — begin a phase, react to
         the git checks, phase_done, wait_operator, the PM's continue and restart, and the runtime guard (exit, limits,
         stall, caps). Every method returns the actions the daemon executes. Imports morphstudio/queue,
-        morphstudio/gitrules, morphstudio/control, morphstudio/stream, errors, fmt, time.
+        morphstudio/gitrules, morphstudio/control, morphstudio/stream, errors, fmt, strconv, strings, time.
       language: go
       dataObjects:
         - name: Loop Action
@@ -973,7 +973,10 @@ System:
             `func (l *Loop) WaitOperator(kind, reason, issueURL string, now time.Time) []Action`;
             `func (l *Loop) Continue(now time.Time) ([]Action, error)`; `func (l *Loop) Restart(now time.Time) ([]Action, error)`.
             State is one of "idle", "starting", "running", "paused", "waiting". A post action is Action{Kind: "post", Milestone: {kind, headline, numbers}}.
-            Begin: State must be "idle" or "waiting" and Queue.Start() must succeed (its error is returned, nothing changes);
+            An action carries only the fields its literal names here, every other field zero: start_check and end_check {Kind, Phase};
+            spawn {Kind, Phase, SessionID, Resume, BudgetUSD}; first_line and write {Kind, Line}; kill {Kind}; post {Kind, Milestone}.
+            Begin (meant for State "idle" or "waiting"): Queue.Start() must succeed — its error is returned as is and nothing
+            changes (a starting, running or paused loop holds a running queue, so a Begin there fails on the queue's state);
             then Phase = that id, State "starting", Stop nil, Nudged false, Alerted false, SessionUSD 0, actions
             [{Kind "start_check", Phase}].
             StartChecked (State "starting"; any other state → nil): Mode "fresh" → SessionID = newID(), Resumes nil,
@@ -988,17 +991,17 @@ System:
             changes); otherwise (nil, fmt.Errorf("%w: phase_done %q while %s %q", ErrPhaseMismatch, phase, State, Phase)).
             EndChecked (State "running" or "paused"; else nil): e.OK → StretchUSD += SessionUSD; out, err := Queue.Done(Phase,
             next) where next is the id after the current one in Queue.Phases (or "") — err is impossible here and ignored;
-            actions start with [{Kind "kill"}]; then by out: Next and no Stop → the loop begins that phase at once: Phase =
-            out.Next, State "starting", SessionID "", actions += [{Kind "start_check", Phase: out.Next}] (Queue.Start()
+            actions start with [{Kind "kill"}]; then by out: Next and no Stop → the loop begins that phase at once (the Begin transition: Stop nil, Nudged false, Alerted false,
+            SessionUSD 0): Phase = out.Next, State "starting", SessionID "", actions += [{Kind "start_check", Phase: out.Next}] (Queue.Start()
             called); Stop "smoke" or "operator" → State "waiting", Stop {Kind out.Stop, Phase: the finished phase, Reason
             "stop after " + out.Stop, At now}, actions += [{post stop "<phase> done: stop after <kind>" numbers "next <out.Next> · waiting for continue"}];
-            Stop "end" → State "waiting", Stop {Kind "end", Phase, Reason "plan complete"}, actions += [{post end "<phase> done: plan complete" numbers "stretch $<StretchUSD 'f' 4>"}].
+            Stop "end" → State "waiting", Stop {Kind "end", Phase, Reason "plan complete", At now}, actions += [{post end "<phase> done: plan complete" numbers "stretch $<StretchUSD 'f' 4>"}].
             e not OK → State "waiting", Stop {Kind "not_pushed", Phase, Reason: e.Problems joined with "; ", At now}, Queue.Stop(Reason),
             no kill, actions [{post stop "<phase> not pushed" numbers Reason}].
             WaitOperator: State "running" or "paused" → State "waiting", Stop {Kind: kind, Phase, Reason, IssueURL, At now},
             Queue.Stop(kind), actions [{post stop "<phase>: wait_operator <kind>" numbers = reason, then " · " + issueURL when non-empty}]; other states → nil.
-            Continue: State must be "waiting" else (nil, control.ErrNotWaiting); Stop.Kind "not_pushed" → actions [{end_check Phase}]
-            with State "running" and Stop nil; otherwise Queue.Continue() (its error returned as is) then the Begin transition
+            Continue: State must be "waiting" else (nil, control.ErrNotWaiting); Stop.Kind "not_pushed" → Queue.Continue() then Queue.Start()
+            (the queue runs the same phase again), actions [{end_check Phase}] with State "running" and Stop nil; otherwise Queue.Continue() (its error returned as is) then the Begin transition
             (Queue.Start, Phase = its id, State "starting", Stop nil, …, actions [{start_check}]); the session id is drawn in
             StartChecked, so neither Begin nor Continue takes an id source.
             Restart: State "running" or "paused" → actions [{Kind "kill"}, {Kind "start_check", Phase}], State "starting",
@@ -1009,17 +1012,17 @@ System:
             - uses: control
             - produces: Loop Action
           examples:
-            - given: 'q := the queue of Phase Queue example 1 (tests/fixtures/plan/queue-3.json, defaults {30, 3, 5}); l := New("demo", q); ids := a func returning "id-1", "id-2", … in turn'
+            - given: 'q, _ := queue.Load(the queue.Plan decoded from tests/fixtures/plan/queue-3.json, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5}) (phases P17 none, P18 smoke with Caps.ClaudeUSD 12, P19 none; State "queued"); l := New("demo", q); ids := a func returning "id-1", "id-2", … in turn'
               when: 'l.Begin(2026-10-08T15:00:00Z)'
               then: 'actions exactly [{Kind "start_check", Phase "P17"}], nil; State "starting", Phase "P17", Queue.State "running"; a second Begin → error text "queue: cannot start in state \"running\"" and no change'
               ref: tests/fixtures/plan/queue-3.json
             - given: 'the loop after example 1; StartChecked(gitrules.Start{Mode: "fresh", Local: "aaa111", Remote: "aaa111"}, ids, 15:00:01Z)'
               when: StartChecked
               then: 'exactly [{Kind "spawn", Phase "P17", SessionID "id-1", Resume false, BudgetUSD 30}, {Kind "first_line", Line "/morph-orchestrator P17"}, {Kind "post", Milestone {start, "P17 started", "session id-1 · cap $30 · 3 h"}}]; State "running", SessionID "id-1", PhaseStartedAt 15:00:01Z'
-            - given: 'a loop in State "starting" for P18 with SessionID "" ; StartChecked(Start{Mode: "resume", Reason: "local ahead of origin/main"}, ids returning "id-7", now)'
+            - given: 'a loop in State "starting" for P18 with SessionID "" (the loop at the end of example 5, or one built with its Queue at Index 1 and Queue.State "running"); StartChecked(Start{Mode: "resume", Reason: "local ahead of origin/main"}, ids returning "id-7", now)'
               when: StartChecked
               then: 'exactly [{spawn P18 "id-7" Resume true BudgetUSD 12}, {post start "P18 resumed" "session id-7 · local ahead of origin/main"}] — no first_line; with SessionID "id-3" kept from before, the spawn carries "id-3"'
-            - given: 'a loop in State "starting" for P17; StartChecked(Start{Mode: "diverged", Reason: "local aaa111 and origin/main ccc333 diverged"}, ids, 2026-10-08T15:02:00Z)'
+            - given: 'a loop in State "starting" for P17 (the loop after example 1); StartChecked(Start{Mode: "diverged", Reason: "local aaa111 and origin/main ccc333 diverged"}, ids, 2026-10-08T15:02:00Z)'
               when: StartChecked
               then: '[{post stop "P17 not started: git" "local aaa111 and origin/main ccc333 diverged"}]; State "waiting", Stop {Kind "git", Phase "P17", Reason as given, At 15:02:00Z}, Queue.State "stopped"'
             - given: 'the running loop of example 2 (P17, session id-1); PhaseDone("P17", "P18"); then EndChecked(End{OK: true, Local: "ddd", Remote: "ddd", Problems: []}, 15:40:00Z)'
@@ -1030,7 +1033,7 @@ System:
               then: 'errors.Is ErrPhaseMismatch with text "phase mismatch: phase_done \"P16\" while running \"P17\""; then text "phase mismatch: phase_done \"P17\" while waiting \"P17\""'
             - given: 'the running loop of example 2 with SessionUSD 1.92; EndChecked(End{OK: false, Problems: ["not pushed: HEAD bbb222, origin/main aaa111"]}, 2026-10-08T16:00:00Z)'
               when: EndChecked
-              then: 'exactly [{post stop "P17 not pushed" "not pushed: HEAD bbb222, origin/main aaa111"}] (no kill); State "waiting", Stop {Kind "not_pushed", Phase "P17", Reason "not pushed: HEAD bbb222, origin/main aaa111", At 16:00:00Z}, StretchUSD 0, Queue.State "stopped"; then Continue(16:05:00Z) → [{end_check P17}], State "running", Stop nil'
+              then: 'exactly [{post stop "P17 not pushed" "not pushed: HEAD bbb222, origin/main aaa111"}] (no kill); State "waiting", Stop {Kind "not_pushed", Phase "P17", Reason "not pushed: HEAD bbb222, origin/main aaa111", At 16:00:00Z}, StretchUSD 0, Queue.State "stopped"; then Continue(16:05:00Z) → [{end_check P17}], State "running", Stop nil, Queue.State "running", Queue.Index 0; then EndChecked(End{OK: true, Problems: []}, 16:10:00Z) → exactly [{Kind "kill"}, {Kind "start_check", Phase "P18"}], StretchUSD 1.92, SessionUSD 0'
             - given: 'a running loop at P18 (Index 1 of the fixture queue, SessionUSD 0.5, StretchUSD 1.0); EndChecked(OK true) at 17:00:00Z; then Continue(17:30:00Z); then a running loop at P19 with EndChecked(OK true)'
               when: 'EndChecked; Continue; EndChecked'
               then: '[{kill}, {post stop "P18 done: stop after smoke" "next P19 · waiting for continue"}], State "waiting", Stop.Kind "smoke", StretchUSD 1.5; Continue → [{start_check P19}], State "starting", Phase "P19", nil; the P19 end → [{kill}, {post end "P19 done: plan complete" "stretch $1.5000"}], State "waiting", Stop.Kind "end", Queue.State "done"; a Continue then → error text "queue: nothing to continue (state \"done\")"'
@@ -1073,7 +1076,8 @@ System:
             - uses: stream
             - produces: Loop Action
           examples:
-            - given: 'cfg := Config{MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}; the running loop of Phase Loop example 2 (P17, id-1, started 2026-10-08T15:00:01Z); Exited(4, 15:20:00Z, cfg)'
+            - given: 'cfg := Config{MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}; the running loop: q, _ := queue.Load(the queue.Plan decoded from tests/fixtures/plan/queue-3.json, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5}); l := New("demo", q); l.Begin(2026-10-08T15:00:00Z); l.StartChecked(gitrules.Start{Mode: "fresh"}, a func returning "id-1", 15:00:01Z) — State "running", Phase "P17", SessionID "id-1", PhaseStartedAt and LastEventAt 15:00:01Z (every "running loop" below is this one, with the fields the example sets); Exited(4, 15:20:00Z, cfg)'
+              ref: tests/fixtures/plan/queue-3.json
               when: Exited
               then: 'exactly [{post watchdog "P17: session exited (code 4), resuming" "resume 1 of 3 this hour"}, {Kind "start_check", Phase "P17"}]; State "starting", Resumes [15:20:00Z], SessionID still "id-1"'
             - given: 'the loop after example 1 brought back to running by StartChecked(resume) at 15:20:05Z, then Exited at 15:30:00Z and 15:40:00Z (each followed by a resume), then Exited(1, 15:50:00Z, cfg)'
@@ -1282,9 +1286,9 @@ System:
             - uses: control
             - produces: http.Handler
           examples:
-            - given: 'h := Handlers{Control: a fake Control (a struct of the test file) whose Status returns the Status of Control Contract example 1 for "demo" and control.ErrUnknownProject otherwise}; GET /projects/demo/status with path value project "demo" on httptest.NewRecorder'
+            - given: 'h := Handlers{Control: a fake Control (a struct of the test file) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}} for "demo" and control.ErrUnknownProject otherwise}; GET /projects/demo/status with path value project "demo" on httptest.NewRecorder'
               when: h.Status
-              then: 'status 200, Content-Type exactly application/json, body exactly the JSON of Control Contract example 1 + "\n"; with project "nope": status 404, body exactly {"error":{"code":"unknown_project","message":"unknown project"}} + "\n"'
+              then: 'status 200, Content-Type exactly application/json, body exactly {"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}} + "\n"; with project "nope": status 404, body exactly {"error":{"code":"unknown_project","message":"unknown project"}} + "\n"'
             - given: 'the fake Control recording Order calls and returning {Queued: 1}; POST /projects/demo/messages, Content-Type "application/json; charset=utf-8", body {"text":"smoke checked green. Resume with P12b"}'
               when: h.Messages
               then: 'status 200, body exactly {"queued":1} + "\n"; the fake saw Order("demo", "smoke checked green. Resume with P12b"); with the fake returning {Sent: true} the body is exactly {"sent":true} + "\n"'
@@ -1297,7 +1301,7 @@ System:
             - given: 'GET /projects/demo/events?since=2&max=5; then ?since=x; then no query, with the fake returning Events{Entries: [], Last: 7} and recording the arguments'
               when: h.Events
               then: '200 and the fake saw (demo, 2, 5), body exactly {"entries":[],"last":7} + "\n"; 400 {"error":{"code":"bad_input","message":"since must be an integer"}} + "\n"; the fake saw (demo, 0, 0)'
-            - given: 'GET /projects/demo/pending with the fake returning nil; then returning the Question of Control Contract example 3'
+            - given: 'GET /projects/demo/pending with the fake returning (nil, nil); then returning &control.Question{RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c", Text: "Which option do you want: A or B?", Header: "A or B", Options: []string{"Option A", "Option B"}, AskedAt: 2026-10-08T13:09:08Z}'
               when: h.Pending
               then: '200 {"question":null} + "\n"; then 200 {"question":{"request_id":"9f4ffa22-2676-4391-bfd9-bd7d16c3866c","text":"Which option do you want: A or B?","header":"A or B","options":["Option A","Option B"],"asked_at":"2026-10-08T13:09:08Z"}} + "\n"'
             - given: 'POST /projects/demo/plan, application/json, body = the text of tests/fixtures/plan/queue-3.json; the fake records the plan and returns QueueView{State: "running", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17"}'
@@ -1327,7 +1331,7 @@ System:
             - calls: HTTP Handlers
             - produces: http.Handler
           examples:
-            - given: 'r := NewRouter(Handlers{Control: the fake of HTTP Handlers example 1}, "tok-1", nil); GET /healthz with no header'
+            - given: 'r := NewRouter(Handlers{Control: a fake Control (a struct of the test file recording each call as its method name and project) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, SessionID: "s-1"} for "demo" and control.ErrUnknownProject otherwise}, "tok-1", nil); GET /healthz with no header'
               when: served on httptest.NewRecorder
               then: 'status 200, Content-Type application/json, body exactly {"status":"ok"} + "\n"'
             - given: 'r of example 1; GET /projects/demo/status with no Authorization; with "Bearer wrong"; with "Basic dG9rLTE="; with "Bearer tok-1 " (trailing space)'
@@ -1335,7 +1339,7 @@ System:
               then: 'each status 401, body exactly {"error":{"code":"unauthorized","message":"bearer token required"}} + "\n"'
             - given: 'r of example 1; GET /projects/demo/status with Authorization "Bearer tok-1"; then "bearer tok-1"'
               when: served
-              then: 'each status 200 with the Status JSON of Control Contract example 1 + "\n" (the router fills the project path value)'
+              then: 'each status 200 with body exactly {"state":"busy","phase":"P18","minutes":37,"cost_usd":0,"five_hour":0,"seven_day":0,"session_id":"s-1","queue":{"state":"","approved":"","index":0,"phases":0,"current":"","reason":""},"repo":{"checked":false,"reachable":false,"push":false,"reason":"","checked_at":"0001-01-01T00:00:00Z"}} + "\n" (the router fills the project path value); GET /projects/nope/status with "Bearer tok-1" → 404'
             - given: 'r := NewRouter(h, "", nil); GET /projects with Authorization "Bearer "'
               when: served
               then: 'status 401 (an empty configured token never matches)'

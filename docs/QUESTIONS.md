@@ -2,8 +2,9 @@
 
 **Answered by the operator 08.10** (relayed by the PM): every proposal accepted as written, except Q4 (changed:
 auto-memory off is a hard rule — Launch Args `Env` always sets `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, never a
-configuration; the AskUserQuestion-under-skip-permissions check is the PM's before approval) and Q7 (PM fact: `morph
-init` takes one positional dir and flags `--name --language --module --templates`; Go gets `--module <name>`). The
+configuration; the AskUserQuestion-under-skip-permissions check is the PM's before approval) and Q7 (PM fact, corrected 08.10: `morph
+init --root <dir>` with flags `--name --language --module --templates`; Go gets `--module <name>`; the target must be
+empty, a `.git` entry too). The
 decisions table in `PLAN.md` carries the status; the text below is kept as the record of what was asked.
 
 Each question: what the brief does not answer, the architect's proposal (the record uses it, marked "(proposed, Q<n>)"

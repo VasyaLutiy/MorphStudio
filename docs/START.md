@@ -98,3 +98,4 @@ Not morphd's: the cycle steps 1–6, the failure classes, the debt payment, the 
 - The VPS session gets its own endpoint from morphd at launch: `--mcp-config` → `http://127.0.0.1:<port>/mcp/<project>/session` with a per-session token; tools phase_done/wait_operator/milestone; it cannot report for another project or a past session.
 - Inside, the HTTP API keeps it in the path: `/projects/{project}/…`.
 - GitHub token (operator 08.10): `PUT /projects/{project}/github-token` (HTTP only, not an MCP tool, so the token never enters a model's context); morphd stores it per project (mode 600), never returns it; `status` reports the repo reachable + push access (401/403/404 → a plain reason).
+- Probe 2 (08.10, skip-permissions): AskUserQuestion still comes as can_use_tool; other tools need no answer. Log `docs/probe/stream-json-2.1.294-skip.jsonl`.

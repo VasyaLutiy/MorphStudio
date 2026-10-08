@@ -642,8 +642,9 @@ System:
             else its error; MorphBin not "" else "bootstrap: morph binary not configured"; dir := filepath.Join(ProjectsDir, Name)
             must not exist (os.Stat) else "bootstrap: directory exists: <dir>". Then the commands, each through r.Run with
             env []string{"GIT_TERMINAL_PROMPT=0"}, in this order and with exactly these arguments:
-            1. in ProjectsDir: <MorphBin> init <dir> --name <Name> --language <Language>, and for Language "go" two more
-               arguments --module <Name> (the Go template's module path)
+            1. in ProjectsDir: <MorphBin> init --root <dir> --name <Name> --language <Language>, and for Language "go" two
+               more arguments --module <Name> (the Go template's module path); morph init refuses a non-empty target, a
+               .git entry too, which is why git init comes after it
             2. in dir: git init -q -b main
             3. in dir: git config credential.helper "store --file=<CredentialsFile>" (one argument holding the space)
             4. in dir: git config user.name morphd
@@ -662,7 +663,7 @@ System:
           examples:
             - given: 'f := &runner.Fake{} (every call Code 0); Create(ctx, f, Spec{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", ProjectsDir: t.TempDir(), CredentialsFile: "/st/demo/git-credentials", MorphBin: "/usr/local/bin/morph"})'
               when: Create
-              then: 'error nil; Report.Dir == filepath.Join(ProjectsDir, "demo"); Steps exactly ["/usr/local/bin/morph init <dir> --name demo --language go --module demo", "git init -q -b main", "git config credential.helper store --file=/st/demo/git-credentials", "git config user.name morphd", "git config user.email morphd@localhost", "git remote add origin https://github.com/o/demo", "git add -A", "git commit -q -m morph init: demo (go)"]; f.Calls[0].Dir == ProjectsDir and f.Calls[1..7].Dir == dir; f.Calls[2].Args == ["config", "credential.helper", "store --file=/st/demo/git-credentials"]'
+              then: 'error nil; Report.Dir == filepath.Join(ProjectsDir, "demo"); Steps exactly ["/usr/local/bin/morph init --root <dir> --name demo --language go --module demo", "git init -q -b main", "git config credential.helper store --file=/st/demo/git-credentials", "git config user.name morphd", "git config user.email morphd@localhost", "git remote add origin https://github.com/o/demo", "git add -A", "git commit -q -m morph init: demo (go)"]; f.Calls[0].Dir == ProjectsDir and f.Calls[1..7].Dir == dir; f.Calls[2].Args == ["config", "credential.helper", "store --file=/st/demo/git-credentials"]'
             - given: 'Spec{Name: "Demo"}; Name "demo", Language "rust"; Language "go", RepoURL "https://gitlab.com/o/r"; RepoURL ok, MorphBin ""'
               when: Create
               then: 'errors "bootstrap: bad project name \"Demo\""; "bootstrap: unknown language \"rust\""; "github: not a github repository url: https://gitlab.com/o/r"; "bootstrap: morph binary not configured"; the fake runner has no Calls'
@@ -675,12 +676,12 @@ System:
             - given: 'f := &runner.Fake{Script: {"git rev-parse --verify -q origin/main": {Code: 1}, "git push -q -u origin main": {Code: 0}}}; FirstPush(ctx, f, "/p/demo"); then with "git rev-parse --verify -q origin/main": {Stdout: "aaa111\n", Code: 0}; then with the push scripted {Code: 1, Stderr: "error: failed to push some refs\n"}'
               when: FirstPush
               then: '(true, nil) with f.Calls keys ["git rev-parse --verify -q origin/main", "git push -q -u origin main"], both Dir "/p/demo" and env ["GIT_TERMINAL_PROMPT=0"]; then (false, nil) with one call; then (false, error "bootstrap: push failed (exit 1): error: failed to push some refs")'
-            - given: 'f := &runner.Fake{Errors: {"morph init <dir> --name demo --language python": "runner: exec: \"morph\": executable file not found"}} (the key built with the real dir; no --module for python)'
+            - given: 'f := &runner.Fake{Errors: {"morph init --root <dir> --name demo --language python": "runner: exec: \"morph\": executable file not found"}} (the key built with the real dir; no --module for python)'
               when: 'Create with Language "python", MorphBin "morph"'
               then: 'error "bootstrap: step 1: runner: exec: \"morph\": executable file not found"; Steps has 1 entry; no git call made'
             - given: 'Name "a-1-b" with Language "typescript" and the runner of example 1'
               when: Create
-              then: 'nil; Steps[0] == "morph init <dir> --name a-1-b --language typescript" (no --module outside go); Steps[7] == "git commit -q -m morph init: a-1-b (typescript)"; every Run call had env exactly []string{"GIT_TERMINAL_PROMPT=0"}'
+              then: 'nil; Steps[0] == "morph init --root <dir> --name a-1-b --language typescript" (no --module outside go); Steps[7] == "git commit -q -m morph init: a-1-b (typescript)"; every Run call had env exactly []string{"GIT_TERMINAL_PROMPT=0"}'
     - name: registry
       description: >
         Package registry in registry/: the project registry file, the per-project state file and the secret files

@@ -238,3 +238,32 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
   written daemon.go and pump.go (the reference sizes).
 - `.gitignore` gains `/morphd` (the profile's `go build ./cmd/morphd` writes it at the root).
 - 0 lines of product code by hand.
+- Orchestrator measured by the session from the agent's run: 360k tokens, 97 tool calls, 29 min.
+
+### Run 20261008-211009 (processor ds, binary copy /tmp/morph-bin-P7 of MorphV2 bc311aa)
+
+- 6 / 6 written; 8 requests; 236 528 input / 176 689 output tokens; $0.1401 executor (forecast ≈ $0.06, ceiling
+  $0.49); ≈ 22.7 min (21:10:09 → 21:32:50).
+- 2 retries, every answer whole (finish stop): config-and-main v1 red at `== listen` (main.go had no "127.0.0.1:"
+  address literal) → r1 green; daemon-core-judge v1 red at `== own` (vet: "morphstudio/github" imported and not used;
+  gofmt) → r1 green. daemon-core, pump, pump-judge, config-and-main-judge green on their first attempt. 0 burned.
+
+### Verify on the run branch
+
+- `git status --short` empty; gofmt (code folders), `go vet ./...`, `go build ./cmd/morphd` clean; `go test -count=1
+  ./...` green, 201 example tests (P1 31 + P2 32 + P3 29 + P4 35 + P5 32 + P6 20 + P7 22); `go test -race -count=3`
+  on daemon and cmd/morphd green. (`decks/P6/parts/_pm-tools_probe_test.go` is not gofmt-clean: probe data, not built.)
+- Read against §2.2 and the record (a fresh read-only agent, 143k tokens/18 calls/4 min). Read defects, not fixed by
+  hand, none pinned by an example: PlanLoad drops Begin's error (daemon.go:433, §2.2 "→ ErrBadInput"; unreachable on a
+  fresh queue); a spawn whose later step fails leaves the killed process current (daemon.go:604–642), so its exit is
+  counted a second time and Order/Answer/Interrupt treat it as live; Usage returns StretchCostUSD without a machine
+  (daemon.go:389, record "zeros without a machine"; DECISIONS ambiguous); the pumps map is never pruned (pump.go:22).
+  Test weaknesses: daemon example 2's "phase 2" line re-checks launch(1) instead of the second Spawn for P17
+  (daemon_examples_test.go:525); example 3 does not check the two events' Msg; pump example's "no third spawn" repeats
+  the check right after Wait (the Wait survivor).
+- Smoke-2 risks (for the PM): a failing Spawn (e.g. a wrong MORPHD_CLAUDE_BIN) or a claude dying at once loops without
+  bound — Exited → start check "fresh" → spawn again (synchronously under d.mu: a TG post each round, then a stack
+  overflow) — the P5 known risk 135, undecided by §2.2; PLAN's "POST order while idle → sent" may find no live session
+  once S1's phase_done ended it (Order → 409 ErrNoSession): order it before phase_done or give S1 a second turn; a
+  resumed session gets no first line (waits for the 30-min nudge); morphd listens on 127.0.0.1 only, so the laptop
+  steps need the reverse proxy in place.

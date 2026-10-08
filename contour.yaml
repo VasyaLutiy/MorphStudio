@@ -1106,7 +1106,8 @@ System:
         Package daemon in daemon/: the running morphd — the projects with their loops, machines, logs and processes,
         the implementation of control.Control, and the pump that moves lines between the process and the machine.
         All I/O goes through the injected dependencies. Imports every package of the module but api, mcpserver and
-        cmd/morphd, plus context, encoding/json, errors, fmt, os, path/filepath, strings, sync, time.
+        cmd/morphd, plus context, encoding/json, errors, fmt, net/http, os, path/filepath, sort, strconv, strings, sync,
+        time, unicode/utf8.
       language: go
       functions:
         - name: Daemon Core
@@ -1118,42 +1119,62 @@ System:
             Now func() time.Time; NewID func() string; Config Config }`;
             `type Config struct { ClaudeBin string; MorphBin string; ProjectsDir string; MCPBaseURL string; Model string; ExtraArgs []string; Defaults queue.Caps;
             MaxParallel int; Loop supervisor.Config }`; `type State struct { Loop supervisor.Loop `json:"loop"`; Repo github.Access `json:"repo"` }`;
-            `type Daemon struct` (unexported fields) and `func Open(ctx context.Context, d Deps) (*Daemon, error)`; *Daemon implements control.Control;
-            `func (d *Daemon) Execute(ctx context.Context, project string, acts []supervisor.Action)` and `func (d *Daemon) Tick(ctx context.Context)`.
-            Open loads every registry project: its State (LoadState; ErrNoState → a zero State with a New loop) and its
-            Repo; a loop found "running", "starting" or "paused" gets Exited(-2, now) at once (the daemon restarted under
-            it) and the actions are executed. Projects(): one view per registry project sorted by name, State = the loop''s
-            State. CreateProject: the name must not exist (ErrExists), then bootstrap.Create through Runner with ProjectsDir,
-            CredentialsFile = registry.SecretPath(name, "git-credentials") (not yet existing: the first push waits for the
-            token), MorphBin; its error returned as is; success → registry.Add({name, language, repoURL, dir, Defaults, now})
-            and the view. Status: unknown → ErrUnknownProject; else {State: the loop''s State ("busy"/"ready"/
-            "question" replace "running" by the machine''s state when a process is alive), Phase, Minutes: int(now - PhaseStartedAt
-            in minutes) when running/paused else 0, CostUSD: the machine''s CostUSD, FiveHour/SevenDay: control.Percent of the
-            machine''s Limits (0 when none), SessionID, Queue view, Repo, Stop}. Events → the log''s Since(since, max) and
-            Last (no log yet → empty, Last 0). Order → ErrNoSession when no process; else machine.Order and the actions
-            executed (write → the line goes to the process and to the log as "in"). Pending → the machine''s Pending as a
-            Question or nil. Answer → machine.Answer. Interrupt → machine.Interrupt("int-" + NewID()). Usage → from the machine''s
-            Limits and costs plus StretchUSD. Restart(force): a process alive and the machine not "ready" and !force → ErrBusy;
-            else loop.Restart and execute. PlanLoad: the loop State "idle" or "waiting" else ErrBusy; queue.Load(plan, the
-            project''s Caps) (its error wrapped as ErrBadInput: fmt.Errorf("%w: %v", …)); the loop replaced by New(project, q);
-            then, when fewer than MaxParallel projects are running/starting/paused, Begin and execute; the queue view returned.
-            Continue → loop.Continue and execute. StopCheck → the loop''s Stop (nil when none). PutGithubToken: unknown →
-            ErrUnknownProject; empty → ErrBadInput; PutSecret github-token and git-credentials (github.CredentialLine); Repo =
-            github.Check(GitHubDo, token, repoURL, now), saved; then, only when Repo.Push is true, bootstrap.FirstPush(Runner,
-            dir) → TokenResult{Access: Repo, Pushed, PushError: the push error''s text when any}; returned. PhaseDone/WaitOperator/Milestone: the project''s
-            current session token (secret "session-token") must equal sessionToken else ErrBadToken; then loop.PhaseDone (its
-            error returned) / loop.WaitOperator / Post(kind, headline, numbers), each executed.
-            Execute, per action: "start_check" → gitrules.StartCheck(Runner, dir) then loop.StartChecked(newID, now) and execute those;
-            "spawn" → session token = NewID() saved as secret "session-token", the MCP config written to registry base/<project>/mcp.json
-            (claude.WriteMCPConfig(base/<project>, "morphd", MCPBaseURL + "/mcp/" + project + "/session", token)), the log opened at
-            base/<project>/sessions/<SessionID>.jsonl, a New machine, Spawn(claude.Launch{ClaudeBin, dir, SessionID, Resume, BudgetUSD,
-            Model, path, ExtraArgs}) and the pump started; a Spawn error → loop.Exited(-3, now) executed; "first_line" → the machine''s
-            Order(Line) executed; "end_check" → gitrules.EndCheck then loop.EndChecked executed; "kill" → process.Kill (nil process
-            ignored); "post" → Post(project, kind, headline, numbers) (its error ignored); "write" → machine.Order(Line) executed.
-            After every executed batch the State is saved (SaveState). Every method takes the project''s mutex. Tick: for
-            every project loop.Tick(now, cfg) executed; then, while fewer than MaxParallel projects are running, starting or
-            paused, the project with the oldest queued loop (State "idle", Queue.State "queued") is begun (Begin and execute),
-            in registry name order on equal age.
+            the unexported `type proj struct { reg registry.Project; state State; machine *session.Machine; proc claude.Process; log *eventlog.Log;
+            queuedAt time.Time; pumps map[claude.Process]chan struct{} }` and `type Daemon struct { deps Deps; ctx context.Context; mu sync.Mutex;
+            projects map[string]*proj }` (pump.go reads these fields; every proj gets a non-nil pumps map);
+            `var startPump func(d *Daemon, ctx context.Context, project string, p claude.Process, l *eventlog.Log)` (nil in daemon.go: pump.go sets it
+            in an init func; daemon.go declares no pump and no Wait); `func Open(ctx context.Context, d Deps) (*Daemon, error)`; *Daemon implements
+            control.Control (`var _ control.Control = (*Daemon)(nil)`); `func (d *Daemon) Execute(ctx context.Context, project string, acts []supervisor.Action)`
+            (takes d.mu, then execute) and `func (d *Daemon) Tick(ctx context.Context)`; and the two unexported helpers pump.go calls with d.mu held,
+            neither of which locks: `func (d *Daemon) execute(ctx context.Context, project string, acts []supervisor.Action)` and
+            `func (d *Daemon) writeLine(project string, line []byte)` (the line to the current process by Write, then the current log's
+            Append("in", line, Now()); nothing when no process is current). One mutex d.mu guards every project: every exported method takes it for
+            its whole call; a method without a ctx argument uses the ctx given to Open; every time is a call of Now().
+            Open loads every registry project (Registry.List): its State by LoadState (ErrNoState → State{Loop: *supervisor.New(name, queue.Queue{})},
+            any other error returned); then every loop found "running", "starting" or "paused" gets Exited(-2, Now(), Config.Loop) executed at once (the
+            daemon restarted under it). Projects(): one ProjectView{Name, Language, RepoURL, State: the loop's State, CreatedAt} per registry project in
+            name order, an empty registry → [] (not nil). CreateProject: a registered name → control.ErrExists (no command run); bootstrap.Create(ctx,
+            Runner, Spec{name, language, repoURL, ProjectsDir, CredentialsFile: Registry.SecretPath(name, "git-credentials"), MorphBin}) — its error, when
+            the Report has no Steps (the spec refused before any command), → fmt.Errorf("%w: %v", control.ErrBadInput, err), else returned as is; then
+            Registry.Add(Project{name, language, repoURL, Dir: the Report's Dir, Caps: Config.Defaults, CreatedAt: Now()}) (registry.ErrExists →
+            control.ErrExists; registry.ErrBadName → wrapped as ErrBadInput; any other error as is); the project gets an idle loop; → ProjectView{Name,
+            Language, RepoURL, State "idle", CreatedAt}. Every other method: a project the daemon does not hold → control.ErrUnknownProject.
+            Status: {State: the loop's State, replaced by the machine's State ("busy", "ready", "question") when the loop is "running" and a process is
+            current; Phase: the loop's; Minutes: int(Now() - PhaseStartedAt in minutes) when the loop is running or paused, else 0; CostUSD: the machine's;
+            FiveHour/SevenDay: control.Percent of the machine's Limits windows (0 without a machine or Limits); SessionID: the machine's SessionID when not
+            empty (the init line's), else the loop's; Queue: QueueView{State, Approved, Index, Phases: len(Phases), Current: the ID of Queue.Current() when
+            ok, Reason} of the loop's queue; Repo: the State's; Stop: the loop's}. Events → the current log's Since(since, max) and Last(); no log yet →
+            Events{Entries: []eventlog.Entry{} (empty, not nil), Last: 0}. Order → ErrNoSession when no process is current; else res, acts :=
+            machine.Order(text, Now()), each "write" action → writeLine; → res. Pending → nil, nil without a machine or a pending question; else
+            &Question{RequestID, Text, Header, Options, AskedAt} of the pending one. Answer → ErrNoSession when no process is current; else
+            machine.Answer(option, Now()) (its error as is: ErrNoQuestion, ErrBadOption), writes → writeLine. Interrupt → ErrNoSession when no process is
+            current; else machine.Interrupt("int-" + NewID()) (NewID called first; its error as is), writes → writeLine. Usage → {FiveHour, SevenDay as
+            in Status; FiveHourResetsAt, SevenDayResetsAt: the windows' ResetsAt; SessionCostUSD: the machine's CostUSD; StretchCostUSD: the loop's
+            StretchUSD + SessionUSD; LimitsAt: the machine's LimitsAt} (zeros without a machine). Restart(force): a current process whose machine is not
+            "ready" and !force → ErrBusy; else loop.Restart(Now()) (its error as is) and execute. PlanLoad: the loop's State neither "idle" nor
+            "waiting" → ErrBusy; q, err := queue.Load(plan, the project's Caps) (err → fmt.Errorf("%w: %v", control.ErrBadInput, err)); the loop
+            replaced by *supervisor.New(project, q) and queuedAt = Now(); then, when fewer than Config.MaxParallel projects have a loop "running",
+            "starting" or "paused", loop.Begin(Now()) and execute (else the State is saved); → the QueueView of the loop's queue after that. Continue →
+            loop.Continue(Now()): control.ErrNotWaiting returned as is, any other error (a queue error) → fmt.Errorf("%w: %v", control.ErrNotWaiting,
+            err); else execute. StopCheck → a copy of the loop's Stop, or nil, nil. PutGithubToken: "" → ErrBadInput; PutSecret "github-token" token and
+            "git-credentials" github.CredentialLine(token) (errors as is); Repo = github.Check(ctx, GitHubDo, token, RepoURL, Now()), kept in the State
+            and saved; only when Repo.Push: pushed, err := bootstrap.FirstPush(ctx, Runner, Dir) → TokenResult{Access: Repo, Pushed: pushed, PushError:
+            err.Error() when err}; else TokenResult{Access: Repo}; the error is nil. PhaseDone / WaitOperator / Milestone: Registry.ReadSecret(project,
+            "session-token") failing or differing from sessionToken → ErrBadToken; then loop.PhaseDone(phase, next) (its error as is) and execute /
+            loop.WaitOperator(kind, reason, issueURL, Now()) and execute / Post(ctx, project, m.Kind, m.Headline, m.Numbers) (its error ignored).
+            execute, per action in order: "start_check" → gitrules.StartCheck(ctx, Runner, Dir), then execute(loop.StartChecked(start, NewID, Now()));
+            "spawn" → a current process still held is killed first; token := NewID(), PutSecret(project, "session-token", token); path :=
+            claude.WriteMCPConfig(filepath.Join(Registry.Base(), project), "morphd", Config.MCPBaseURL + "/mcp/" + project + "/session", token) (the file
+            <base>/<project>/morphd-mcp.json); the log eventlog.Open(<base>/<project>/sessions/<SessionID>.jsonl); p, err := Spawn(ctx,
+            claude.Launch{Bin: ClaudeBin, Dir, SessionID, Resume, BudgetUSD of the action, Model, MCPConfigPath: path, Extra: ExtraArgs}); on success a
+            new session.New() machine, p the current process, the log the current log, then startPump(d, ctx, project, p, log) when startPump is not
+            nil; an error of any of these steps → execute(loop.Exited(-3, Now(), Config.Loop)); "first_line" and "write" → machine.Order(Line, Now()) and
+            its writes → writeLine (nothing without a machine); "end_check" → gitrules.EndCheck(ctx, Runner, Dir, the loop's Phase), then
+            execute(loop.EndChecked(end, Now())); "kill" → the current process's Kill() (nothing when none; the process stays current until its pump
+            sees the exit); "post" → Post(ctx, project, Kind, Headline, Numbers) of the Milestone, its error ignored. After every batch:
+            Registry.SaveState(project, the State). Tick: for every project in registry name order, loop.Tick(Now(), Config.Loop), executed when it
+            returns actions; then, while fewer than MaxParallel projects have a loop "running", "starting" or "paused", the project whose loop is "idle"
+            with Queue.State "queued" and the oldest queuedAt (name order on equal) is begun (loop.Begin and execute); none → done.
           steps:
             - uses: supervisor
             - uses: session
@@ -1168,56 +1189,63 @@ System:
             - produces: Status
           preconditions:
             - "Project Registry · Open creates base · the tests pass filepath.Join(t.TempDir(), \"state\")"
-            - "Phase Start Check · the fake runner must script rev-parse HEAD, rev-parse origin/main, rev-parse --abbrev-ref HEAD, status --porcelain · else Mode error"
+            - "Phase Start Check · the fake runner must script rev-parse HEAD, rev-parse origin/main, rev-parse --abbrev-ref HEAD, status --porcelain (git fetch -q origin falls to the Fake's zero Default, Code 0) · else Mode error"
             - "Phase End Check · docs/MEASURE.md must exist in the project dir with the phase row · else not OK"
             - "Launch Args · the spawn argv is Args(l) · tests compare l, not the argv"
           examples:
-            - given: 'deps := Deps{Registry: registry.Open(<tmp>/state) with project "demo" (Dir <tmp>/projects/demo, Caps {30, 3, 5}), Runner: &runner.Fake{} scripted as Phase Start Check example 1 (fresh), Spawn: a fake recording claude.Launch and returning claude.NewFake(), Post: a recorder, GitHubDo: nil, Now: a clock starting 2026-10-08T15:00:00Z advancing 1 s per call, NewID: "id-1", "id-2", …, Config{ClaudeBin: "claude", ProjectsDir: <tmp>/projects, MCPBaseURL: "http://127.0.0.1:7080", Defaults {30, 3, 5}, MaxParallel: 1, Loop {3, 30, 30, 50}}}; d := Open(ctx, deps)'
+            - given: 'tmp := t.TempDir(); reg := registry.Open(tmp/state) with project registry.Project{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", Dir: tmp/projects/demo, Caps: {30, 3, 5}, CreatedAt: 2026-10-08T14:00:00Z}, and tmp/projects/demo/docs/MEASURE.md written with the bytes of tests/fixtures/git/measure.md (rows "| P16 primer-go |" and "| P17 debt |"); deps := Deps{Registry: reg, Runner: &runner.Fake{Script: {"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git rev-parse HEAD": {Stdout: "aaa111\n"}, "git rev-parse origin/main": {Stdout: "aaa111\n"}, "git status --porcelain": {Stdout: ""}}}, Spawn: a fake recording each claude.Launch and returning a new claude.NewFake() kept in order, Post: a recorder of [4]string{project, kind, headline, numbers} returning telegram.Status{}, nil, GitHubDo: a fake answering literal *http.Response values, Now: a clock from 2026-10-08T15:00:00Z advancing 1 s per call, NewID: "id-1", "id-2", … (the three guarded by one mutex), Config: Config{ClaudeBin: "/opt/claude/bin/claude", MorphBin: "/usr/local/bin/morph", ProjectsDir: tmp/projects, MCPBaseURL: "http://127.0.0.1:7181", Defaults: {25, 2, 4}, MaxParallel: 1, Loop: {MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}}}; d, err := Open(context.Background(), deps)'
               when: 'd.Projects(); d.Status("demo"); d.Status("nope"); d.StopCheck("demo")'
-              then: '[{Name "demo", Language "go", State "idle", …}]; Status{State: "idle", Phase: "", Minutes: 0, Queue.State ""} with Repo.Checked false; (Status{}, ErrUnknownProject); (nil, nil)'
-            - given: 'd of example 1; plan := the Plan of tests/fixtures/plan/queue-3.json'
+              then: 'err nil; exactly []control.ProjectView{{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", State: "idle", CreatedAt: 2026-10-08T14:00:00Z}}; exactly control.Status{State: "idle"} (every other field zero), nil; (control.Status{}, an error errors.Is control.ErrUnknownProject); (nil, nil); no Spawn call'
+            - given: 'd of example 1; plan := the queue.Plan json.Unmarshal-ed from tests/fixtures/plan/queue-3.json'
               when: 'd.PlanLoad("demo", plan)'
-              then: 'QueueView{State: "running", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17"}, nil; the fake Spawn was called once with Launch{Bin: "claude", Dir: <tmp>/projects/demo, SessionID: "id-1", Resume: false, BudgetUSD: 30, MCPConfigPath: <state>/demo/mcp.json}; that file holds claude.MCPConfigJSON("http://127.0.0.1:7080/mcp/demo/session", "id-2"); the secret session-token reads "id-2"; the fake process Written() == [stream.User("/morph-orchestrator P17")]; the recorder got one post ("demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"); Status → State "busy", Phase "P17", SessionID "id-1"; the file <state>/demo/sessions/id-1.jsonl has 1 line (dir in)'
+              then: 'control.QueueView{State: "running", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17"}, nil; the fake Spawn got exactly one claude.Launch{Bin: "/opt/claude/bin/claude", Dir: tmp/projects/demo, SessionID: "id-1", Resume: false, BudgetUSD: 30, MCPConfigPath: tmp/state/demo/morphd-mcp.json} (Model "", Extra nil); that file holds exactly claude.MCPConfigJSON("http://127.0.0.1:7181/mcp/demo/session", "id-2"); reg.ReadSecret("demo", "session-token") is "id-2"; the fake process Written() == [][]byte{stream.User("/morph-orchestrator P17")}; the recorder holds exactly [{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"}]; d.Status("demo") has State "busy", Phase "P17", SessionID "id-1"; the file tmp/state/demo/sessions/id-1.jsonl has 1 line, its "dir" "in"'
               ref: tests/fixtures/plan/queue-3.json
-            - given: 'd after example 2 (P17 running, the turn in flight)'
+            - given: 'd after example 2 (P17 running, the first line in flight, fp the fake process)'
               when: 'd.Order("demo", "smoke checked green"); d.Pending("demo"); d.Answer("demo", 1); d.Interrupt("demo"); d.Events("demo", 0, 10)'
-              then: '{Queued: 1}, nil (the first line is in flight); (nil, nil); ErrNoQuestion; nil and Written()[1] == stream.Interrupt("int-id-3"); Events.Entries has 2 entries (seq 1 the first line, seq 2 the interrupt), Last 2'
-            - given: 'd after example 2; PlanLoad again; then d.Restart("demo", false); d.Restart("demo", true)'
-              when: 'PlanLoad; Restart'
-              then: 'ErrBusy (the loop is running); ErrBusy (the machine is busy); then nil: the first fake process Killed() true, Spawn called a second time with SessionID "id-4" and Resume false (the runner says fresh), the post "P17 started" again'
-            - given: 'd after example 2; d.PhaseDone("demo", "wrong", "P17", "P18"); then with the token "id-2" and the fake runner re-scripted as Phase End Check example 1 (OK) and docs/MEASURE.md with a P17 row in <tmp>/projects/demo'
-              when: PhaseDone
-              then: 'ErrBadToken; then nil: the first process Killed(), Spawn called with SessionID "id-4" for P18 with BudgetUSD 12 and a new session token "id-5", posts "P18 started" with numbers "session id-4 · cap $12 · 3 h"; Status → Phase "P18", Queue.Index 1'
+              then: 'session.OrderResult{Queued: 1}, nil (nothing written); (nil, nil); an error errors.Is control.ErrNoQuestion; nil, and fp.Written() has 2 lines, Written()[1] == stream.Interrupt("int-id-3"); Events with 2 entries (Seq 1 Dir "in": the first line; Seq 2 Dir "in": the interrupt), Last 2, nil'
+            - given: 'd after example 2 (fp the fake process)'
+              when: 'd.PlanLoad("demo", plan); d.Restart("demo", false); d.Restart("demo", true)'
+              then: 'an error errors.Is control.ErrBusy (the loop is running); errors.Is control.ErrBusy (the machine is busy); nil: fp.Killed() true, the fake Spawn called a second time with SessionID "id-3", Resume false, BudgetUSD 30 (the runner says fresh), the recorder holds exactly [{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"}, {"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"}]; d.Status("demo").SessionID "id-3"'
+            - given: 'd after example 2 (fp the fake process; tmp/projects/demo/docs/MEASURE.md holds the P17 row, so the end check with the same runner script is OK)'
+              when: 'd.PhaseDone("demo", "wrong", "P17", "P18"); d.PhaseDone("demo", "id-2", "P17", "P18")'
+              then: 'an error errors.Is control.ErrBadToken; nil: fp.Killed() true, the fake Spawn called a second time with SessionID "id-3", Resume false, BudgetUSD 12; reg.ReadSecret("demo", "session-token") is "id-4"; the last post {"demo", "start", "P18 started", "session id-3 · cap $12 · 3 h"}; d.Status("demo") has Phase "P18", Queue.Index 1, Queue.Current "P18"'
               ref: tests/fixtures/plan/queue-3.json
-            - given: 'd after example 2; the runner re-scripted with HEAD "bbb222" for the end check; d.PhaseDone("demo", "id-2", "P17", "P18")'
-              when: PhaseDone
-              then: 'nil; no second Spawn; the process not killed; the post ("demo", "stop", "P17 not pushed", "not pushed: HEAD bbb222, origin/main aaa111"); Status.State "waiting", StopCheck → &Stop{Kind: "not_pushed", Phase: "P17", Reason: "not pushed: HEAD bbb222, origin/main aaa111"}; then with the runner scripted OK, d.Continue("demo") → nil, the process killed, P18 spawned'
-            - given: 'd after example 2; d.WaitOperator("demo", "id-2", "smoke", "P17 smoke: run morphd status", ""); d.Milestone("demo", "id-2", control.Milestone{Kind: "gate", Headline: "P17 gate passed", Numbers: "10 cards · $0.12"}); d.Milestone("demo", "bad", …)'
-              when: called
-              then: 'nil with the post ("demo", "stop", "P17: wait_operator smoke", "P17 smoke: run morphd status") and Status.State "waiting"; nil with the post ("demo", "gate", "P17 gate passed", "10 cards · $0.12"); ErrBadToken and no post'
-            - given: 'd of example 1 (idle) with the runner also scripting "git rev-parse --verify -q origin/main": {Code: 1} and "git push -q -u origin main": {Code: 0}; d.PutGithubToken(ctx, "demo", "ghp_abc") with GitHubDo answering 200 {"permissions":{"push":true}}; then with GitHubDo answering 401; d.PutGithubToken(ctx, "demo", ""); d.PutGithubToken(ctx, "nope", "x")'
-              when: PutGithubToken
-              then: 'TokenResult{Access: {Checked: true, Reachable: true, Push: true, CheckedAt: the clock}, Pushed: true}, nil; the secrets github-token "ghp_abc" and git-credentials "https://x-access-token:ghp_abc@github.com\n" exist with mode 0o600; Status.Repo equal to the Access; the runner saw the two git calls in <tmp>/projects/demo; then TokenResult{Access: {Reason: "401 bad credentials"}, Pushed: false} with no git call; ErrBadInput; ErrUnknownProject'
-            - given: 'd of example 1 with a second project "beta" in the registry and MaxParallel 1; PlanLoad("demo", plan) then PlanLoad("beta", plan)'
-              when: PlanLoad
-              then: 'demo: QueueView.State "running" and one Spawn; beta: QueueView.State "queued", no second Spawn, Status("beta").State "idle" with Queue.State "queued"; then d.WaitOperator("demo", "id-2", "smoke", "stop", "") and d.Tick(ctx) → a second Spawn, for beta (its Dir), Status("beta").State "busy", Phase "P17"'
+            - given: 'd after example 2 (fp the fake process); the runner''s Script["git rev-parse HEAD"] set to {Stdout: "bbb222\n"}; d.PhaseDone("demo", "id-2", "P17", "P18"); then Script["git rev-parse HEAD"] back to {Stdout: "aaa111\n"} and d.Continue("demo")'
+              when: 'PhaseDone; StopCheck; Continue'
+              then: 'PhaseDone nil; Spawn called once only; fp.Killed() false; the last post {"demo", "stop", "P17 not pushed", "not pushed: HEAD bbb222, origin/main aaa111"}; d.Status("demo").State "waiting"; d.StopCheck("demo") → &control.Stop{Kind: "not_pushed", Phase: "P17", Reason: "not pushed: HEAD bbb222, origin/main aaa111", At: the clock}, nil; then Continue nil: fp.Killed() true, Spawn called a second time with SessionID "id-3", BudgetUSD 12, d.Status("demo").Phase "P18"'
+            - given: 'd after example 2'
+              when: 'd.WaitOperator("demo", "id-2", "smoke", "P17 smoke: run morphd status", ""); d.Milestone("demo", "id-2", control.Milestone{Kind: "gate", Headline: "P17 gate passed", Numbers: "10 cards · $0.12"}); d.Milestone("demo", "bad", control.Milestone{Kind: "gate", Headline: "x", Numbers: "y"}); then d.Continue("demo")'
+              then: 'nil; nil; an error errors.Is control.ErrBadToken; the posts after the start post exactly [{"demo", "stop", "P17: wait_operator smoke", "P17 smoke: run morphd status"}, {"demo", "gate", "P17 gate passed", "10 cards · $0.12"}] (no post for "bad"); d.Status("demo").State "waiting", fp.Killed() false (a wait keeps the process); then Continue nil: fp.Killed() true (the spawn kills the held process first), a second Spawn with SessionID "id-3" for P17, d.Status("demo").State "busy"'
+            - given: 'd of example 1 built with the runner''s Script also holding "git rev-parse --verify -q origin/main": {Code: 1} and "git push -q -u origin main": {Code: 0}, and GitHubDo answering &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"permissions":{"push":true}}`))}; then GitHubDo answering StatusCode 401 with body `{"message":"Bad credentials"}`'
+              when: 'd.PutGithubToken(ctx, "demo", "ghp_abc") (200); d.PutGithubToken(ctx, "demo", "ghp_abc") (401); d.PutGithubToken(ctx, "demo", ""); d.PutGithubToken(ctx, "nope", "x")'
+              then: 'control.TokenResult{Access: github.Access{Checked: true, Reachable: true, Push: true, Reason: "", CheckedAt: not zero}, Pushed: true, PushError: ""}, nil; reg.ReadSecret gives github-token "ghp_abc" and git-credentials "https://x-access-token:ghp_abc@github.com\n", both files of mode 0600 (-rw-------); d.Status("demo").Repo equal to that Access; the runner''s Calls exactly [{Dir: tmp/projects/demo, Name: "git", Args: ["rev-parse", "--verify", "-q", "origin/main"]}, {Dir: tmp/projects/demo, Name: "git", Args: ["push", "-q", "-u", "origin", "main"]}]; then control.TokenResult{Access: github.Access{Checked: true, Reachable: false, Push: false, Reason: "401 bad credentials", CheckedAt: not zero}, Pushed: false}, nil with still 2 runner calls; an error errors.Is control.ErrBadInput; an error errors.Is control.ErrUnknownProject'
+            - given: 'd of example 1 with a second project registry.Project{Name: "beta", Language: "go", RepoURL: "https://github.com/acme/beta", Dir: tmp/projects/beta, Caps: {30, 3, 5}, CreatedAt: 2026-10-08T14:00:00Z} added before Open (its docs/MEASURE.md written the same way), MaxParallel 1'
+              when: 'd.PlanLoad("demo", plan); d.PlanLoad("beta", plan); d.WaitOperator("demo", "id-2", "smoke", "stop", ""); d.Tick(ctx)'
+              then: 'demo: QueueView.State "running", one Spawn; beta: QueueView{State: "queued", Index: 0, Phases: 3}, nil, still one Spawn, d.Status("beta") has State "idle" and Queue.State "queued"; after WaitOperator (nil) and Tick: a second Spawn with Dir tmp/projects/beta and SessionID "id-3"; d.Status("beta") has State "busy", Phase "P17"'
               ref: tests/fixtures/plan/queue-3.json
+            - given: 'd of example 1 (the runner''s unscripted calls answer the Fake''s zero Default, Code 0)'
+              when: 'd.CreateProject(ctx, "demo", "go", "https://github.com/acme/demo"); d.CreateProject(ctx, "gamma", "python", "https://github.com/acme/gamma"); d.Projects(); d.CreateProject(ctx, "delta", "cobol", "https://github.com/acme/delta")'
+              then: 'an error errors.Is control.ErrExists and no runner call; control.ProjectView{Name: "gamma", Language: "python", RepoURL: "https://github.com/acme/gamma", State: "idle", CreatedAt: not zero}, nil, reg.Get("gamma") has Dir tmp/projects/gamma and Caps {25, 2, 4} (Config.Defaults), the runner''s first call {Dir: tmp/projects, Name: "/usr/local/bin/morph", Args: ["init", "--root", tmp/projects/gamma, "--name", "gamma", "--language", "python"]}; the names and states "demo" "idle", "gamma" "idle"; an error errors.Is control.ErrBadInput with the text exactly `bad input: bootstrap: unknown language "cobol"`'
         - name: Pump
           description: The goroutine that reads the process, logs every line, feeds the machine and the loop, and executes what they return.
           behavior: >
-            Declares in daemon/pump.go, over the Daemon of daemon/daemon.go: `func (d *Daemon) pump(ctx context.Context, project string, p claude.Process, l *eventlog.Log)`
-            started by the spawn action, and the exported `func (d *Daemon) Wait(project string)` which returns when the
-            project''s pump has finished (for tests; immediate when none runs).
-            For every line from p.Lines(): l.Append("out", msg, now) where msg is the line when it is valid JSON, else
-            json.Marshal(string(line)) (an append error is counted, never fatal); ev, err := stream.Parse(line) (err → the
-            line is skipped after the append); under the project''s mutex: loop.Event(now); acts := machine.Apply(ev,
-            now); then by ev.Type: "result" → loop.Turn(*ev.Result, now, cfg) appended; "rate_limit_event" → loop.Limits(*ev.Limits,
-            now, cfg) appended; then the machine actions are executed: "write" → p.Write(Line) and l.Append("in", Line, now);
-            "ask" → Post(project, "ask", Headline, Numbers); "turn" → Post(project, "idle", "<phase> turn ended: " + the first 200
-            runes of Headline (or "(no text)" when empty), Numbers); "limit" → nothing; then the loop actions are executed
-            (Execute). When Lines() closes: st := <-p.Exit(); under the mutex: if this process is still the project''s current one:
-            the process cleared, loop.Exited(st.Code, now, cfg) executed; SaveState. A process replaced by a newer spawn (restart)
-            is pumped to its end but its exit changes nothing.
+            Declares in daemon/pump.go, over the Daemon of daemon/daemon.go (its fields d.deps, d.mu, d.projects and the proj fields machine, proc,
+            state, pumps; its helpers d.execute and d.writeLine, both called with d.mu held): an init func setting daemon.go's startPump to a function
+            (called by the spawn action with d.mu held) that stores a new done channel in the project's pumps map under p and starts
+            `go` d.pump(ctx, project, p, l), closing the channel when pump returns; `func (d *Daemon) pump(ctx context.Context, project string, p
+            claude.Process, l *eventlog.Log)`; and `func (d *Daemon) Wait(project string)`: under d.mu it takes the done channels of the project's pumps
+            whose process is not the current one, releases d.mu and waits for each (immediate when none; tests call it once a newer spawn replaced the
+            process or an exit was handled). pump: for every line from p.Lines(), the whole handling under d.mu (so a caller that sees the line
+            in Events sees its effects too): now := Now(); l.Append("out", msg, now) where msg is the line when json.Valid, else
+            json.Marshal(string(line)) (an append error ignored); ev, err := stream.Parse(line) (err → the next line); when p is not the
+            project's current process, nothing more (the line stays in its own log); else loop.Event(now); macts :=
+            machine.Apply(ev, now); by ev.Type: "result" with a Result → lacts := loop.Turn(*ev.Result, now, Config.Loop); "rate_limit_event" with
+            Limits → lacts := loop.Limits(*ev.Limits, now, Config.Loop); then each machine action in order: "write" → d.writeLine(project, Line); "ask"
+            → Post(ctx, project, "ask", Headline, Numbers); "turn" → Post(ctx, project, "idle", the loop's Phase + " turn ended: " + the first 200
+            runes of Headline (or "(no text)" when Headline is empty), Numbers); "limit" → nothing; then d.execute(ctx, project, lacts) (which saves
+            the State; never d.Execute, which locks). When Lines() closes: st := <-p.Exit(); under d.mu: if p is still the current process, the
+            current process is cleared (nil) and d.execute(ctx, project, loop.Exited(st.Code, Now(), Config.Loop)); else nothing (a process replaced by
+            a newer spawn is pumped to its end but its exit changes nothing).
           steps:
             - calls: Daemon Core
             - uses: session
@@ -1229,30 +1257,30 @@ System:
           preconditions:
             - "Daemon Core · a spawned project has a fake process reachable from the Spawn recorder · the tests emit on it"
           examples:
-            - given: 'd after Daemon Core example 2 (P17 running, fake process fp, session id-1); fp.Emit of the msg bytes of lines 4, 5, 6, 7 of tests/fixtures/stream/probe.jsonl; d.Wait is not needed — poll Status until CostUSD > 0 (≤ 2 s)'
+            - given: 'the harness: tmp := t.TempDir(); reg := registry.Open(tmp/state) with registry.Project{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", Dir: tmp/projects/demo, Caps: {30, 3, 5}, CreatedAt: 2026-10-08T14:00:00Z} and tmp/projects/demo/docs/MEASURE.md written with the bytes of tests/fixtures/git/measure.md; Deps{Registry: reg, Runner: &runner.Fake{Script: {"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git rev-parse HEAD": {Stdout: "aaa111\n"}, "git rev-parse origin/main": {Stdout: "aaa111\n"}, "git status --porcelain": {Stdout: ""}}}, Spawn: a fake recording each claude.Launch and returning a new claude.NewFake() kept in order, Post: a recorder of [4]string{project, kind, headline, numbers}, GitHubDo: a func returning an error, Now: a clock from 2026-10-08T15:00:00Z advancing 1 s per call, NewID: "id-1", "id-2", … (Spawn, Post, Now and NewID guarded by one mutex: the pump calls them from its goroutine), Config: Config{ClaudeBin: "/opt/claude/bin/claude", MorphBin: "/usr/local/bin/morph", ProjectsDir: tmp/projects, MCPBaseURL: "http://127.0.0.1:7181", Defaults: {25, 2, 4}, MaxParallel: 1, Loop: {MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}}}; d := Open(ctx, deps); d.PlanLoad("demo", the queue.Plan of tests/fixtures/plan/queue-3.json) → P17 running, session id-1, token id-2, one post ("demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"), fp := the first fake process; then fp.Emit of the msg bytes of lines 4, 5, 6, 7 of tests/fixtures/stream/probe.jsonl (testhelp.ProbeLine); poll d.Status("demo") until CostUSD > 0 (10 ms steps, at most 2 s)'
               when: Emit
-              then: 'Status.State "ready" (the loop runs, the machine finished its turn), CostUSD 0.0021784900000000004, FiveHour 22, SevenDay 60, SessionID "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e"; Events("demo", 0, 10) has 5 entries: seq 1 dir in (the first line), seq 2..5 dir out with Msg equal to the four emitted lines; the posts after the start: ("demo", "info", "P17: weekly usage 60%", "resets 2026-10-13T01:00:00Z") then ("demo", "idle", "P17 turn ended: PONG", "success · turns 1 · $0.0022")'
+              then: 'd.Status("demo") has State "ready" (the loop runs, the machine finished its turn), Phase "P17", CostUSD 0.0021784900000000004, FiveHour 22, SevenDay 60, SessionID "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e" (the init line''s); d.Events("demo", 0, 10) has 5 entries: Seq 1 Dir "in" with Msg the json.Compact of stream.User("/morph-orchestrator P17"), Seq 2..5 Dir "out" with Msg the json.Compact of the four emitted lines; the posts after the start exactly [{"demo", "info", "P17: weekly usage 60%", "resets 2026-10-13T01:00:00Z"}, {"demo", "idle", "P17 turn ended: PONG", "success · turns 1 · $0.0022"}]; d.Usage("demo") → control.Usage{FiveHour: 22, SevenDay: 60, FiveHourResetsAt: 1791469200, SevenDayResetsAt: 1791853200, SessionCostUSD: 0.0021784900000000004, StretchCostUSD: 0.0021784900000000004, LimitsAt: not zero}, nil'
               ref: tests/fixtures/stream/probe.jsonl
-            - given: 'd after example 1; fp.Emit(line 27 of the probe) then poll Pending'
-              when: Emit
-              then: 'Pending → &Question{RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c", Text: "Which option do you want: A or B?", Header: "A or B", Options: ["Option A", "Option B"]}, Status.State "question"; the post ("demo", "ask", "Which option do you want: A or B?", "1 Option A · 2 Option B"); then d.Answer("demo", 2) → nil, fp.Written() last element decodes equal to line 28, the log''s last entry dir in; Status.State "busy"'
+            - given: 'd after example 1; fp.Emit(the msg bytes of line 27 of the probe); poll d.Pending("demo") until not nil'
+              when: 'Emit; Answer'
+              then: 'Pending → &control.Question{RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c", Text: "Which option do you want: A or B?", Header: "A or B", Options: []string{"Option A", "Option B"}, AskedAt: not zero}; d.Status("demo").State "question"; the last post {"demo", "ask", "Which option do you want: A or B?", "1 Option A · 2 Option B"}; then d.Answer("demo", 2) → nil, the last element of fp.Written() decodes (json.Unmarshal into any) equal to the msg of line 28, the last entry of d.Events("demo", 0, 100) has Dir "in"; d.Status("demo").State "busy"'
               ref: tests/fixtures/stream/probe.jsonl
-            - given: 'd after example 1 (ready); d.Order("demo", "next step") then fp.Emit(the Bash can_use_tool line of Parse Event example 7)'
+            - given: 'd after example 1 (the machine ready); d.Order("demo", "next step"); then fp.Emit([]byte(`{"type":"control_request","request_id":"r-7","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_x"}}`)); poll d.Events("demo", 0, 100) until Last is 8'
               when: 'Order then Emit'
-              then: 'Order → {Sent: true}; after the emit (poll Events until Last is 8): fp.Written() last == stream.Allow("r-7", {"command":"ls"}) bytes, Status.State "busy"'
-            - given: 'd after example 1; fp.Emit([]byte("not json")); fp.Emit(line 10 of the probe, a thinking_tokens system line)'
+              then: 'Order → session.OrderResult{Sent: true}, nil; after the emit the last element of fp.Written() equals the bytes of stream.Allow("r-7", json.RawMessage(`{"command":"ls"}`)) (Allow returns ([]byte, error)); d.Status("demo").State "busy"'
+            - given: 'd after example 1 (5 log entries); fp.Emit([]byte("not json")); fp.Emit(the msg bytes of line 10 of the probe, a thinking_tokens system line); poll d.Events("demo", 5, 100) until Last is 7'
               when: Emit
-              then: 'Events grows by 2: the first logged as the JSON string of its text (Msg exactly "\"not json\""), the second as is; Status unchanged (State "ready"); no post'
+              then: 'the two new entries: Seq 6 Dir "out" with Msg exactly `"not json"` (the JSON string of the text), Seq 7 Dir "out" with Msg the json.Compact of line 10''s msg; d.Status("demo").State still "ready"; no new post'
               ref: tests/fixtures/stream/probe.jsonl
-            - given: 'd after example 1; fp.Finish(4); d.Wait("demo")'
+            - given: 'd after example 1; the runner''s Script["git status --porcelain"] set to {Stdout: " M notes.md\n"} (the start check says resume); fp.Finish(4); poll until the fake Spawn was called twice (at most 2 s); d.Wait("demo")'
               when: Finish
-              then: 'the post ("demo", "watchdog", "P17: session exited (code 4), resuming", "resume 1 of 3 this hour"); Spawn called a second time with Resume true and SessionID "id-1"; the state file <state>/demo/state.json decodes to a State whose loop has 1 resume; Status.State "busy"'
-            - given: 'd after example 1; d.Restart("demo", true) (a second fake process fp2); then fp.Finish(0) (the old one); d.Wait("demo")'
+              then: 'the posts after example 1''s exactly [{"demo", "watchdog", "P17: session exited (code 4), resuming", "resume 1 of 3 this hour"}, {"demo", "start", "P17 resumed", "session id-1 · dirty tree (1 paths)"}]; the second Launch has SessionID "id-1", Resume true, BudgetUSD 30, MCPConfigPath tmp/state/demo/morphd-mcp.json; reg.ReadSecret("demo", "session-token") is "id-3"; the file tmp/state/demo/state.json decodes to a State whose Loop.Resumes has 1 entry and Loop.State "running"; d.Status("demo") has State "ready" (a resumed session gets no first line) and SessionID "id-1"'
+            - given: 'd after example 1; d.Restart("demo", true) (a second fake process fp2); then fp.Finish(0) (the old one, already killed); d.Wait("demo") (returns within 2 s)'
               when: 'Restart then Finish'
-              then: 'after the restart Spawn was called with a new SessionID "id-4"; the old process''s exit changes nothing: no watchdog post, Spawn not called a third time, Status.SessionID "id-4"'
-            - given: 'd after example 1; fp.Emit(the msg bytes of line 6 with five_hour utilization edited to 1.0 — build it from the literal {"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.0,"resetsAt":1791469200},"seven_day":{"utilization":0.6,"resetsAt":1791853200}}}})'
-              when: Emit
-              then: 'Status.State "paused"; the post ("demo", "watchdog", "P17: usage limit, paused", "until 2026-10-08T14:20:00Z"); then d.Tick with the clock at 2026-10-08T14:20:00Z → fp.Written() last == stream.User("Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."), Status.State "busy"'
+              then: 'Restart nil; the second Launch has SessionID "id-3", Resume false; the posts after example 1''s exactly [{"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"}] (no watchdog post: the old process''s exit changes nothing); Spawn not called a third time; d.Status("demo") has SessionID "id-3" and State "busy"'
+            - given: 'd after example 1; fp.Emit([]byte(`{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.0,"resetsAt":1791469200},"seven_day":{"utilization":0.6,"resetsAt":1791853200}}}}`)); poll d.Status("demo") until State "paused"; then d.Tick(ctx) (the clock is past 2026-10-08T14:20:00Z)'
+              when: 'Emit; Tick'
+              then: 'the last post after the emit {"demo", "watchdog", "P17: usage limit, paused", "until 2026-10-08T14:20:00Z"}; after Tick the last element of fp.Written() == stream.User("Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."), d.Status("demo").State "busy", the last post {"demo", "watchdog", "P17: resumed after the limit", ""}'
     - name: api
       description: >
         Package api in api/: the HTTP API of morphd over control.Control — JSON in and out, the bearer token, the
@@ -1516,7 +1544,7 @@ System:
             MORPHD_TOKEN (required: "" → error "config: MORPHD_TOKEN is required"); MORPHD_PORT 7080; MORPHD_STATE_DIR
             getenv("HOME") + "/.local/state/morphd"; MORPHD_PROJECTS_DIR getenv("HOME") + "/projects"; MORPHD_CLAUDE_BIN "claude";
             MORPHD_MORPH_BIN "morph"; TG_BOT_TOKEN ""; TG_CHAT_ID ""; MORPHD_MODEL ""; MORPHD_CLAUDE_EXTRA_ARGS "" split on spaces
-            (strings.Fields); MORPHD_CLAUDE_USD 30; MORPHD_HOURS 3; MORPHD_EXECUTOR_USD 5; MORPHD_STRETCH_USD 30; MORPHD_MAX_PARALLEL 1;
+            (strings.Fields; no field → nil); MORPHD_CLAUDE_USD 30; MORPHD_HOURS 3; MORPHD_EXECUTOR_USD 5; MORPHD_STRETCH_USD 30; MORPHD_MAX_PARALLEL 1;
             MORPHD_RESUMES_PER_HOUR 3; MORPHD_STALL_MINUTES 30; MORPHD_USAGE_ALERT 50. A number that does not parse → error
             "config: <KEY>: not a number: <value>". cmd/morphd/main.go: main reads .env from the working directory when present
             (ParseDotenv), Load(os.Getenv, …), opens the registry at StateDir, builds daemon.Deps with runner.OS{}, a Spawn of
@@ -1546,9 +1574,9 @@ System:
             - given: 'getenv with no MORPHD_TOKEN and an empty dotenv; then MORPHD_TOKEN "x" and MORPHD_PORT "80a"; then MORPHD_STALL_MINUTES "soon"'
               when: Load
               then: 'errors "config: MORPHD_TOKEN is required"; "config: MORPHD_PORT: not a number: 80a"; "config: MORPHD_STALL_MINUTES: not a number: soon"'
-            - given: 'h := Build(the fake Control of HTTP Handlers, known = true, session = ("s", true), "tok-1"); GET /healthz; GET /projects/demo/status with "Bearer tok-1"; POST /mcp/demo with "Bearer tok-1" and the tools/list JSON-RPC body of MCP Mount example 1'
-              when: served on httptest.NewRecorder
-              then: '200 {"status":"ok"} + "\n"; 200 with the Status JSON; 200 with result.tools listing "status" among the names'
+            - given: 'f := a fake Control (a struct of the test file implementing the 17 methods of control.Control) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}, nil for "demo" and control.ErrUnknownProject otherwise; h := Build(f, func(p string) bool { return p == "demo" }, func(p string) (string, bool) { return "s", p == "demo" }, "tok-7"); requests by httptest.NewRequest (a body with Content-Type application/json and Accept "application/json, text/event-stream")'
+              when: 'GET /healthz; GET /projects/demo/status with Authorization "Bearer tok-7"; POST /mcp/demo with "Bearer tok-7" and the body `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`; GET /projects/demo/status without Authorization — each served by h.ServeHTTP on httptest.NewRecorder'
+              then: '200 with the body exactly `{"status":"ok"}` + "\n"; 200 with the body exactly `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}` + "\n"; 200 with result.tools (the body decoded by encoding/json) holding 10 tools, "status" among their names; 401'
 Guardrail:
   - name: Injected Clock And Ids
     description: >

@@ -1,0 +1,113 @@
+package stream
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+)
+
+// decodeAny unmarshals b into a map[string]any so two encodings can be compared structurally.
+func decodeAny(t testing.TB, b []byte) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("json.Unmarshal(%s): %v", b, err)
+	}
+	return m
+}
+
+func TestEncodeLinesExample1(t *testing.T) {
+	want1 := `{"type":"control_request","request_id":"init-1","request":{"subtype":"initialize"}}` + "\n"
+	testhelp.Equal(t, "Initialize(init-1)", string(Initialize("init-1")), want1)
+
+	want2 := `{"type":"control_request","request_id":"init-2","request":{"subtype":"initialize"}}` + "\n"
+	testhelp.Equal(t, "Initialize(init-2)", string(Initialize("init-2")), want2)
+}
+
+func TestEncodeLinesExample2(t *testing.T) {
+	want1 := `{"type":"control_request","request_id":"int-1","request":{"subtype":"interrupt"}}` + "\n"
+	testhelp.Equal(t, "Interrupt(int-1)", string(Interrupt("int-1")), want1)
+
+	want2 := `{"type":"control_request","request_id":"int-9","request":{"subtype":"interrupt"}}` + "\n"
+	testhelp.Equal(t, "Interrupt(int-9)", string(Interrupt("int-9")), want2)
+}
+
+func TestEncodeLinesExample3(t *testing.T) {
+	want := `{"type":"user","message":{"role":"user","content":"Reply with exactly one word: PONG"},"parent_tool_use_id":null}` + "\n"
+	got := User("Reply with exactly one word: PONG")
+	testhelp.Equal(t, "User(PONG)", string(got), want)
+
+	_, msg := testhelp.ProbeLine(t, "../tests/fixtures/stream/probe.jsonl", 3)
+	testhelp.Equal(t, "User(PONG) decodes equal to probe line 3", decodeAny(t, got), decodeAny(t, msg))
+}
+
+func TestEncodeLinesExample4(t *testing.T) {
+	want := `{"type":"user","message":{"role":"user","content":"a \u003cb\u003e \u0026 \"c\"\nd"},"parent_tool_use_id":null}` + "\n"
+	testhelp.Equal(t, "User(escapes)", string(User("a <b> & \"c\"\nd")), want)
+}
+
+func TestEncodeLinesExample5(t *testing.T) {
+	got, err := Allow("r-7", json.RawMessage(`{"command": "ls"}`))
+	if err != nil {
+		t.Fatalf("Allow(r-7): unexpected error: %v", err)
+	}
+	want := `{"type":"control_response","response":{"subtype":"success","request_id":"r-7","response":{"behavior":"allow","updatedInput":{"command":"ls"}}}}` + "\n"
+	testhelp.Equal(t, "Allow(r-7)", string(got), want)
+}
+
+func TestEncodeLinesExample6(t *testing.T) {
+	input := json.RawMessage(`{"questions":[{"question":"Q?","options":[{"label":"Yes"},{"label":"No"}]}]}`)
+	got, err := Answer("r-1", input, "Q?", "Yes")
+	if err != nil {
+		t.Fatalf("Answer(r-1): unexpected error: %v", err)
+	}
+	want := `{"type":"control_response","response":{"subtype":"success","request_id":"r-1","response":{"behavior":"allow","updatedInput":{"answers":{"Q?":"Yes"},"questions":[{"options":[{"label":"Yes"},{"label":"No"}],"question":"Q?"}]}}}}` + "\n"
+	testhelp.Equal(t, "Answer(r-1)", string(got), want)
+}
+
+func TestEncodeLinesExample7(t *testing.T) {
+	_, reqLine := testhelp.ProbeLine(t, "../tests/fixtures/stream/probe.jsonl", 27)
+	var outer map[string]json.RawMessage
+	if err := json.Unmarshal(reqLine, &outer); err != nil {
+		t.Fatalf("probe line 27: %v", err)
+	}
+	var req map[string]json.RawMessage
+	if err := json.Unmarshal(outer["request"], &req); err != nil {
+		t.Fatalf("probe line 27 request: %v", err)
+	}
+	input := req["input"]
+	if len(input) == 0 {
+		t.Fatal("probe line 27 request has no input")
+	}
+
+	got, err := Answer("9f4ffa22-2676-4391-bfd9-bd7d16c3866c", input, "Which option do you want: A or B?", "Option B")
+	if err != nil {
+		t.Fatalf("Answer(probe): unexpected error: %v", err)
+	}
+
+	dir, wantLine := testhelp.ProbeLine(t, "../tests/fixtures/stream/probe.jsonl", 28)
+	testhelp.Equal(t, "probe line 28 direction", dir, "in")
+	testhelp.Equal(t, "Answer(probe) decodes equal to probe line 28", decodeAny(t, got), decodeAny(t, wantLine))
+}
+
+func TestEncodeLinesExample8(t *testing.T) {
+	var want []byte
+
+	got, err := Answer("r-1", json.RawMessage(`[1]`), "Q?", "Yes")
+	testhelp.Equal(t, "Answer(array input) bytes", got, want)
+	if err == nil {
+		t.Error(`Answer(array input) error: got nil, want "stream: input is not an object"`)
+	} else {
+		testhelp.Equal(t, "Answer(array input) error", err.Error(), "stream: input is not an object")
+	}
+
+	got, err = Allow("r-1", json.RawMessage(`{"a":`))
+	testhelp.Equal(t, "Allow(bad input) bytes", got, want)
+	if err == nil {
+		t.Error(`Allow(bad input) error: got nil, want error beginning "stream: bad input"`)
+	} else if !strings.HasPrefix(err.Error(), "stream: bad input") {
+		t.Errorf("Allow(bad input) error: got %q, want prefix %q", err.Error(), "stream: bad input")
+	}
+}

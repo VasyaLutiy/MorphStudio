@@ -1,0 +1,288 @@
+package api
+
+import (
+	"encoding/json"
+	"io"
+	"mime"
+	"net/http"
+	"strconv"
+
+	"morphstudio/control"
+	"morphstudio/queue"
+)
+
+// Handlers is the HTTP surface over a Control.
+type Handlers struct {
+	Control control.Control
+}
+
+type errorDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type errorEnvelope struct {
+	Error errorDetail `json:"error"`
+}
+
+type okBody struct {
+	OK bool `json:"ok"`
+}
+
+// WriteJSON writes v as an application/json body with the given status.
+func WriteJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// WriteError maps err to a status and a stable code and writes the error body.
+func WriteError(w http.ResponseWriter, err error) {
+	status, code := control.Code(err)
+	msg := err.Error()
+	if status == 500 {
+		msg = "internal"
+	}
+	writeErrBody(w, status, code, msg)
+}
+
+func writeErrBody(w http.ResponseWriter, status int, code, message string) {
+	WriteJSON(w, status, errorEnvelope{Error: errorDetail{Code: code, Message: message}})
+}
+
+func writeBadJSON(w http.ResponseWriter) {
+	writeErrBody(w, http.StatusBadRequest, "bad_json", "bad json")
+}
+
+func writeOK(w http.ResponseWriter) {
+	WriteJSON(w, http.StatusOK, okBody{OK: true})
+}
+
+func project(r *http.Request) string {
+	return r.PathValue("project")
+}
+
+// readJSON enforces a JSON Content-Type and strictly decodes the body into v.
+func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "application/json" {
+		writeErrBody(w, http.StatusUnsupportedMediaType, "unsupported_media_type",
+			"Content-Type must be application/json")
+		return false
+	}
+	body := http.MaxBytesReader(w, r.Body, 1<<20)
+	dec := json.NewDecoder(body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		writeBadJSON(w)
+		return false
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		writeBadJSON(w)
+		return false
+	}
+	return true
+}
+
+// Projects lists every project.
+func (h Handlers) Projects(w http.ResponseWriter, r *http.Request) {
+	views := h.Control.Projects()
+	if views == nil {
+		views = []control.ProjectView{}
+	}
+	WriteJSON(w, http.StatusOK, struct {
+		Projects []control.ProjectView `json:"projects"`
+	}{Projects: views})
+}
+
+// CreateProject registers a new project.
+func (h Handlers) CreateProject(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name     string `json:"name"`
+		Language string `json:"language"`
+		RepoURL  string `json:"repo_url"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	view, err := h.Control.CreateProject(r.Context(), req.Name, req.Language, req.RepoURL)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusCreated, view)
+}
+
+// Status reports the state of a project.
+func (h Handlers) Status(w http.ResponseWriter, r *http.Request) {
+	st, err := h.Control.Status(project(r))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, st)
+}
+
+// Events pages the event log of a project.
+func (h Handlers) Events(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	since := int64(0)
+	if s := query.Get("since"); s != "" {
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			writeErrBody(w, http.StatusBadRequest, "bad_input", "since must be an integer")
+			return
+		}
+		since = v
+	}
+
+	max := 0
+	if m := query.Get("max"); m != "" {
+		v, err := strconv.Atoi(m)
+		if err != nil {
+			writeErrBody(w, http.StatusBadRequest, "bad_input", "max must be an integer")
+			return
+		}
+		max = v
+	}
+
+	ev, err := h.Control.Events(project(r), since, max)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, ev)
+}
+
+// Messages hands operator text to a project's session.
+func (h Handlers) Messages(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Text string `json:"text"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	res, err := h.Control.Order(project(r), req.Text)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, res)
+}
+
+// Pending reports the question a project is waiting on, if any.
+func (h Handlers) Pending(w http.ResponseWriter, r *http.Request) {
+	q, err := h.Control.Pending(project(r))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, struct {
+		Question *control.Question `json:"question"`
+	}{Question: q})
+}
+
+// Answer answers a project's pending question.
+func (h Handlers) Answer(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Option int `json:"option"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.Control.Answer(project(r), req.Option); err != nil {
+		WriteError(w, err)
+		return
+	}
+	writeOK(w)
+}
+
+// Interrupt interrupts a project's running session.
+func (h Handlers) Interrupt(w http.ResponseWriter, r *http.Request) {
+	if err := h.Control.Interrupt(project(r)); err != nil {
+		WriteError(w, err)
+		return
+	}
+	writeOK(w)
+}
+
+// Usage reports a project's Claude limits and spend.
+func (h Handlers) Usage(w http.ResponseWriter, r *http.Request) {
+	u, err := h.Control.Usage(project(r))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, u)
+}
+
+// Restart restarts a project's session, optionally with force.
+func (h Handlers) Restart(w http.ResponseWriter, r *http.Request) {
+	force := false
+	if r.ContentLength != 0 {
+		var req struct {
+			Force bool `json:"force"`
+		}
+		if !readJSON(w, r, &req) {
+			return
+		}
+		force = req.Force
+	}
+	if err := h.Control.Restart(project(r), force); err != nil {
+		WriteError(w, err)
+		return
+	}
+	writeOK(w)
+}
+
+// Plan loads an approved plan into a project's queue.
+func (h Handlers) Plan(w http.ResponseWriter, r *http.Request) {
+	var p queue.Plan
+	if !readJSON(w, r, &p) {
+		return
+	}
+	view, err := h.Control.PlanLoad(project(r), p)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, view)
+}
+
+// Continue clears a stop and resumes a project's walk.
+func (h Handlers) Continue(w http.ResponseWriter, r *http.Request) {
+	if err := h.Control.Continue(project(r)); err != nil {
+		WriteError(w, err)
+		return
+	}
+	writeOK(w)
+}
+
+// StopCheck reports whether a project's walk is stopped.
+func (h Handlers) StopCheck(w http.ResponseWriter, r *http.Request) {
+	stop, err := h.Control.StopCheck(project(r))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, struct {
+		Stop *control.Stop `json:"stop"`
+	}{Stop: stop})
+}
+
+// GithubToken stores a project's GitHub token and reports the access it grants.
+func (h Handlers) GithubToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	res, err := h.Control.PutGithubToken(r.Context(), project(r), req.Token)
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, res)
+}

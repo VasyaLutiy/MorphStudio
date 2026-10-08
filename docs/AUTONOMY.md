@@ -5,42 +5,56 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Next: P3 (`PLAN.md` row P3: claude, github, bootstrap — Launch Args, Process, Repo Access, Project Create; 8 cards),
-then smoke stop 1 (after P3).** After the smoke: P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the smokes are
-written in `PLAN.md` "Epics and phases". Running total $0.1217 of $35. Processor `ds` (maxTokens ×3 after the cut:
-`scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
-(`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`; operator 08.10, "100%").
+**STOPPED at smoke stop 1 (after P3), RED — waiting for the operator.** Next after the operator's check: P4 (`PLAN.md` row
+P4: registry, gitrules, control — Project Registry, Secret Files, Phase Start Check, Phase End Check, Control Contract;
+10 cards), then P5, P6, P7 and **smoke stop 2, final** (after P7). Running total $0.1825 of $35 executor; claude for the
+smokes $0.0736 of $0.55. Processor `ds` (maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude
+auto-memory is off in every phase session (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
 
-P2 is done (run 20261008-173606, merged): packages `session` (machine.go, orders.go), `eventlog`, `telegram`; 63 example
-tests green (P1 31 + P2 32); 8/8 written on ds, $0.0722, 10.3 min, two retries (milestone-post unclosed fence;
-order-queue-judge guard, a whitespace literal missing), no fix. Record changed in P2: Session Machine example 4
-(inlined lines, input-less allow → `{}`), Event Log example 10 (lines of any length). Three read defects carried as
-known risks (DECISIONS 08.10 · P2): Apply panics on a "result" with nil Result; Post panics on a nil Do (P7 must pass
-Do); Append's write error says "open". P1's two known risks stand (queue `Load` does not trim IDs; runner's
-cannot-start error lacks the name). `.morph/primer.md` re-generated after P2.
+Smoke 1 (DECISIONS 08.10 · P3 · smoke stop 1; MEASURE row "smoke 1"): the throwaway main `/tmp/smoke-p3/main.go`
+(go.mod `replace morphstudio => /home/morph/MorphStudio`, built with `-mod=mod`) drove the live CLI 2.1.294 through
+claude, stream and session. Held: init with the given session id, one turn answering "PONG", machine "ready"/Turns 1,
+exit 0.64 s after Stop. Red: `error_max_budget_usd` — the default model claude-opus-5-5 cost $0.0736 for the first turn
+(an 8 889-token 1-hour cache write) against BudgetUSD 0.05, so Text "" and exit code 1; no rate-limit event, Limits nil.
+Not a protocol change. The operator's decision is needed: the smoke's model/budget (e.g. `Launch.Model` a cheaper model,
+or BudgetUSD ≥ 0.15), a re-run of the smoke, and whether Limits nil until a rate-limit event is acceptable for P4–P7
+(the record's status and pause rule). The session does not resume itself.
 
-P1 is done (run 20261008-171107): packages `stream`, `runner`, `queue`. The phase dir is `decks/<PHASE>/` (upper-case
-id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The run script recipe: source
-`/home/morph/MorphProject/morph-lab/.env` in a subshell, export `MORPH_PROCESSOR_ds_<KEY>` from `MRPH_PROCESSOR_ds_<KEY>`
-(lower-case `ds`), unset `MRPH_*`, run the binary copy under nohup, stdout to /tmp, `exit=` appended to the log.
+P3 is done (run 20261008-181657, merged): packages `claude` (args.go, process.go), `github`, `bootstrap`; 92 example
+tests green (P1 31 + P2 32 + P3 29); 8/8 written on ds, $0.0608, 7.5 min, two retries (repo-access imported strconv;
+project-create-judge guard, three literals missing), no fix. Record changed in P3: Process group kill + Cancel, the
+Fake buffered and idempotent, example 3 rewritten; Launch Args' existing config file left 0o600; Repo Access nil do →
+"network: no Do". Two read defects carried as known risks (DECISIONS 08.10 · P3 · Process): Write in the window between
+Lines() closing and the ExitStatus returns a pipe error, not ErrExited; a stdout line over 16 MiB hangs the exit until
+Kill. P2's three known risks stand (Apply panics on a "result" with nil Result; Post panics on a nil Do — P7 must pass
+Do; Append's write error says "open"); P1's two stand (queue `Load` does not trim IDs; runner's cannot-start error lacks
+the name). `.morph/primer.md` re-generated after P3 (`morph primer --root . --write`).
+
+P1, P2 done (runs 20261008-171107, 20261008-173606). The phase dir is `decks/<PHASE>/` (upper-case id); Go probes are
+`decks/<phase>/parts/_<card>_probe_test.go`. The run script recipe: source `/home/morph/MorphProject/morph-lab/.env` in a
+subshell, export `MORPH_PROCESSOR_ds_<KEY>` from `MRPH_PROCESSOR_ds_<KEY>` (lower-case `ds`, only keys that are set),
+unset `MRPH_*`, run the binary copy under nohup with `--deadline 2400`, stdout (the Run Document) to
+/tmp/morph-<PHASE>-run.stdout.json, stderr to /tmp/morph-<PHASE>-run.log, `exit=` appended to the log.
 
 P0 (the scaffold, hand data) is done: Go 1.25.14, `go.mod` `go 1.25.0` with go-sdk v1.8.0 vendored (`vendor/`
 committed), `internal/testhelp/probe.go`, `decks/tools/*` (layers by `PLAN.md` "Scaffold"; the per-card stdlib rules for
 each phase's `checks.json` `extra` are in `layers.json` `stdlib_rules`), fixtures under `tests/fixtures/`,
 `docs/deps/go-sdk.md`.
 
-Known limits carried: none open. (Q7 settled in the record by 98b1527: bootstrap · Project Create runs
-`morph init --root <dir> --name <n> --language <l> [--module <m>]`.)
+Known limits carried: none open besides smoke 1 above.
 
 Lessons for the next preparations: default code targets add a test file (give a smoke cap or code-only targets); a new
 file needs `"intent": "generate"` in the map; a new code folder needs its layer in `decks/tools/layers.json`; size a
 judge from its expected answer (≥ 28 000 for a ~20 KB answer, before any processor factor); vary every constant the code
-must not hard-code across the examples; measure any timing an example promises on the real shell before the cut; a
-§2.2 gap no example pins is not enforced — P1 and P2 each left 2–3 such defects; when a gap matters (a panic, an error
-prefix a caller reads), add a record example or a probe variant for it, not only a §2.2 line; an example that refers
-to another Function's example must inline it (the slice never holds the other); the frozen list carries every earlier
-phase's code; every mutant run under a 120 s timeout; kill leftover watchers and workers of the scratch tree. P3 ends
-with smoke stop 1: after the merge, run the smoke as `PLAN.md` writes it, post 🧪 and stop for the operator.
+must not hard-code across the examples; measure any timing an example promises on the real shell before the cut (P3:
+dash leaves a script's children holding the pipes — kill the process group); a §2.2 gap no example pins is not enforced —
+P1, P2 and P3 each left 2–3 such defects; when a gap matters (a panic, an error prefix a caller reads), add a record
+example or a probe variant for it, not only a §2.2 line; an example that refers to another Function's example must
+inline it (the slice never holds the other); the frozen list carries every earlier phase's code; every mutant run under a
+120 s timeout; kill leftover watchers and workers of the scratch tree by process group, never by name (`pkill -x sleep`
+hits every process of the user); a judge's guard wants every example literal in its test file — say so in the judge
+instruction for long argv literals; a code card's allowed imports are its record description's list — name every one the
+code plausibly needs (P3: strconv in github).
 
 The session rewrites this section at the end of every phase.
 

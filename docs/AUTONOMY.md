@@ -5,35 +5,38 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Next: P5** (`PLAN.md` row P5: supervisor, api — Phase Loop, Runtime Guard, HTTP Handlers, Router; 8 cards, est.
-$0.25), with no stop before it; then P6, P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs
-smoke 2; the PLAN's ≤ $0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): smoke stop 1 GREEN by
-the PM's re-run (budget $0.25, Opus, PONG, $0.0650, a rate_limit_event arrived: Limits non-nil); resume P4–P7 without
-stops between them. Running total $0.2269 of $35 executor; claude for the smokes $0.1386 of $0.55. Processor `ds`
-(maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+**Next: P6** (`PLAN.md` row P6: mcpserver — PM Tools, Session Tools, MCP Mount; 6 cards, est. $0.20), with no stop
+before it; then P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤
+$0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them.
+Running total $0.3086 of $35 executor; claude for the smokes $0.1386 of $0.55. Processor `ds` (maxTokens ×3 after the
+cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
 (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
 
-P4 is done (run 20261008-185347, merged): packages `registry` (registry.go, secrets.go), `gitrules` (start.go,
-end.go), `control` (control.go); 127 example tests green (P1 31 + P2 32 + P3 29 + P4 35); 10/10 written on ds, $0.0444,
-4.6 min, two retries (control-contract-judge used Code as one value; phase-end-check-judge guard: a fixture path
-literal), no fix. Prep by a fresh Opus agent: 234k tokens, 64 calls, 20 min. Record changed in P4: Start Check "a Run
-error of any command → error"; End Check example 1 inlines its fake; Registry example 7 writes into the returned values;
-import lists (registry + slices, strings; gitrules + errors; control + context). Known risks carried from P4
-(DECISIONS 08.10 · P4): Registry Add leaves a project in memory after a failed write; Open's non-decode read error is
-unwrapped; DeleteSecret of an unknown project returns nil; `registry.ErrExists` ≠ `control.ErrExists` (Code maps the
-registry one to 500 — P7's daemon must translate registry errors into control's). P3's two stand (Process: Write in the
-window between Lines() closing and the ExitStatus returns a pipe error, not ErrExited; a stdout line over 16 MiB hangs
-the exit until Kill). P2's three stand (Apply panics on a "result" with nil Result; Post panics on a nil Do — P7 must
-pass Do; Append's write error says "open"); P1's two stand (queue `Load` does not trim IDs; runner's cannot-start error
-lacks the name). `.morph/primer.md` re-generated after P4 (`morph primer --root . --write`).
+P5 is done (run 20261008-193337, merged): packages `supervisor` (loop.go, guard.go), `api` (handlers.go, router.go);
+159 example tests green (P1 31 + P2 32 + P3 29 + P4 35 + P5 32); 8/8 written on ds, $0.0817, 10.2 min, two retries
+(router-judge guard: literal "405"; runtime-guard-judge `== frozen`: a stray `.morph-map.json.swp`), no fix. Prep by a
+fresh Opus agent: 297k tokens, 74 calls, 23 min. Record changed in P5: Phase Loop (a not_pushed Continue restarts the
+queue; Begin returns the queue's error; an action carries only its literal's fields; the next-phase reset and the end
+Stop's At), inlined examples in all four Functions, supervisor imports + strconv, strings. Known risks carried from P5
+(DECISIONS 08.10 · P5): Runtime Guard `Exited` prunes `Resumes` to the last hour (§2.2: never pruned); Phase Loop
+fresh StartChecked appends only a "pulled to" Reason; Begin/Continue return the queue's own error → control.Code 500
+(P7's daemon should map it); Guard example 8 tautological in the kept tests; the crash-restart "fresh" path clears the
+resume list, and the stretch total undercounts stopped-then-continued and resumed sessions (prep DECISIONS). From P4:
+Registry Add leaves a project in memory after a failed write; Open's non-decode read error is unwrapped; DeleteSecret of
+an unknown project returns nil; `registry.ErrExists` ≠ `control.ErrExists` (P7's daemon must translate registry errors
+into control's). P3's two stand (Process: Write between Lines() closing and the ExitStatus returns a pipe error, not
+ErrExited; a stdout line over 16 MiB hangs the exit until Kill). P2's three stand (Apply panics on a "result" with nil
+Result; Post panics on a nil Do — P7 must pass Do; Append's write error says "open"); P1's two stand (queue `Load` does
+not trim IDs; runner's cannot-start error lacks the name). `.morph/primer.md` re-generated after P5 (`morph primer
+--root . --write`).
 
-P1–P3 done (runs 20261008-171107, 20261008-173606, 20261008-181657). The phase dir is `decks/<PHASE>/` (upper-case
-id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The binary copy per phase: `/tmp/morph-bin-<PHASE>/` =
-`cp -r /home/morph/MorphV2/dist` + `package.json`, `node_modules` and `templates` symlinked (MorphV2 bc311aa). The run
-script recipe: source `/home/morph/MorphProject/morph-lab/.env` in a subshell, export `MORPH_PROCESSOR_ds_<KEY>` from
-`MRPH_PROCESSOR_ds_<KEY>` (lower-case `ds`, only keys that are set), unset `MRPH_*`, run the binary copy under nohup
-with `--deadline 2400`, stdout (the Run Document) to /tmp/morph-<PHASE>-run.stdout.json, stderr to
-/tmp/morph-<PHASE>-run.log, `exit=` appended to the log.
+P1–P4 done (runs 20261008-171107, 20261008-173606, 20261008-181657, 20261008-185347). The phase dir is `decks/<PHASE>/`
+(upper-case id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The binary copy per phase:
+`/tmp/morph-bin-<PHASE>/` = `cp -r /home/morph/MorphV2/dist` + `package.json`, `node_modules` and `templates`
+symlinked (MorphV2 bc311aa). The run script recipe: source `/home/morph/MorphProject/morph-lab/.env` in a subshell,
+export `MORPH_PROCESSOR_ds_<KEY>` from `MRPH_PROCESSOR_ds_<KEY>` (lower-case `ds`, only keys that are set), unset
+`MRPH_*`, run the binary copy under nohup with `--deadline 2400`, stdout (the Run Document) to
+/tmp/morph-<PHASE>-run.stdout.json, stderr to /tmp/morph-<PHASE>-run.log, `exit=` appended to the log.
 
 P0 (the scaffold, hand data) is done: Go 1.25.14, `go.mod` `go 1.25.0` with go-sdk v1.8.0 vendored (`vendor/`
 committed), `internal/testhelp/probe.go`, `decks/tools/*` (layers by `PLAN.md` "Scaffold"; the per-card stdlib rules for
@@ -54,7 +57,11 @@ inline it (the slice never holds the other); the frozen list carries every earli
 hits every process of the user); a judge's guard wants every example literal in its test file — say so in the judge
 instruction for long argv literals and fixture paths (P4: "../tests/fixtures/git/measure.md"); a judge instruction names
 the arity of every multi-value function it tests (P4: `Code` returns (int, string)); a code card's allowed imports are its record description's list — name every one the
-code plausibly needs (P3: strconv in github).
+code plausibly needs (P3: strconv in github); a judge instruction names every short literal its guard will want (P5: the status "405"); an example
+whose every answer is nil is tautological in the judge file — give it a contrast in the record, not only in the probe;
+probe-derived judge files in the mutant tree must not share the probes' helper names (P5: the first mutant round was all
+build errors); no editor or stray file in the tree while a run is in flight (P5: a `.morph-map.json.swp` failed a judge
+at `== frozen`).
 
 The session rewrites this section at the end of every phase.
 

@@ -1,21 +1,21 @@
 # Primer: MorphStudio
 
-generated 2026-10-08T19:00:06.133Z · 401 files in the tree · no model call, no network
+generated 2026-10-08T19:47:54.966Z · 429 files in the tree · no model call, no network
 missing: docs/PLAN.md
 
 ## Tests
 
-- 127 tests in 17 test files by the go profile (counted from text, not a run)
+- 159 tests in 21 test files by the go profile (counted from text, not a run)
 
 ## Runs
 
-- archived runs: 5 (V2 5, mrph 0), 2026-10-08 → 2026-10-08
-- cards: 48 written of 48 (0 failed, 0 skipped); requests 57, answers kept 57
-- cost: $0.3122 over 5 priced runs (0 unpriced)
-- by format: V2 5 runs, 48/48 written, $0.3122; mrph 0 runs, 0/0 written, $0.0000
-- models: deepseek/deepseek-v4.1-flash (5 runs)
+- archived runs: 6 (V2 6, mrph 0), 2026-10-08 → 2026-10-08
+- cards: 56 written of 56 (0 failed, 0 skipped); requests 67, answers kept 67
+- cost: $0.3939 over 6 priced runs (0 unpriced)
+- by format: V2 6 runs, 56/56 written, $0.3939; mrph 0 runs, 0/0 written, $0.0000
+- models: deepseek/deepseek-v4.1-flash (6 runs)
 - debt rows (docs/MEASURE.md): none
-- running total (docs/MEASURE.md): "Running total: $0.2269 of $35 executor" vs $0.3122 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
+- running total (docs/MEASURE.md): "Running total: $0.3086 of $35 executor" vs $0.3939 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
 
 ## Chronology (docs/MEASURE.md)
 
@@ -23,8 +23,16 @@ missing: docs/PLAN.md
 
 ## File ownership (git, Morph-Card trailers)
 
-- git carries 48 Morph commits: deepseek/deepseek-v4.1-flash 48
-- 48 paths written by cards, most recent first; per path its cards, newest first:
+- git carries 56 Morph commits: deepseek/deepseek-v4.1-flash 56
+- 52 paths written by cards, most recent first; per path its cards, newest first:
+- supervisor/guard_examples_test.go ← runtime-guard-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-193337)
+- api/router_examples_test.go ← router-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-193337); router-judge (deepseek/deepseek-v4.1-flash, run 20261008-083312)
+- supervisor/guard.go ← runtime-guard (deepseek/deepseek-v4.1-flash, run 20261008-193337)
+- api/router.go ← router (deepseek/deepseek-v4.1-flash, run 20261008-193337); router (deepseek/deepseek-v4.1-flash, run 20261008-083312)
+- supervisor/loop_examples_test.go ← phase-loop-judge (deepseek/deepseek-v4.1-flash, run 20261008-193337)
+- api/handlers_examples_test.go ← http-handlers-judge (deepseek/deepseek-v4.1-flash, run 20261008-193337); project-handlers-judge (deepseek/deepseek-v4.1-flash, run 20261008-083312)
+- supervisor/loop.go ← phase-loop (deepseek/deepseek-v4.1-flash, run 20261008-193337)
+- api/handlers.go ← http-handlers (deepseek/deepseek-v4.1-flash, run 20261008-193337); project-handlers (deepseek/deepseek-v4.1-flash, run 20261008-083312)
 - gitrules/end_examples_test.go ← phase-end-check-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-185347)
 - registry/secrets_examples_test.go ← secret-files-judge (deepseek/deepseek-v4.1-flash, run 20261008-185347)
 - control/control_examples_test.go ← control-contract-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-185347)
@@ -47,33 +55,25 @@ missing: docs/PLAN.md
 - session/machine_examples_test.go ← session-machine-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
 - session/orders.go ← order-queue (deepseek/deepseek-v4.1-flash, run 20261008-173606)
 - telegram/post_examples_test.go ← milestone-post-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- eventlog/log_examples_test.go ← event-log-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- telegram/post.go ← milestone-post.r1 (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- session/machine.go ← session-machine (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- eventlog/log.go ← event-log (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- stream/encode_examples_test.go ← encode-lines-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- queue/queue_examples_test.go ← phase-queue-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- stream/parse_examples_test.go ← parse-event-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- runner/runner_examples_test.go ← exec-runner-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- … 18 more paths
+- … 22 more paths
 
 ## What is next
 
 - next phase: none open (docs/PLAN.md)
 - handoff (docs/AUTONOMY.md):
   > State at handoff
-  > **Next: P5** (`PLAN.md` row P5: supervisor, api — Phase Loop, Runtime Guard, HTTP Handlers, Router; 8 cards, est.
-  > $0.25), with no stop before it; then P6, P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs
-  > smoke 2; the PLAN's ≤ $0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): smoke stop 1 GREEN by
-  > the PM's re-run (budget $0.25, Opus, PONG, $0.0650, a rate_limit_event arrived: Limits non-nil); resume P4–P7 without
+  > **Next: P6** (`PLAN.md` row P6: mcpserver — PM Tools, Session Tools, MCP Mount; 6 cards, est. $0.20), with no stop
+  > before it; then P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤
+  > $0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them.
+  > Running total $0.3086 of $35 executor; claude for the smokes $0.1386 of $0.55. Processor `ds` (maxTokens ×3 after the
 
 ## Last decisions (docs/DECISIONS.md)
 
-- 08.10 · P4 · mutants · 30 on a scratch reference (registry 9, secrets 5, start 8, end 5, control 3), each under timeout 120, 30/30 killed at == probe, ≈ 0.4 min in all (one first-round kill was the mutant's own build error, re-done as a real mutation); no known risk carried.
-- 08.10 · P4 · run 20261008-185347 · 10/10 written on ds, $0.0444, 4.6 min, 2 retries (control-contract-judge v1 vet: Code used as one value; phase-end-check-judge v1 guard: literal "../tests/fixtures/git/measure.md" missing); no failure class, no fix needed.
-- 08.10 · P4 · Project Registry · read defect, not fixed by hand: Add appends to the in-memory list before the write, so a failed write leaves the project in memory (§2.2: list unchanged) · no example pins it; known risk for P7: after a failed Add a retry says ErrExists while projects.json lacks it —…
-- 08.10 · P4 · Project Registry · read defect, not fixed by hand: Open returns a read error other than not-exist unwrapped (§2.2: "registry: read <path>: …") · the record's "every error of the file system is returned as is" allows it; callers must not match on the prefix except for a decode error.
-- 08.10 · P4 · Secret Files · read defect, not fixed by hand: DeleteSecret of an unknown project returns nil (§2.2: ErrNotFound) · the record says only "missing → nil"; callers check the project first.
+- 08.10 · P5 · run 20261008-193337 · 8/8 written on ds, $0.0817, 10.2 min, 2 retries (router-judge v1 guard: literal "405" missing; runtime-guard-judge v1 red only at == frozen on a stray .morph-map.json.swp left beside the map during the run, not the card's — gone after); no failure class, no fix ne…
+- 08.10 · P5 · Runtime Guard · read defect, not fixed by hand: Exited overwrites Resumes with the last hour's resumes (guard.go countResumes), so the list is pruned (§2.2: "appended, never pruned") · no example pins it; count and cap correct; known risk for P7: the saved Loop JSON loses older resumes.
+- 08.10 · P5 · Phase Loop · read defect, not fixed by hand: StartChecked fresh appends " · " + Reason only for a Reason beginning "pulled to " (§2.2: any non-empty Reason) · no example pins it; gitrules returns only "" or "pulled to …" today; latent if gitrules gains a fresh reason.
+- 08.10 · P5 · Phase Loop · known risk for P7 (code follows the record): Begin/Continue return the queue's own error (e.g. nothing to continue), which control.Code maps to 500 "internal" · P7's daemon (or a record change) should map it to a 409 sentinel; EndChecked with an empty Outcome begins phase …
+- 08.10 · P5 · Runtime Guard · example 8 (all answers nil) is tautological in the kept judge file; only the probe's contrast variant made it red at the gate · known risk: a later change that answers there is not caught by the example tests.
 
 ## Open issues (.morph/issues.json)
 

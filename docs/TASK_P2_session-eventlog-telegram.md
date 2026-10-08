@@ -230,3 +230,23 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
 - Record changes: Session Machine example 4 and behaviour; Event Log description, behaviour and new example 10. Map:
   event-log-judge 20 000.
 - 0 lines of product code by hand (the reference and the stubs lived only in a scratch worktree, removed).
+
+### Run 20261008-173606 (processor ds, binary copy /tmp/morph-bin-P2 of MorphV2 bc311aa)
+
+- 8 / 8 written, 0 burned; 10 requests; 133 097 input / 87 786 output tokens; $0.0722 executor; 619 s (10.3 min).
+- Attempts: milestone-post 2 (v1 cut off with an unclosed fence at finish reason stop, 8 545 chars; r1 green);
+  order-queue-judge 2 (v1 rejected at `== guard`: "session/orders_examples_test.go does not mention the example
+  literal \"  third  \""; r1 green); every other card 1. No failure class (no card red after the run), no fix needed.
+- Judges: 4 / 4 green at `== own` on the accepted code; judge defects 0; guard rejections 1 (above); neighbour-red 0.
+- Verify on the run branch: `git status --short` empty; gofmt, `go vet ./...`, `go build ./...` clean;
+  `go test -count=1 ./...` green, 63 example tests (P1 31 + P2 32).
+- Read against §2.2 (defects recorded, not fixed by hand; no example covers them, so the acceptances stay green):
+  1. session/machine.go `Apply`: a "result" with `ev.Result == nil` dereferences nil and panics (§2.2: count it as the
+     zero Result) — stream.Parse never produces such an Event, so unreachable from the daemon's path;
+  2. telegram/post.go `Post`: a nil `Do` with Token and ChatID set panics (§2.2: `telegram: post failed: no Do`) —
+     every caller passes Do (cmd/morphd: `http.DefaultClient.Do`);
+  3. eventlog/log.go `Append`: a failed file write returns `eventlog: open <path>: …` (§2.2: begins
+     `eventlog: write `); Entry{} and Last unchanged as decided.
+- Falsifiable claims of §9: 8/8 within one fix — held (no fix needed); 63 tests green — held.
+- Lines by hand: 0. Largest slice 95 667 B before targets. Observability slip: the session posted one stray `run`
+  🏁 line with "placeholder" numbers before the real one; corrected by the next post.

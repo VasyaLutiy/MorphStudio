@@ -70,3 +70,7 @@ Format: date · topic · decision · why (the operator's words).
 - 08.10 · P2 · map · event-log-judge max_tokens 18 000 → 20 000 · now the judge with the most examples (10); TASK_TEMPLATE: ≥ 20 000.
 - 08.10 · P2 · checks · frozen adds stream, runner, queue (P1 code); == clock also rejects time.Since; telegram gets == net (no http.DefaultClient/Get/Post/PostForm/Head) · layers.json stdlib_rules.
 - 08.10 · P2 · mutants · 30 on a scratch reference (machine 9, orders 7, log 8, post 6), 30 killed at == probe, 0.4 min, each under timeout 120; three die only on probe variants (log bad-line number, post 200-byte cut, token masked once); no known risk carried.
+- 08.10 · P2 · run 20261008-173606 · 8/8 written on ds, $0.0722, 10.3 min, 2 retries (milestone-post v1 unclosed fence; order-queue-judge v1 guard: literal "  third  " missing); no failure class, no fix needed.
+- 08.10 · P2 · Session Machine · read defect, not fixed by hand: Apply dereferences ev.Result on a "result" with Result nil (§2.2: zero Result) · stream.Parse never yields it; known risk for any caller building Events by hand.
+- 08.10 · P2 · Milestone Post · read defect, not fixed by hand: Post panics on a nil Do (§2.2: "telegram: post failed: no Do") · no example pins it; P7 Config And Main must always pass Do.
+- 08.10 · P2 · Event Log · read defect, not fixed by hand: a failed Append write says "eventlog: open <path>: …" (§2.2: "eventlog: write …") · no example pins it; callers must not match on the prefix.

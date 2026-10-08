@@ -75,10 +75,12 @@ func TestProbeFileStoreExample2(t *testing.T) {
 func TestProbeFileStoreExample3(t *testing.T) {
 	f, path := probeFile2(t)
 	g, err := OpenFile(path)
-	if !testhelp.Equal(t, "reopen error", err, error(nil)) || g == nil {
-		return
+	testhelp.Equal(t, "reopen error", err, error(nil))
+	if g == nil {
+		t.Fatal("OpenFile returned a nil store on reopening")
 	}
 	testhelp.Equal(t, "reopened List", probeList(t, g), probeList(t, f))
+	testhelp.Equal(t, "reopened List IDs", len(probeList(t, g)), 2)
 }
 
 func TestProbeFileStoreExample4(t *testing.T) {
@@ -128,8 +130,9 @@ func TestProbeFileStoreRows(t *testing.T) {
 	f, path := probeFile2(t)
 	testhelp.Equal(t, "Update a", f.Update(project.Project{ID: "a", Name: "A2", Slug: "alpha", CreatedAt: probeT(9)}), error(nil))
 	g, err := OpenFile(path)
-	if !testhelp.Equal(t, "reopen error", err, error(nil)) || g == nil {
-		return
+	testhelp.Equal(t, "reopen error", err, error(nil))
+	if g == nil {
+		t.Fatal("OpenFile returned a nil store on reopening")
 	}
 	p, _ := g.Get("a")
 	testhelp.Equal(t, "reopened Get(a).Name", p.Name, "A2")

@@ -1,21 +1,21 @@
 # Primer: MorphStudio
 
-generated 2026-10-08T17:17:16.993Z · 312 files in the tree · no model call, no network
+generated 2026-10-08T17:47:29.554Z · 340 files in the tree · no model call, no network
 missing: docs/PLAN.md
 
 ## Tests
 
-- 31 tests in 4 test files by the go profile (counted from text, not a run)
+- 63 tests in 8 test files by the go profile (counted from text, not a run)
 
 ## Runs
 
-- archived runs: 2 (V2 2, mrph 0), 2026-10-08 → 2026-10-08
-- cards: 22 written of 22 (0 failed, 0 skipped); requests 25, answers kept 25
-- cost: $0.1348 over 2 priced runs (0 unpriced)
-- by format: V2 2 runs, 22/22 written, $0.1348; mrph 0 runs, 0/0 written, $0.0000
-- models: deepseek/deepseek-v4.1-flash (2 runs)
+- archived runs: 3 (V2 3, mrph 0), 2026-10-08 → 2026-10-08
+- cards: 30 written of 30 (0 failed, 0 skipped); requests 35, answers kept 35
+- cost: $0.2070 over 3 priced runs (0 unpriced)
+- by format: V2 3 runs, 30/30 written, $0.2070; mrph 0 runs, 0/0 written, $0.0000
+- models: deepseek/deepseek-v4.1-flash (3 runs)
 - debt rows (docs/MEASURE.md): none
-- running total (docs/MEASURE.md): "Running total: $0 of $35." vs $0.1348 archived here, difference -0.1348 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
+- running total (docs/MEASURE.md): "Running total: $0.1217 of $35" vs $0.2070 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
 
 ## Chronology (docs/MEASURE.md)
 
@@ -23,8 +23,16 @@ missing: docs/PLAN.md
 
 ## File ownership (git, Morph-Card trailers)
 
-- git carries 22 Morph commits: deepseek/deepseek-v4.1-flash 22
-- 22 paths written by cards, most recent first; per path its cards, newest first:
+- git carries 30 Morph commits: deepseek/deepseek-v4.1-flash 30
+- 30 paths written by cards, most recent first; per path its cards, newest first:
+- session/orders_examples_test.go ← order-queue-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- session/machine_examples_test.go ← session-machine-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- session/orders.go ← order-queue (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- telegram/post_examples_test.go ← milestone-post-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- eventlog/log_examples_test.go ← event-log-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- telegram/post.go ← milestone-post.r1 (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- session/machine.go ← session-machine (deepseek/deepseek-v4.1-flash, run 20261008-173606)
+- eventlog/log.go ← event-log (deepseek/deepseek-v4.1-flash, run 20261008-173606)
 - stream/encode_examples_test.go ← encode-lines-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
 - queue/queue_examples_test.go ← phase-queue-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
 - stream/parse_examples_test.go ← parse-event-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
@@ -53,18 +61,18 @@ missing: docs/PLAN.md
 - next phase: none open (docs/PLAN.md)
 - handoff (docs/AUTONOMY.md):
   > State at handoff
-  > **Next: P1 (`PLAN.md` row P1: stream, runner, queue — Parse Event, Encode Lines, Exec Runner, Phase Queue; 8 cards).**
-  > After it: P2, then P3 and **smoke stop 1** (after P3), P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the smokes
-  > are written in `PLAN.md` "Epics and phases". Running total $0 of $35. Processor `ds` (maxTokens ×3 after the cut:
-  > `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+  > **Next: P2 (`PLAN.md` row P2: session, eventlog, telegram — Session Machine, Order Queue, Event Log, Milestone Post;
+  > 8 cards).** After it: P3 and **smoke stop 1** (after P3), P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the
+  > smokes are written in `PLAN.md` "Epics and phases". Running total $0.0495 of $35. Processor `ds` (maxTokens ×3 after the
+  > cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
 
 ## Last decisions (docs/DECISIONS.md)
 
-- 08.10 · P1 · Phase Queue · example 6's running queue = example 1 after Start; example 7's done queue = the end of example 5 · the record names states, not how to reach them.
-- 08.10 · P1 · Phase Queue · RECORD CHANGED: example 8 defaults {20, 2, 4} → Caps {20, 1, 4} (was {30, 3, 5} → {30, 1, 5}) · the same defaults as example 1 let hard-coded 30/3/5 pass; the probe also varies the Hours default (a zero-caps phase under {20, 2, 4}).
-- 08.10 · P1 · map · all 27 judge instructions: "per example of `<file>` taken from go.mod" → "listed below (the examples of the Function)" · the examples come from the record, not go.mod (a wording defect of the architect's map).
-- 08.10 · P1 · probes · Go probes are named decks/P1/parts/_<card>_probe_test.go (the name morph plan reads for Go), not <card>.probe.* · MorphV2 builder/buildAcceptances.ts probeFile.
-- 08.10 · P1 · mutants · 30 on a scratch reference, 30 killed, none survive; no known risk carried.
+- 08.10 · P2 · mutants · 30 on a scratch reference (machine 9, orders 7, log 8, post 6), 30 killed at == probe, 0.4 min, each under timeout 120; three die only on probe variants (log bad-line number, post 200-byte cut, token masked once); no known risk carried.
+- 08.10 · P2 · run 20261008-173606 · 8/8 written on ds, $0.0722, 10.3 min, 2 retries (milestone-post v1 unclosed fence; order-queue-judge v1 guard: literal "  third  " missing); no failure class, no fix needed.
+- 08.10 · P2 · Session Machine · read defect, not fixed by hand: Apply dereferences ev.Result on a "result" with Result nil (§2.2: zero Result) · stream.Parse never yields it; known risk for any caller building Events by hand.
+- 08.10 · P2 · Milestone Post · read defect, not fixed by hand: Post panics on a nil Do (§2.2: "telegram: post failed: no Do") · no example pins it; P7 Config And Main must always pass Do.
+- 08.10 · P2 · Event Log · read defect, not fixed by hand: a failed Append write says "eventlog: open <path>: …" (§2.2: "eventlog: write …") · no example pins it; callers must not match on the prefix.
 
 ## Open issues (.morph/issues.json)
 

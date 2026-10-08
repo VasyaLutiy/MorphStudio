@@ -1,0 +1,31 @@
+```
+package project
+
+import "time"
+
+// New builds a stored Project from an already-validated input. It copies the
+// input fields verbatim: it neither validates nor normalises.
+func New(in Input, id string, now time.Time) Project {
+	return Project{
+		ID:          id,
+		Name:        in.Name,
+		Slug:        in.Slug,
+		Description: in.Description,
+		Status:      in.Status,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+}
+
+// Apply returns p with its Name, Slug, Description and Status replaced by the
+// input's values (an empty field replaces too), UpdatedAt set to now, and ID
+// and CreatedAt kept.
+func Apply(p Project, in Input, now time.Time) Project {
+	p.Name = in.Name
+	p.Slug = in.Slug
+	p.Description = in.Description
+	p.Status = in.Status
+	p.UpdatedAt = now
+	return p
+}
+```

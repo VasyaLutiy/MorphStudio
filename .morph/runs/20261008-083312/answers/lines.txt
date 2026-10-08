@@ -1,0 +1,16 @@
+morph run: basic-auth.v1 accepted stage 9 frozen finish stop chars 1441
+morph run: validate-input.v1 accepted stage 9 frozen finish stop chars 1522
+morph run: basic-auth-judge.v1 accepted stage 6 frozen finish stop chars 4495
+morph run: build-project.v1 accepted stage 9 frozen finish stop chars 780
+morph run: memory-store.v1 accepted stage 9 frozen finish stop chars 1806
+morph run: validate-input-judge.v1 rejected stage 3 guard project/validate_examples_test.go finish stop chars 2798
+morph run: validate-input-judge.r1.v1 accepted stage 6 frozen finish stop chars 2828
+morph run: build-project-judge.v1 rejected stage 3 guard project/project_examples_test.go finish stop chars 2095
+morph run: file-store.v1 accepted stage 9 frozen finish stop chars 3252
+morph run: memory-store-judge.v1 accepted stage 6 frozen finish stop chars 3827
+morph run: project-handlers.v1 accepted stage 9 frozen finish stop chars 4403
+morph run: build-project-judge.r1.v1 accepted stage 6 frozen finish stop chars 2127
+morph run: file-store-judge.v1 accepted stage 6 frozen finish stop chars 7420
+morph run: project-handlers-judge.v1 accepted stage 6 frozen finish stop chars 9675
+morph run: router.v1 accepted stage 9 frozen finish stop chars 840
+morph run: router-judge.v1 accepted stage 6 frozen finish stop chars 5410

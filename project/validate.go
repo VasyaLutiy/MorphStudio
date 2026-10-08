@@ -1,0 +1,70 @@
+package project
+
+import (
+	"regexp"
+	"strings"
+	"time"
+	"unicode/utf8"
+)
+
+type Input struct {
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
+
+type Project struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+func Validate(in Input) (Input, map[string]string) {
+	out := Input{
+		Name:        strings.TrimSpace(in.Name),
+		Slug:        strings.TrimSpace(in.Slug),
+		Description: strings.TrimSpace(in.Description),
+		Status:      in.Status,
+	}
+	if out.Status == "" {
+		out.Status = "draft"
+	}
+
+	errs := map[string]string{}
+
+	if out.Name == "" {
+		errs["name"] = "required"
+	} else if utf8.RuneCountInString(out.Name) > 64 {
+		errs["name"] = "too long"
+	}
+
+	if out.Slug == "" {
+		errs["slug"] = "required"
+	} else if utf8.RuneCountInString(out.Slug) > 40 {
+		errs["slug"] = "too long"
+	} else if !slugPattern.MatchString(out.Slug) {
+		errs["slug"] = "invalid"
+	}
+
+	if utf8.RuneCountInString(out.Description) > 500 {
+		errs["description"] = "too long"
+	}
+
+	switch out.Status {
+	case "draft", "active", "archived":
+	default:
+		errs["status"] = "invalid"
+	}
+
+	if len(errs) == 0 {
+		return out, nil
+	}
+	return out, errs
+}

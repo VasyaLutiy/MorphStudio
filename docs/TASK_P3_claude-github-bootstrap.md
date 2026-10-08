@@ -218,7 +218,7 @@ guard rejections, lines by hand, max slice bytes, minutes, $; then the smoke's n
 
 ### Preparation (before the gate)
 
-- Orchestrator: Opus 5.5 agent, ≈ 90 tool calls, ≈ 35 min (17:48–18:23 UTC); tokens not metered inside the session.
+- Orchestrator: Opus 5.5 agent, 70 tool calls, 226k tokens, 26 min (measured by the session from the agent's run).
 - `morph plan` exit 0; `morph deck check` errors 0, warnings 0, hazards 0; generations [2, 4, 2]; the cut holds exactly
   the 8 phase cards.
 - Largest slice: project-create-judge, 9 342 B with the written code (3 917 B of existing files at the cut; ≈ 13.3 KB
@@ -235,3 +235,22 @@ guard rejections, lines by hand, max slice bytes, minutes, $; then the smoke's n
   behaviour (existing file left 0o600); Repo Access behaviour (nil do). Map: 5 budgets, 3 judge instructions.
 - 0 lines of product code by hand (the reference and the stubs lived only in a scratch worktree, removed; leftover
   stub processes killed).
+
+### Run 20261008-181657 (processor ds, binary copy /tmp/morph-bin-P3 of MorphV2 bc311aa)
+
+- 8 / 8 written, 0 burned; 10 requests; 45 583 input / 90 619 output tokens; $0.0608 executor; 448 s (7.5 min).
+- Attempts: repo-access 2 (v1 rejected at `== imports`: "package github imports strconv (allowed: context,
+  encoding/json, errors, fmt, io, net/http, net/url, strings, time)"; r1 green); project-create-judge 2 (v1 rejected at
+  `== guard`: the example literals "--module demo", "git rev-parse --verify -q origin/main", "git push -q -u origin
+  main" not mentioned; r1 green); every other card 1. Every finish reason `stop`. No failure class, no fix needed.
+- Judges: 4 / 4 green at `== own` on the accepted code; judge defects 0; guard rejections 1 (above); neighbour-red 0.
+- Verify on the run branch: `git status --short` empty; gofmt, `go vet ./...`, `go build ./...` clean;
+  `go test -count=1 ./...` green, 92 example tests (P1 31 + P2 32 + P3 29).
+- Read against §2.2 and the record: the code follows the record's behaviour. Two §2.2 gaps not pinned by any example,
+  recorded as known risks, not fixed by hand:
+  1. Process: `exited` is set after Lines() closes (after Wait), not before; a Write in the window between the close
+     of Lines() and the ExitStatus returns the pipe's error instead of ErrExited (example 2 writes after `<-Exit()`,
+     green). Callers that check `errors.Is(err, ErrExited)` must also tolerate a pipe error.
+  2. Process: a stdout line over 16 MiB stops the reader, but Wait waits for the reader goroutines before reaping, and
+     nobody drains stdout anymore, so a child still writing blocks and Exit never comes until Kill/cancel (§2.2 said
+     "Exit follows"). The daemon's runtime guard (Kill on its caps) bounds it.

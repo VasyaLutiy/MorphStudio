@@ -7,5 +7,6 @@ column as "<model> <tokens>/<tool calls>/<minutes>". The running total of the au
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | P1 stream, runner, queue | ds (deepseek-v4.1-flash), binary copy of MorphV2 bc311aa | 8 / 8 / 0 | 0.0495 / Opus 5.5 orchestrator agent 196k tok/69 calls/12 min (prep) | run 5.3, prep 12 | 0 | 0 | 0 (read: 2 defects vs §2.2, recorded) | 0 | 0 | 0 | 84 876 | — (1 retry: phase-queue build, first attempt red) | 20261008-171107 |
 | P2 session, eventlog, telegram | ds (deepseek-v4.1-flash), binary copy of MorphV2 bc311aa | 8 / 8 / 0 | 0.0722 / Opus 5.5 orchestrator agent 197k tok/49 calls/15 min (prep) | run 10.3, prep 15 | 0 | 0 | 0 (read: 3 defects vs §2.2, recorded) | 0 | 0 | 0 | 95 667 | — (2 retries: milestone-post fence cut, order-queue-judge guard) | 20261008-173606 |
+| P3 claude, github, bootstrap | ds (deepseek-v4.1-flash), binary copy of MorphV2 bc311aa | 8 / 8 / 0 | 0.0608 / Opus 5.5 orchestrator agent 226k tok/70 calls/26 min (prep) | run 7.5, prep 26 | 0 | 0 | 0 (read: 2 defects vs §2.2, recorded) | 0 | 0 | 0 | 9 342 | — (2 retries: repo-access imports strconv, project-create-judge guard) | 20261008-181657 |
 
-Running total: $0.1217 of $35 (P1 $0.0495, P2 $0.0722).
+Running total: $0.1825 of $35 (P1 $0.0495, P2 $0.0722, P3 $0.0608).

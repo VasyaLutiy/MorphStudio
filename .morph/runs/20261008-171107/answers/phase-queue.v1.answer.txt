@@ -1,0 +1,169 @@
+```
+// Package queue loads a plan and walks it phase by phase, stopping and
+// continuing at the marks the plan sets.
+package queue
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Caps bounds a phase's spend.
+type Caps struct {
+	ClaudeUSD   float64 `json:"claude_usd"`
+	Hours       float64 `json:"hours"`
+	ExecutorUSD float64 `json:"executor_usd"`
+}
+
+// Phase is one step of a plan.
+type Phase struct {
+	ID        string `json:"id"`
+	StopAfter string `json:"stop_after"`
+	Caps      Caps   `json:"caps"`
+}
+
+// Plan is the approved plan that a queue walks.
+type Plan struct {
+	Approved string  `json:"approved"`
+	Phases   []Phase `json:"phases"`
+}
+
+// Outcome reports what happened when a phase finished.
+type Outcome struct {
+	Next string `json:"next"`
+	Stop string `json:"stop"`
+}
+
+// Queue walks a plan's phases and remembers where it stopped.
+type Queue struct {
+	Approved string  `json:"approved"`
+	Phases   []Phase `json:"phases"`
+	Index    int     `json:"index"`
+	State    string  `json:"state"`
+	Reason   string  `json:"reason"`
+}
+
+// Load validates a plan and fills zero caps from defaults.
+func Load(p Plan, defaults Caps) (Queue, error) {
+	if strings.TrimSpace(p.Approved) == "" {
+		return Queue{}, fmt.Errorf("queue: approved hash required")
+	}
+	if len(p.Phases) == 0 {
+		return Queue{}, fmt.Errorf("queue: no phases")
+	}
+	phases := make([]Phase, len(p.Phases))
+	seen := make(map[string]bool, len(p.Phases))
+	for i, ph := range p.Phases {
+		id := ph.ID
+		if strings.TrimSpace(id) == "" {
+			return Queue{}, fmt.Errorf("queue: phase %d: empty id", i)
+		}
+		if seen[id] {
+			return Queue{}, fmt.Errorf("queue: duplicate phase %q", id)
+		}
+		seen[id] = true
+		stop := ph.StopAfter
+		if stop == "" {
+			stop = "none"
+		} else if stop != "none" && stop != "smoke" && stop != "operator" {
+			return Queue{}, fmt.Errorf("queue: phase %q: stop_after %q", id, stop)
+		}
+		caps := ph.Caps
+		if caps.ClaudeUSD == 0 {
+			caps.ClaudeUSD = defaults.ClaudeUSD
+		}
+		if caps.Hours == 0 {
+			caps.Hours = defaults.Hours
+		}
+		if caps.ExecutorUSD == 0 {
+			caps.ExecutorUSD = defaults.ExecutorUSD
+		}
+		phases[i] = Phase{ID: id, StopAfter: stop, Caps: caps}
+	}
+	return Queue{
+		Approved: p.Approved,
+		Phases:   phases,
+		Index:    0,
+		State:    "queued",
+	}, nil
+}
+
+// Current returns the phase the queue is pointing at, if any.
+func (q *Queue) Current() (Phase, bool) {
+	switch q.State {
+	case "queued", "running", "stopped":
+		if q.Index >= 0 && q.Index < len(q.Phases) {
+			return q.Phases[q.Index], true
+		}
+	}
+	return Phase{}, false
+}
+
+// Start moves a queued walk to running and returns its current phase.
+func (q *Queue) Start() (Phase, error) {
+	if q.State != "queued" {
+		return Phase{}, fmt.Errorf("queue: cannot start in state %q", q.State)
+	}
+	q.State = "running"
+	return q.Current()
+}
+
+// Done records that a running phase finished and returns what to do next.
+func (q *Queue) Done(phase, next string) (Outcome, error) {
+	running := ""
+	if q.State == "running" {
+		if cur, ok := q.Current(); ok {
+			running = cur.ID
+		}
+	}
+	if q.State != "running" || running != phase {
+		return Outcome{}, fmt.Errorf("queue: phase_done for %q but running %q", phase, running)
+	}
+	expected := ""
+	if q.Index+1 < len(q.Phases) {
+		expected = q.Phases[q.Index+1].ID
+	}
+	if next != expected {
+		return Outcome{}, fmt.Errorf("queue: next %q, plan says %q", next, expected)
+	}
+	finished := q.Phases[q.Index]
+	q.Index++
+	if q.Index >= len(q.Phases) {
+		q.State = "done"
+		return Outcome{Stop: "end"}, nil
+	}
+	nextID := q.Phases[q.Index].ID
+	switch finished.StopAfter {
+	case "smoke", "operator":
+		q.State = "stopped"
+		q.Reason = finished.StopAfter
+		return Outcome{Next: nextID, Stop: finished.StopAfter}, nil
+	default:
+		q.State = "queued"
+		q.Reason = ""
+		return Outcome{Next: nextID}, nil
+	}
+}
+
+// Stop marks a queued or running walk as stopped for the given reason.
+func (q *Queue) Stop(reason string) {
+	if q.State == "running" || q.State == "queued" {
+		q.State = "stopped"
+		q.Reason = reason
+	}
+}
+
+// Continue clears a stop and returns the phase to run next.
+func (q *Queue) Continue() (Phase, error) {
+	if q.State != "stopped" {
+		return Phase{}, fmt.Errorf("queue: nothing to continue (state %q)", q.State)
+	}
+	cur, ok := q.Current()
+	if !ok {
+		return Phase{}, fmt.Errorf("queue: nothing to continue (state %q)", q.State)
+	}
+	q.State = "queued"
+	q.Reason = ""
+	return cur, nil
+}
+```

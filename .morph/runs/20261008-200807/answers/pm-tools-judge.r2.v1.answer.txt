@@ -1,0 +1,482 @@
+```
+package mcpserver
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"morphstudio/control"
+	"morphstudio/github"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+// ptCall is one recorded call into the fake Control: the method name and the
+// arguments after the context and project the test is not always checking.
+type ptCall struct {
+	Method string
+	Args   []any
+}
+
+// ptFake is this test file's Control fake: configurable results, configurable
+// errors and a recorded call list.
+type ptFake struct {
+	calls []ptCall
+
+	projects            []control.ProjectView
+	createProjectResult control.ProjectView
+	createProjectErr    error
+
+	statusResult control.Status
+	statusErr    error
+
+	eventsResult control.Events
+	eventsErr    error
+
+	orderResult session.OrderResult
+	orderErr    error
+
+	pendingResult *control.Question
+	pendingErr    error
+
+	answerErr error
+
+	interruptErr error
+
+	usageResult control.Usage
+	usageErr    error
+
+	restartErr error
+
+	planLoadResult control.QueueView
+	planLoadErr    error
+	planLoadPlan   queue.Plan
+
+	continueErr error
+
+	stopCheckResult *control.Stop
+	stopCheckErr    error
+
+	putGithubTokenResult control.TokenResult
+	putGithubTokenErr    error
+
+	phaseDoneErr error
+
+	waitOperatorErr error
+
+	milestoneErr error
+}
+
+func (f *ptFake) record(method string, args ...any) {
+	f.calls = append(f.calls, ptCall{Method: method, Args: args})
+}
+
+func (f *ptFake) Projects() []control.ProjectView {
+	f.record("Projects")
+	return f.projects
+}
+
+func (f *ptFake) CreateProject(_ context.Context, name, language, repoURL string) (control.ProjectView, error) {
+	f.record("CreateProject", name, language, repoURL)
+	return f.createProjectResult, f.createProjectErr
+}
+
+func (f *ptFake) Status(project string) (control.Status, error) {
+	f.record("Status", project)
+	return f.statusResult, f.statusErr
+}
+
+func (f *ptFake) Events(project string, since int64, max int) (control.Events, error) {
+	f.record("Events", project, since, max)
+	return f.eventsResult, f.eventsErr
+}
+
+func (f *ptFake) Order(project, text string) (session.OrderResult, error) {
+	f.record("Order", project, text)
+	return f.orderResult, f.orderErr
+}
+
+func (f *ptFake) Pending(project string) (*control.Question, error) {
+	f.record("Pending", project)
+	return f.pendingResult, f.pendingErr
+}
+
+func (f *ptFake) Answer(project string, option int) error {
+	f.record("Answer", project, option)
+	return f.answerErr
+}
+
+func (f *ptFake) Interrupt(project string) error {
+	f.record("Interrupt", project)
+	return f.interruptErr
+}
+
+func (f *ptFake) Usage(project string) (control.Usage, error) {
+	f.record("Usage", project)
+	return f.usageResult, f.usageErr
+}
+
+func (f *ptFake) Restart(project string, force bool) error {
+	f.record("Restart", project, force)
+	return f.restartErr
+}
+
+func (f *ptFake) PlanLoad(project string, plan queue.Plan) (control.QueueView, error) {
+	f.record("PlanLoad", project)
+	f.planLoadPlan = plan
+	return f.planLoadResult, f.planLoadErr
+}
+
+func (f *ptFake) Continue(project string) error {
+	f.record("Continue", project)
+	return f.continueErr
+}
+
+func (f *ptFake) StopCheck(project string) (*control.Stop, error) {
+	f.record("StopCheck", project)
+	return f.stopCheckResult, f.stopCheckErr
+}
+
+func (f *ptFake) PutGithubToken(_ context.Context, project, token string) (control.TokenResult, error) {
+	f.record("PutGithubToken", project, token)
+	return f.putGithubTokenResult, f.putGithubTokenErr
+}
+
+func (f *ptFake) PhaseDone(project, sessionToken, phase, next string) error {
+	f.record("PhaseDone", project, sessionToken, phase, next)
+	return f.phaseDoneErr
+}
+
+func (f *ptFake) WaitOperator(project, sessionToken, kind, reason, issueURL string) error {
+	f.record("WaitOperator", project, sessionToken, kind, reason, issueURL)
+	return f.waitOperatorErr
+}
+
+func (f *ptFake) Milestone(project, sessionToken string, m Milestone) error {
+	f.record("Milestone", project, sessionToken, m)
+	return f.milestoneErr
+}
+
+// ptConnect wires a server to a fresh in-memory client and closes both when
+// the test ends.
+func ptConnect(t *testing.T, ctx context.Context, s *mcp.Server) *mcp.ClientSession {
+	t.Helper()
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := s.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cs.Close()
+		ss.Wait()
+	})
+	return cs
+}
+
+// ptNames returns the tool names of a tools/list result in order.
+func ptNames(list *mcp.ListToolsResult) []string {
+	out := make([]string, 0, len(list.Tools))
+	for _, tool := range list.Tools {
+		out = append(out, tool.Name)
+	}
+	return out
+}
+
+// ptText returns the one text content of a tool result.
+func ptText(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	if len(res.Content) != 1 {
+		t.Fatalf("content: got %d entries, want 1", len(res.Content))
+	}
+	tc, ok := res.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("content[0]: got %T, want *mcp.TextContent", res.Content[0])
+	}
+	return tc.Text
+}
+
+// TestPMToolsExample1: the PM server lists exactly its ten tools, sorted.
+func TestPMToolsExample1(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{}
+	cs := ptConnect(t, ctx, PMServer(c, "demo"))
+
+	list, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "tool names", ptNames(list), []string{
+		"answer", "continue", "interrupt", "order", "pending",
+		"plan_load", "restart", "status", "stop_check", "usage",
+	})
+}
+
+// TestPMToolsExample2: status renders the whole status object as JSON.
+func TestPMToolsExample2(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{
+		statusResult: control.Status{
+			State:     "busy",
+			Phase:     "P18",
+			Minutes:   37,
+			CostUSD:   1.92,
+			FiveHour:  22,
+			SevenDay:  60,
+			SessionID: "s-1",
+			Queue: control.QueueView{
+				State:    "running",
+				Approved: "7b31dfe",
+				Index:    1,
+				Phases:   3,
+				Current:  "P18",
+			},
+			Repo: github.Access{
+				Checked:   true,
+				Reachable: true,
+				Push:      true,
+				CheckedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	cs := ptConnect(t, ctx, PMServer(c, "demo"))
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "IsError", res.IsError, false)
+	testhelp.Equal(t, "StructuredContent", res.StructuredContent, any(nil))
+	testhelp.Equal(t, "text", ptText(t, res), `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`)
+	testhelp.Equal(t, "calls", c.calls, []ptCall{{Method: "Status", Args: []any{"demo"}}})
+}
+
+// TestPMToolsExample3: order, answer and plan_load feed the fake and their
+// results come back as one text content each.
+func TestPMToolsExample3(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{
+		orderResult: session.OrderResult{Queued: 1},
+		planLoadResult: control.QueueView{
+			State:    "queued",
+			Approved: "7b31dfe",
+			Index:    0,
+			Phases:   3,
+			Current:  "P17",
+		},
+	}
+	cs := ptConnect(t, ctx, PMServer(c, "demo"))
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "order",
+		Arguments: map[string]any{"text": "smoke checked green. Resume with P12b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "order text", ptText(t, res), `{"queued":1}`)
+	testhelp.Equal(t, "order call", c.calls[0], ptCall{
+		Method: "Order",
+		Args:   []any{"demo", "smoke checked green. Resume with P12b"},
+	})
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "answer", Arguments: map[string]any{"option": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "answer text", ptText(t, res), `{"ok":true}`)
+	testhelp.Equal(t, "answer call", c.calls[1], ptCall{Method: "Answer", Args: []any{"demo", 1}})
+
+	data, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var args map[string]any
+	if err := json.Unmarshal(data, &args); err != nil {
+		t.Fatal(err)
+	}
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "plan_load", Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "plan_load text", ptText(t, res), `{"state":"queued","approved":"7b31dfe","index":0,"phases":3,"current":"P17","reason":""}`)
+	testhelp.Equal(t, "plan_load plan", c.planLoadPlan, queue.Plan{
+		Approved: "7b31dfe",
+		Phases: []queue.Phase{
+			{ID: "P17", StopAfter: "none"},
+			{ID: "P18", StopAfter: "smoke", Caps: queue.Caps{ClaudeUSD: 12}},
+			{ID: "P19", StopAfter: "none"},
+		},
+	})
+}
+
+// TestPMToolsExample4: a project-level error comes back as one text content
+// with isError true, and the code string comes from control.Code.
+func TestPMToolsExample4(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{
+		answerErr: control.ErrNoQuestion,
+		statusErr: errors.New("disk full"),
+	}
+	cs := ptConnect(t, ctx, PMServer(c, "beta"))
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "answer", Arguments: map[string]any{"option": 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "answer IsError", res.IsError, true)
+	testhelp.Equal(t, "answer text", ptText(t, res), `no_question: no pending question`)
+	testhelp.Equal(t, "answer call", c.calls, []ptCall{{Method: "Answer", Args: []any{"beta", 1}}})
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "status IsError", res.IsError, true)
+	testhelp.Equal(t, "status text", ptText(t, res), `internal: disk full`)
+	testhelp.Equal(t, "status call", c.calls[1], ptCall{Method: "Status", Args: []any{"beta"}})
+}
+
+// TestPMToolsExample5: the no-op commands acknowledge with {"ok":true}, the
+// two nullable getters render null, and usage renders every field.
+func TestPMToolsExample5(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{
+		usageResult: control.Usage{
+			FiveHour:         22,
+			SevenDay:         60,
+			FiveHourResetsAt: 1791469200,
+			SevenDayResetsAt: 1791853200,
+			SessionCostUSD:   0.0064,
+			StretchCostUSD:   5.2609,
+			LimitsAt:         time.Date(2026, 10, 8, 13, 9, 3, 0, time.UTC),
+		},
+	}
+	cs := ptConnect(t, ctx, PMServer(c, "demo"))
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "pending"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "pending text", ptText(t, res), `{"question":null}`)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "stop_check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "stop_check text", ptText(t, res), `{"stop":null}`)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "interrupt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "interrupt text", ptText(t, res), `{"ok":true}`)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "continue"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "continue text", ptText(t, res), `{"ok":true}`)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "restart", Arguments: map[string]any{"force": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "restart text", ptText(t, res), `{"ok":true}`)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "usage"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "usage text", ptText(t, res), `{"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}`)
+
+	testhelp.Equal(t, "calls", c.calls, []ptCall{
+		{Method: "Pending", Args: []any{"demo"}},
+		{Method: "StopCheck", Args: []any{"demo"}},
+		{Method: "Interrupt", Args: []any{"demo"}},
+		{Method: "Continue", Args: []any{"demo"}},
+		{Method: "Restart", Args: []any{"demo", true}},
+		{Method: "Usage", Args: []any{"demo"}},
+	})
+}
+
+// TestPMToolsExample6: the user server lists and creates projects.
+func TestPMToolsExample6(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{
+		projects: []control.ProjectView{{
+			Name:      "alpha",
+			Language:  "ts",
+			RepoURL:   "https://github.com/o/alpha",
+			State:     "idle",
+			CreatedAt: time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC),
+		}},
+		createProjectResult: control.ProjectView{
+			Name:      "demo",
+			Language:  "go",
+			RepoURL:   "https://github.com/o/demo",
+			State:     "idle",
+			CreatedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	cs := ptConnect(t, ctx, UserServer(c))
+
+	list, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "tool names", ptNames(list), []string{"project_create", "projects_list"})
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "projects_list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "projects text", ptText(t, res), `{"projects":[{"name":"alpha","language":"ts","repo_url":"https://github.com/o/alpha","state":"idle","created_at":"2026-10-07T09:00:00Z"}]}`)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "project_create", Arguments: map[string]any{
+		"name":     "demo",
+		"language": "go",
+		"repo_url": "https://github.com/o/demo",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "create text", ptText(t, res), `{"name":"demo","language":"go","repo_url":"https://github.com/o/demo","state":"idle","created_at":"2026-10-08T15:00:00Z"}`)
+	testhelp.Equal(t, "calls", c.calls, []ptCall{
+		{Method: "Projects"},
+		{Method: "CreateProject", Args: []any{"demo", "go", "https://github.com/o/demo"}},
+	})
+}
+
+// TestPMToolsExample7: the schema rejects a string option before the fake is
+// reached, a valid option passes.
+func TestPMToolsExample7(t *testing.T) {
+	ctx := context.Background()
+	c := &ptFake{}
+	cs := ptConnect(t, ctx, PMServer(c, "demo"))
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "answer", Arguments: map[string]any{"option": "one"}})
+	if err == nil {
+		testhelp.Equal(t, "bad option IsError", res.IsError, true)
+	}
+	testhelp.Equal(t, "bad option calls", len(c.calls), 0)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "answer", Arguments: map[string]any{"option": 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "good option IsError", res.IsError, false)
+	testhelp.Equal(t, "good option text", ptText(t, res), `{"ok":true}`)
+	testhelp.Equal(t, "good option calls", c.calls, []ptCall{{Method: "Answer", Args: []any{"demo", 2}}})
+}
+```

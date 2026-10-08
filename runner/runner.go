@@ -1,0 +1,104 @@
+package runner
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Result is the outcome of running a command.
+type Result struct {
+	Stdout string
+	Stderr string
+	Code   int
+}
+
+// Runner runs a command in a directory with extra environment entries.
+type Runner interface {
+	Run(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error)
+}
+
+// Key is the lookup key for a command: name and args joined by single spaces.
+func Key(name string, args ...string) string {
+	return strings.Join(append([]string{name}, args...), " ")
+}
+
+// OS runs commands with os/exec.
+type OS struct{}
+
+// Run executes name with args in dir, with os.Environ() followed by env.
+// A non-zero exit is not an error. A command that cannot start returns
+// Code -1 and an error beginning "runner: ". A cancelled context kills the
+// process and returns ctx.Err().
+func (OS) Run(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	cmd.WaitDelay = 500 * time.Millisecond
+	cmd.Env = append(os.Environ(), env...)
+
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	res := Result{Stdout: stdout.String(), Stderr: stderr.String()}
+	if err != nil {
+		if ctx.Err() != nil {
+			res.Code = -1
+			return res, ctx.Err()
+		}
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			res.Code = exit.ExitCode()
+			return res, nil
+		}
+		res.Code = -1
+		return res, fmt.Errorf("runner: %w", err)
+	}
+	res.Code = 0
+	return res, nil
+}
+
+// Call records one Fake.Run invocation.
+type Call struct {
+	Dir  string
+	Name string
+	Args []string
+}
+
+// Fake is a scripted Runner for tests.
+type Fake struct {
+	Calls   []Call
+	Script  map[string]Result
+	Errors  map[string]string
+	Default Result
+
+	mu sync.Mutex
+}
+
+// Run records the call and returns the scripted result for its key, the
+// scripted error, or the default.
+func (f *Fake) Run(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error) {
+	call := Call{Dir: dir, Name: name, Args: append([]string(nil), args...)}
+
+	f.mu.Lock()
+	f.Calls = append(f.Calls, call)
+	script := f.Script
+	errs := f.Errors
+	def := f.Default
+	f.mu.Unlock()
+
+	key := Key(name, args...)
+	if msg, ok := errs[key]; ok {
+		return Result{Code: -1}, errors.New(msg)
+	}
+	if res, ok := script[key]; ok {
+		return res, nil
+	}
+	return def, nil
+}

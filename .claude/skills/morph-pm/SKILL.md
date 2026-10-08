@@ -127,7 +127,7 @@ one step per message, with the exact clicks, and check each step before the next
    Metadata: Read-only (forced); nothing else. Generate, copy.
 3. **The token never passes through the chat.** Never ask them to paste it to you. They put it on the VPS
    themselves with a hidden read, typed with `!` so it runs in their shell:
-   `! read -rs T && curl -fsS -X PUT -H "Authorization: Bearer $MORPH_TOKEN" --data-binary "$T" https://<host>/projects/<project>/github-token; unset T`.
+   `! read -rs T && printf '{"token":"%s"}' "$T" | curl -fsS -X PUT -H "Authorization: Bearer $MORPH_TOKEN" -H "Content-Type: application/json" --data-binary @- https://<host>/projects/<project>/github-token; unset T` (the body is JSON `{"token": …}`; smoke 2, 08.10).
    If a token appears in the conversation anyway: tell them to revoke it at once and make a new one.
 4. **Check** without the token in your context: morphd's `status` shows the repository reachable (a read of the
    default branch and a test of push access). Red → read its error to them in plain words: 404 = wrong

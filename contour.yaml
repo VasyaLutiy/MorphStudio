@@ -698,7 +698,7 @@ System:
       description: >
         Package registry in registry/: the project registry file, the per-project state file and the secret files
         (GitHub token, git credentials, session token) with their modes. Imports morphstudio/queue, os, encoding/json,
-        errors, fmt, path/filepath, regexp, sort, sync, time.
+        errors, fmt, path/filepath, regexp, slices, sort, strings, sync, time.
       language: go
       functions:
         - name: Project Registry
@@ -741,9 +741,9 @@ System:
             - given: 'base/projects.json holding the text {not json'
               when: Open
               then: '(nil, an error beginning "registry: read ")'
-            - given: 'the registry of example 1'
-              when: 'p := List(); append to p; g, _ := Get("alpha") after Add; g.Name = "changed"; Get("alpha")'
-              then: 'the registry is unchanged by writes to returned values'
+            - given: 'the registry of example 1 after Add({Name "alpha", Language "go", Dir "/p/alpha"})'
+              when: 'p := List(); p[0].Name = "changed"; p = append(p, Project{Name: "extra"}); g, _ := Get("alpha"); g.Name = "changed"; then List() and Get("alpha")'
+              then: 'List() is exactly []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha"}} and Get("alpha") returns that project, nil: writes to returned values never reach the registry'
         - name: Secret Files
           description: Secrets stored per project as files of mode 0600 that are never returned by the API.
           behavior: >
@@ -784,7 +784,7 @@ System:
       description: >
         Package gitrules in gitrules/: the git rules of a phase — what morphd checks before it starts a session and
         before it accepts phase_done — over runner.Runner, so the tests script git's answers. morphd itself never
-        commits, merges or pushes. Imports morphstudio/runner, context, fmt, os, path/filepath, strings.
+        commits, merges or pushes. Imports morphstudio/runner, context, errors, fmt, os, path/filepath, strings.
       language: go
       functions:
         - name: Phase Start Check
@@ -793,8 +793,8 @@ System:
             Declares in gitrules/start.go: `type Start struct { Mode string `json:"mode"`; Branch string `json:"branch"`; Local string `json:"local"`;
             Remote string `json:"remote"`; Reason string `json:"reason"` }` and `func StartCheck(ctx context.Context, r runner.Runner, dir string) Start`.
             Mode is one of "fresh", "resume", "diverged", "error". Commands run in dir with env nil, in this order, each
-            through r.Run; a Run error or a non-zero Code of the commands marked (!) → Mode "error", Reason "<key> failed: "
-            + strings.TrimSpace(Stderr) (or the error text):
+            through r.Run; a Run error of any command (6 and 7 included), or a non-zero Code of a command marked (!), →
+            Mode "error", Reason "<key> failed: " + strings.TrimSpace(Stderr) (or the Run error's text):
             1 (!) git fetch -q origin; 2 (!) git rev-parse --abbrev-ref HEAD → Branch (trimmed); 3 (!) git rev-parse HEAD → Local;
             4 (!) git rev-parse origin/main → Remote; 5 (!) git status --porcelain → the dirty paths (non-empty lines).
             Then: Branch != "main" → Mode "resume", Reason "on branch <branch>"; dirty paths → "resume", "dirty tree (<n> paths)";
@@ -849,7 +849,7 @@ System:
             - uses: runner
             - produces: End
           examples:
-            - given: 'dir := t.TempDir() with docs/MEASURE.md copied from tests/fixtures/git/measure.md (rows "| P16 primer-go |…" and "| P17 debt |…"); f := the fake of Phase Start Check example 1 plus "git branch --list morph/* --no-merged main": {Stdout: ""}'
+            - given: 'dir := t.TempDir() with docs/MEASURE.md copied from tests/fixtures/git/measure.md (rows "| P16 primer-go |…" and "| P17 debt |…"); f := &runner.Fake{Script: {"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git rev-parse HEAD": {Stdout: "aaa111\n"}, "git rev-parse origin/main": {Stdout: "aaa111\n"}, "git status --porcelain": {Stdout: ""}, "git branch --list morph/* --no-merged main": {Stdout: ""}}} (git fetch -q origin unscripted: the Fake''s zero Default, Code 0)'
               when: 'EndCheck(ctx, f, dir, "P17")'
               then: 'End{OK: true, Local: "aaa111", Remote: "aaa111", Problems: []string{}}; 6 calls with keys in the order of the behaviour; the fake''s Calls[5].Args == ["branch", "--list", "morph/*", "--no-merged", "main"]'
               ref: tests/fixtures/git/measure.md
@@ -878,7 +878,7 @@ System:
       description: >
         Package control in control/: the one control surface the HTTP API and the MCP server both call — the views
         the PM sees, the Control interface and its error codes. Pure. Imports morphstudio/queue, morphstudio/github,
-        morphstudio/eventlog, morphstudio/session, encoding/json, errors, net/http, time.
+        morphstudio/eventlog, morphstudio/session, context, encoding/json, errors, net/http, time.
       language: go
       dataObjects:
         - name: Status

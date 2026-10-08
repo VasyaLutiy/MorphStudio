@@ -1,0 +1,235 @@
+{
+  "version": 1,
+  "phase": "P4",
+  "parts": "decks/P4/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "bootstrap"
+  ],
+  "cards": [
+    {
+      "id": "project-registry",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./registry) || exit 1; for i in $I; do case $i in encoding/json|errors|fmt|os|path/filepath|regexp|slices|sort|strings|sync|time|morphstudio/queue) ;; *) echo \"imports: package registry imports $i (allowed: encoding/json, errors, fmt, os, path/filepath, regexp, slices, sort, strings, sync, time, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' registry/registry.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' registry/registry.go 2>&1); [ -z \"$C\" ] || { echo \"clock: registry/registry.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "secret-files",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./registry) || exit 1; for i in $I; do case $i in encoding/json|errors|fmt|os|path/filepath|regexp|slices|sort|strings|sync|time|morphstudio/queue) ;; *) echo \"imports: package registry imports $i (allowed: encoding/json, errors, fmt, os, path/filepath, regexp, slices, sort, strings, sync, time, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' registry/secrets.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' registry/secrets.go 2>&1); [ -z \"$C\" ] || { echo \"clock: registry/secrets.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "phase-start-check",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./gitrules) || exit 1; for i in $I; do case $i in context|errors|fmt|os|path/filepath|strings|morphstudio/runner) ;; *) echo \"imports: package gitrules imports $i (allowed: context, errors, fmt, os, path/filepath, strings, morphstudio/runner)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' gitrules/start.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' gitrules/start.go 2>&1); [ -z \"$C\" ] || { echo \"clock: gitrules/start.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "phase-end-check",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./gitrules) || exit 1; for i in $I; do case $i in context|errors|fmt|os|path/filepath|strings|morphstudio/runner) ;; *) echo \"imports: package gitrules imports $i (allowed: context, errors, fmt, os, path/filepath, strings, morphstudio/runner)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' gitrules/end.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' gitrules/end.go 2>&1); [ -z \"$C\" ] || { echo \"clock: gitrules/end.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "control-contract",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./control) || exit 1; for i in $I; do case $i in context|encoding/json|errors|net/http|time|morphstudio/queue|morphstudio/github|morphstudio/eventlog|morphstudio/session) ;; *) echo \"imports: package control imports $i (allowed: context, encoding/json, errors, net/http, time, morphstudio/queue, morphstudio/github, morphstudio/eventlog, morphstudio/session)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' control/control.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' control/control.go 2>&1); [ -z \"$C\" ] || { echo \"clock: control/control.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head; do C=$(gofmt -l -r \"$x -> http.NoBody\" control/control.go 2>&1); [ -z \"$C\" ] || { echo \"net: control/control.go uses $x (every HTTP call goes through the injected Do)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "project-registry-judge",
+      "files": [
+        {
+          "file": "registry/registry_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestProjectRegistryExample1",
+            "TestProjectRegistryExample2",
+            "TestProjectRegistryExample3",
+            "TestProjectRegistryExample4",
+            "TestProjectRegistryExample5",
+            "TestProjectRegistryExample6",
+            "TestProjectRegistryExample7",
+            "projects.json",
+            "state.json",
+            "zeta",
+            "alpha",
+            "https://github.com/o/zeta",
+            "/p/zeta",
+            "/p/alpha",
+            "python",
+            "Alpha",
+            "-x",
+            "registry: read ",
+            "{not json",
+            "ErrNotFound",
+            "ErrExists",
+            "ErrBadName",
+            "ErrNoState",
+            "changed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "secret-files-judge",
+      "files": [
+        {
+          "file": "registry/secrets_examples_test.go",
+          "min": 6,
+          "max": 12,
+          "new": true,
+          "lits": [
+            "TestSecretFilesExample1",
+            "TestSecretFilesExample2",
+            "TestSecretFilesExample3",
+            "TestSecretFilesExample4",
+            "TestSecretFilesExample5",
+            "TestSecretFilesExample6",
+            "demo",
+            "ghp_abc",
+            "github-token",
+            "git-credentials",
+            "session-token",
+            "https://x-access-token:ghp_abc@github.com",
+            "registry: unknown secret kind ",
+            "password",
+            "ErrNotFound",
+            "ErrNoSecret",
+            "ErrEmptySecret",
+            "ghp_new",
+            "tok-9",
+            "nope",
+            "Chmod"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-start-check-judge",
+      "files": [
+        {
+          "file": "gitrules/start_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestPhaseStartCheckExample1",
+            "TestPhaseStartCheckExample2",
+            "TestPhaseStartCheckExample3",
+            "TestPhaseStartCheckExample4",
+            "TestPhaseStartCheckExample5",
+            "TestPhaseStartCheckExample6",
+            "TestPhaseStartCheckExample7",
+            "TestPhaseStartCheckExample8",
+            "git fetch -q origin",
+            "git rev-parse --abbrev-ref HEAD",
+            "git rev-parse HEAD",
+            "git rev-parse origin/main",
+            "git status --porcelain",
+            "git merge-base --is-ancestor origin/main HEAD",
+            "git merge-base --is-ancestor HEAD origin/main",
+            "git pull -q --ff-only",
+            "aaa111",
+            "bbb222",
+            "ccc333",
+            "local ahead of origin/main",
+            "pulled to ccc333",
+            "local aaa111 and origin/main ccc333 diverged",
+            "dirty tree (2 paths)",
+            "docs/TASK_P18.md",
+            "on branch morph/20261008-083312",
+            "Could not resolve host",
+            "git fetch -q origin failed: ",
+            "executable file not found"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-end-check-judge",
+      "files": [
+        {
+          "file": "gitrules/end_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestPhaseEndCheckExample1",
+            "TestPhaseEndCheckExample2",
+            "TestPhaseEndCheckExample3",
+            "TestPhaseEndCheckExample4",
+            "TestPhaseEndCheckExample5",
+            "TestPhaseEndCheckExample6",
+            "TestPhaseEndCheckExample7",
+            "../tests/fixtures/git/measure.md",
+            "MEASURE.md",
+            "git branch --list morph/* --no-merged main",
+            "--no-merged",
+            "not pushed: HEAD bbb222, origin/main aaa111",
+            "no MEASURE row for P18",
+            "dirty tree (1 paths)",
+            "unmerged run branch morph/20261008-141116",
+            "unmerged run branch morph/20261008-152814",
+            "docs/MEASURE.md missing",
+            "on branch morph/x, not main",
+            "git fetch -q origin failed: fatal: not a git repository",
+            "P170 debt",
+            "no MEASURE row for P17"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "control-contract-judge",
+      "files": [
+        {
+          "file": "control/control_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestControlContractExample1",
+            "TestControlContractExample2",
+            "TestControlContractExample3",
+            "TestControlContractExample4",
+            "TestControlContractExample5",
+            "TestControlContractExample6",
+            "TestControlContractExample7",
+            "\"cost_usd\":1.92",
+            "\"stop\":{\"kind\":\"not_pushed\"",
+            "\"asked_at\":\"2026-10-08T13:09:08Z\"",
+            "\"stretch_cost_usd\":5.2609",
+            "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+            "7b31dfe",
+            "issue_url",
+            "unknown_project",
+            "bad_option",
+            "bad_session_token",
+            "no_session",
+            "no_question",
+            "not_busy",
+            "not_waiting",
+            "bad_input",
+            "internal",
+            "disk full",
+            "session.ErrNoQuestion",
+            "session.ErrBadOption",
+            "session.ErrNotBusy",
+            "NumMethod",
+            "1791469200"
+          ]
+        }
+      ]
+    }
+  ]
+}

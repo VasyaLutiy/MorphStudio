@@ -5,45 +5,42 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Operator order 08.10 (through the PM): smoke stop 1 is GREEN by the PM's re-run (DECISIONS 08.10 · smoke stop 1 re-run: budget $0.25, Opus, PONG, $0.0650, limits present). Resume now: work P4, then P5, P6, P7 without stops between them, then smoke stop 2 (final) — post 🧪 and stop for the PM, who runs smoke 2.** The history of the stop below stays for the record. Smoke 2 budget note: the PLAN's ≤ $0.50 holds; one Opus turn costs ≈ $0.07.
+**Next: P5** (`PLAN.md` row P5: supervisor, api — Phase Loop, Runtime Guard, HTTP Handlers, Router; 8 cards, est.
+$0.25), with no stop before it; then P6, P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs
+smoke 2; the PLAN's ≤ $0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): smoke stop 1 GREEN by
+the PM's re-run (budget $0.25, Opus, PONG, $0.0650, a rate_limit_event arrived: Limits non-nil); resume P4–P7 without
+stops between them. Running total $0.2269 of $35 executor; claude for the smokes $0.1386 of $0.55. Processor `ds`
+(maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+(`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
 
-Was: STOPPED at smoke stop 1 (after P3), RED. Next: P4 (`PLAN.md` row
-P4: registry, gitrules, control — Project Registry, Secret Files, Phase Start Check, Phase End Check, Control Contract;
-10 cards), then P5, P6, P7 and **smoke stop 2, final** (after P7). Running total $0.1825 of $35 executor; claude for the
-smokes $0.0736 of $0.55. Processor `ds` (maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude
-auto-memory is off in every phase session (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
+P4 is done (run 20261008-185347, merged): packages `registry` (registry.go, secrets.go), `gitrules` (start.go,
+end.go), `control` (control.go); 127 example tests green (P1 31 + P2 32 + P3 29 + P4 35); 10/10 written on ds, $0.0444,
+4.6 min, two retries (control-contract-judge used Code as one value; phase-end-check-judge guard: a fixture path
+literal), no fix. Prep by a fresh Opus agent: 234k tokens, 64 calls, 20 min. Record changed in P4: Start Check "a Run
+error of any command → error"; End Check example 1 inlines its fake; Registry example 7 writes into the returned values;
+import lists (registry + slices, strings; gitrules + errors; control + context). Known risks carried from P4
+(DECISIONS 08.10 · P4): Registry Add leaves a project in memory after a failed write; Open's non-decode read error is
+unwrapped; DeleteSecret of an unknown project returns nil; `registry.ErrExists` ≠ `control.ErrExists` (Code maps the
+registry one to 500 — P7's daemon must translate registry errors into control's). P3's two stand (Process: Write in the
+window between Lines() closing and the ExitStatus returns a pipe error, not ErrExited; a stdout line over 16 MiB hangs
+the exit until Kill). P2's three stand (Apply panics on a "result" with nil Result; Post panics on a nil Do — P7 must
+pass Do; Append's write error says "open"); P1's two stand (queue `Load` does not trim IDs; runner's cannot-start error
+lacks the name). `.morph/primer.md` re-generated after P4 (`morph primer --root . --write`).
 
-Smoke 1 (DECISIONS 08.10 · P3 · smoke stop 1; MEASURE row "smoke 1"): the throwaway main `/tmp/smoke-p3/main.go`
-(go.mod `replace morphstudio => /home/morph/MorphStudio`, built with `-mod=mod`) drove the live CLI 2.1.294 through
-claude, stream and session. Held: init with the given session id, one turn answering "PONG", machine "ready"/Turns 1,
-exit 0.64 s after Stop. Red: `error_max_budget_usd` — the default model claude-opus-5-5 cost $0.0736 for the first turn
-(an 8 889-token 1-hour cache write) against BudgetUSD 0.05, so Text "" and exit code 1; no rate-limit event, Limits nil.
-Not a protocol change. The operator's decision is needed: the smoke's model/budget (e.g. `Launch.Model` a cheaper model,
-or BudgetUSD ≥ 0.15), a re-run of the smoke, and whether Limits nil until a rate-limit event is acceptable for P4–P7
-(the record's status and pause rule). The session does not resume itself.
-
-P3 is done (run 20261008-181657, merged): packages `claude` (args.go, process.go), `github`, `bootstrap`; 92 example
-tests green (P1 31 + P2 32 + P3 29); 8/8 written on ds, $0.0608, 7.5 min, two retries (repo-access imported strconv;
-project-create-judge guard, three literals missing), no fix. Record changed in P3: Process group kill + Cancel, the
-Fake buffered and idempotent, example 3 rewritten; Launch Args' existing config file left 0o600; Repo Access nil do →
-"network: no Do". Two read defects carried as known risks (DECISIONS 08.10 · P3 · Process): Write in the window between
-Lines() closing and the ExitStatus returns a pipe error, not ErrExited; a stdout line over 16 MiB hangs the exit until
-Kill. P2's three known risks stand (Apply panics on a "result" with nil Result; Post panics on a nil Do — P7 must pass
-Do; Append's write error says "open"); P1's two stand (queue `Load` does not trim IDs; runner's cannot-start error lacks
-the name). `.morph/primer.md` re-generated after P3 (`morph primer --root . --write`).
-
-P1, P2 done (runs 20261008-171107, 20261008-173606). The phase dir is `decks/<PHASE>/` (upper-case id); Go probes are
-`decks/<phase>/parts/_<card>_probe_test.go`. The run script recipe: source `/home/morph/MorphProject/morph-lab/.env` in a
-subshell, export `MORPH_PROCESSOR_ds_<KEY>` from `MRPH_PROCESSOR_ds_<KEY>` (lower-case `ds`, only keys that are set),
-unset `MRPH_*`, run the binary copy under nohup with `--deadline 2400`, stdout (the Run Document) to
-/tmp/morph-<PHASE>-run.stdout.json, stderr to /tmp/morph-<PHASE>-run.log, `exit=` appended to the log.
+P1–P3 done (runs 20261008-171107, 20261008-173606, 20261008-181657). The phase dir is `decks/<PHASE>/` (upper-case
+id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The binary copy per phase: `/tmp/morph-bin-<PHASE>/` =
+`cp -r /home/morph/MorphV2/dist` + `package.json`, `node_modules` and `templates` symlinked (MorphV2 bc311aa). The run
+script recipe: source `/home/morph/MorphProject/morph-lab/.env` in a subshell, export `MORPH_PROCESSOR_ds_<KEY>` from
+`MRPH_PROCESSOR_ds_<KEY>` (lower-case `ds`, only keys that are set), unset `MRPH_*`, run the binary copy under nohup
+with `--deadline 2400`, stdout (the Run Document) to /tmp/morph-<PHASE>-run.stdout.json, stderr to
+/tmp/morph-<PHASE>-run.log, `exit=` appended to the log.
 
 P0 (the scaffold, hand data) is done: Go 1.25.14, `go.mod` `go 1.25.0` with go-sdk v1.8.0 vendored (`vendor/`
 committed), `internal/testhelp/probe.go`, `decks/tools/*` (layers by `PLAN.md` "Scaffold"; the per-card stdlib rules for
 each phase's `checks.json` `extra` are in `layers.json` `stdlib_rules`), fixtures under `tests/fixtures/`,
 `docs/deps/go-sdk.md`.
 
-Known limits carried: none open besides smoke 1 above.
+Known limits carried: none open.
 
 Lessons for the next preparations: default code targets add a test file (give a smoke cap or code-only targets); a new
 file needs `"intent": "generate"` in the map; a new code folder needs its layer in `decks/tools/layers.json`; size a
@@ -55,7 +52,8 @@ example or a probe variant for it, not only a §2.2 line; an example that refers
 inline it (the slice never holds the other); the frozen list carries every earlier phase's code; every mutant run under a
 120 s timeout; kill leftover watchers and workers of the scratch tree by process group, never by name (`pkill -x sleep`
 hits every process of the user); a judge's guard wants every example literal in its test file — say so in the judge
-instruction for long argv literals; a code card's allowed imports are its record description's list — name every one the
+instruction for long argv literals and fixture paths (P4: "../tests/fixtures/git/measure.md"); a judge instruction names
+the arity of every multi-value function it tests (P4: `Code` returns (int, string)); a code card's allowed imports are its record description's list — name every one the
 code plausibly needs (P3: strconv in github).
 
 The session rewrites this section at the end of every phase.

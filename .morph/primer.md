@@ -1,21 +1,21 @@
 # Primer: MorphStudio
 
-generated 2026-10-08T18:25:52.619Z · 368 files in the tree · no model call, no network
+generated 2026-10-08T19:00:06.133Z · 401 files in the tree · no model call, no network
 missing: docs/PLAN.md
 
 ## Tests
 
-- 92 tests in 12 test files by the go profile (counted from text, not a run)
+- 127 tests in 17 test files by the go profile (counted from text, not a run)
 
 ## Runs
 
-- archived runs: 4 (V2 4, mrph 0), 2026-10-08 → 2026-10-08
-- cards: 38 written of 38 (0 failed, 0 skipped); requests 45, answers kept 45
-- cost: $0.2678 over 4 priced runs (0 unpriced)
-- by format: V2 4 runs, 38/38 written, $0.2678; mrph 0 runs, 0/0 written, $0.0000
-- models: deepseek/deepseek-v4.1-flash (4 runs)
+- archived runs: 5 (V2 5, mrph 0), 2026-10-08 → 2026-10-08
+- cards: 48 written of 48 (0 failed, 0 skipped); requests 57, answers kept 57
+- cost: $0.3122 over 5 priced runs (0 unpriced)
+- by format: V2 5 runs, 48/48 written, $0.3122; mrph 0 runs, 0/0 written, $0.0000
+- models: deepseek/deepseek-v4.1-flash (5 runs)
 - debt rows (docs/MEASURE.md): none
-- running total (docs/MEASURE.md): "Running total: $0.1825 of $35" vs $0.2678 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
+- running total (docs/MEASURE.md): "Running total: $0.2269 of $35 executor" vs $0.3122 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
 
 ## Chronology (docs/MEASURE.md)
 
@@ -23,8 +23,18 @@ missing: docs/PLAN.md
 
 ## File ownership (git, Morph-Card trailers)
 
-- git carries 38 Morph commits: deepseek/deepseek-v4.1-flash 38
-- 38 paths written by cards, most recent first; per path its cards, newest first:
+- git carries 48 Morph commits: deepseek/deepseek-v4.1-flash 48
+- 48 paths written by cards, most recent first; per path its cards, newest first:
+- gitrules/end_examples_test.go ← phase-end-check-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- registry/secrets_examples_test.go ← secret-files-judge (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- control/control_examples_test.go ← control-contract-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- registry/secrets.go ← secret-files (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- registry/registry_examples_test.go ← project-registry-judge (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- gitrules/start_examples_test.go ← phase-start-check-judge (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- gitrules/end.go ← phase-end-check (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- registry/registry.go ← project-registry (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- gitrules/start.go ← phase-start-check (deepseek/deepseek-v4.1-flash, run 20261008-185347)
+- control/control.go ← control-contract (deepseek/deepseek-v4.1-flash, run 20261008-185347)
 - bootstrap/create_examples_test.go ← project-create-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-181657)
 - claude/process_examples_test.go ← process-judge (deepseek/deepseek-v4.1-flash, run 20261008-181657)
 - github/access_examples_test.go ← repo-access-judge (deepseek/deepseek-v4.1-flash, run 20261008-181657)
@@ -45,35 +55,25 @@ missing: docs/PLAN.md
 - queue/queue_examples_test.go ← phase-queue-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
 - stream/parse_examples_test.go ← parse-event-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
 - runner/runner_examples_test.go ← exec-runner-judge (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- stream/encode.go ← encode-lines (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- queue/queue.go ← phase-queue.r1 (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- stream/parse.go ← parse-event (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- runner/runner.go ← exec-runner (deepseek/deepseek-v4.1-flash, run 20261008-171107)
-- api/router_examples_test.go ← router-judge (deepseek/deepseek-v4.1-flash, run 20261008-083312)
-- api/router.go ← router (deepseek/deepseek-v4.1-flash, run 20261008-083312)
-- api/handlers_examples_test.go ← project-handlers-judge (deepseek/deepseek-v4.1-flash, run 20261008-083312)
-- store/file_examples_test.go ← file-store-judge (deepseek/deepseek-v4.1-flash, run 20261008-083312)
-- project/project_examples_test.go ← build-project-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-083312)
-- api/handlers.go ← project-handlers (deepseek/deepseek-v4.1-flash, run 20261008-083312)
-- … 8 more paths
+- … 18 more paths
 
 ## What is next
 
 - next phase: none open (docs/PLAN.md)
 - handoff (docs/AUTONOMY.md):
   > State at handoff
-  > **Next: P3 (`PLAN.md` row P3: claude, github, bootstrap — Launch Args, Process, Repo Access, Project Create; 8 cards),
-  > then smoke stop 1 (after P3).** After the smoke: P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the smokes are
-  > written in `PLAN.md` "Epics and phases". Running total $0.1217 of $35. Processor `ds` (maxTokens ×3 after the cut:
-  > `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+  > **Next: P5** (`PLAN.md` row P5: supervisor, api — Phase Loop, Runtime Guard, HTTP Handlers, Router; 8 cards, est.
+  > $0.25), with no stop before it; then P6, P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs
+  > smoke 2; the PLAN's ≤ $0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): smoke stop 1 GREEN by
+  > the PM's re-run (budget $0.25, Opus, PONG, $0.0650, a rate_limit_event arrived: Limits non-nil); resume P4–P7 without
 
 ## Last decisions (docs/DECISIONS.md)
 
-- 08.10 · P3 · checks · frozen adds session, eventlog, telegram (P2 code); claude's allow-list adds bytes, strings, time beyond the record's import list (== clock still rejects time.Now/time.Since); bootstrap has no os/exec; github gets == net · layers.json stdlib_rules.
-- 08.10 · P3 · mutants · 30 on a scratch reference (args 7, process 11, access 7, create 5), each under timeout 120; final round 30/30 killed at == probe, 0.41 min; no known risk carried.
-- 08.10 · P3 · run 20261008-181657 · 8/8 written on ds, $0.0608, 7.5 min, 2 retries (repo-access v1 imports strconv, outside its allowed list; project-create-judge v1 guard: three example literals missing); no failure class, no fix needed.
-- 08.10 · P3 · Process · read defect, not fixed by hand: `exited` is set after Lines() closes (after Wait), so a Write between the close of Lines() and the ExitStatus returns a pipe error, not ErrExited (§2.2: set before the close) · example 2 writes after `<-Exit()`; known risk: callers treat any Wr…
-- 08.10 · P3 · Process · read defect, not fixed by hand: a stdout line over 16 MiB stops the reader but Wait waits for it, so a child still writing blocks and Exit never arrives until Kill/cancel (§2.2: "Exit follows") · not tested; the runtime guard's Kill bounds it.
+- 08.10 · P4 · mutants · 30 on a scratch reference (registry 9, secrets 5, start 8, end 5, control 3), each under timeout 120, 30/30 killed at == probe, ≈ 0.4 min in all (one first-round kill was the mutant's own build error, re-done as a real mutation); no known risk carried.
+- 08.10 · P4 · run 20261008-185347 · 10/10 written on ds, $0.0444, 4.6 min, 2 retries (control-contract-judge v1 vet: Code used as one value; phase-end-check-judge v1 guard: literal "../tests/fixtures/git/measure.md" missing); no failure class, no fix needed.
+- 08.10 · P4 · Project Registry · read defect, not fixed by hand: Add appends to the in-memory list before the write, so a failed write leaves the project in memory (§2.2: list unchanged) · no example pins it; known risk for P7: after a failed Add a retry says ErrExists while projects.json lacks it —…
+- 08.10 · P4 · Project Registry · read defect, not fixed by hand: Open returns a read error other than not-exist unwrapped (§2.2: "registry: read <path>: …") · the record's "every error of the file system is returned as is" allows it; callers must not match on the prefix except for a decode error.
+- 08.10 · P4 · Secret Files · read defect, not fixed by hand: DeleteSecret of an unknown project returns nil (§2.2: ErrNotFound) · the record says only "missing → nil"; callers check the project first.
 
 ## Open issues (.morph/issues.json)
 

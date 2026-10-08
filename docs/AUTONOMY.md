@@ -5,32 +5,39 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Next: P6** (`PLAN.md` row P6: mcpserver — PM Tools, Session Tools, MCP Mount; 6 cards, est. $0.20), with no stop
-before it; then P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤
-$0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them.
-Running total $0.3086 of $35 executor; claude for the smokes $0.1386 of $0.55. Processor `ds` (maxTokens ×3 after the
-cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+**Next: P7** (`PLAN.md` row P7: daemon, cmd — Daemon Core, Pump, Config And Main; 6 cards, est. $0.35), with no stop
+before it; then **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤ $0.50
+holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them. Running
+total $0.4072 of $35 executor; claude for the smokes $0.1386 of $0.55; claude for debts $2.4027 (P6). Processor `ds`
+(maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
 (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
 
-P5 is done (run 20261008-193337, merged): packages `supervisor` (loop.go, guard.go), `api` (handlers.go, router.go);
-159 example tests green (P1 31 + P2 32 + P3 29 + P4 35 + P5 32); 8/8 written on ds, $0.0817, 10.2 min, two retries
-(router-judge guard: literal "405"; runtime-guard-judge `== frozen`: a stray `.morph-map.json.swp`), no fix. Prep by a
-fresh Opus agent: 297k tokens, 74 calls, 23 min. Record changed in P5: Phase Loop (a not_pushed Continue restarts the
-queue; Begin returns the queue's error; an action carries only its literal's fields; the next-phase reset and the end
-Stop's At), inlined examples in all four Functions, supervisor imports + strconv, strings. Known risks carried from P5
-(DECISIONS 08.10 · P5): Runtime Guard `Exited` prunes `Resumes` to the last hour (§2.2: never pruned); Phase Loop
-fresh StartChecked appends only a "pulled to" Reason; Begin/Continue return the queue's own error → control.Code 500
-(P7's daemon should map it); Guard example 8 tautological in the kept tests; the crash-restart "fresh" path clears the
-resume list, and the stretch total undercounts stopped-then-continued and resumed sessions (prep DECISIONS). From P4:
+P6 is done (runs 20261008-200807 and fix 20261008-201843, merged; debt paid): package `mcpserver` (pm.go, session.go,
+mount.go); 179 example tests green (P1 31 + P2 32 + P3 29 + P4 35 + P5 32 + P6 20). Run: 5/6 on ds, $0.0580, 9.3 min;
+pm-tools-judge red ×3 (data: a CallTool result assigned to a ListToolsResult variable, example 6's call list, an
+unqualified `Milestone`); one re-cut of the record wording, fix run 0/1, $0.0406 (the single-card re-cut kept the
+generation-2 overlay blanking the accepted session.go — every build failed); emergency stop → debt paid by Claude Fable
+5.1 xhigh ($2.4027, 2.8 min, first acceptance green, `morph accept` a1d948a, Morph-Debt). Prep by a fresh Opus agent:
+228k tokens, 73 calls, 17 min. The deck tool `decks/tools/guard.mjs` now lets a test file import go.mod's direct
+requirements (only the go-sdk) — the session accepted it and posted it to the operator; upstream MorphV2's template has
+the same gap. Record changed in P6: all three Functions inline their references; PM Tools text-only results, optional
+inputs, example 4 "beta", example 7 a valid second answer, example 6 the whole call list Projects() then
+CreateProject; Session Tools optional next/issue_url/numbers; MCP Mount token before project, empty token refused, JSON
+error bodies; imports errors, slices and the SDK's mcp path. Known risks from P6 (DECISIONS 08.10 · P6): a nil
+Projects() as [] is pinned by no example (mutant survived); pm.go exports `type Empty struct{}`; Session Tools tests
+miss the call-list length, the second PhaseDone call and the single Content entry. Carried for P7 from P5: Runtime Guard
+`Exited` prunes `Resumes`; Phase Loop fresh StartChecked appends only a "pulled to" Reason; Begin/Continue return the
+queue's own error → control.Code 500 (P7's daemon should map it); Guard example 8 tautological; the crash-restart
+"fresh" path clears the resume list; the stretch total undercounts stopped-then-continued and resumed sessions. From P4:
 Registry Add leaves a project in memory after a failed write; Open's non-decode read error is unwrapped; DeleteSecret of
 an unknown project returns nil; `registry.ErrExists` ≠ `control.ErrExists` (P7's daemon must translate registry errors
 into control's). P3's two stand (Process: Write between Lines() closing and the ExitStatus returns a pipe error, not
 ErrExited; a stdout line over 16 MiB hangs the exit until Kill). P2's three stand (Apply panics on a "result" with nil
 Result; Post panics on a nil Do — P7 must pass Do; Append's write error says "open"); P1's two stand (queue `Load` does
-not trim IDs; runner's cannot-start error lacks the name). `.morph/primer.md` re-generated after P5 (`morph primer
+not trim IDs; runner's cannot-start error lacks the name). `.morph/primer.md` re-generated after P6 (`morph primer
 --root . --write`).
 
-P1–P4 done (runs 20261008-171107, 20261008-173606, 20261008-181657, 20261008-185347). The phase dir is `decks/<PHASE>/`
+P1–P5 done (runs 20261008-171107, 20261008-173606, 20261008-181657, 20261008-185347, 20261008-193337). The phase dir is `decks/<PHASE>/`
 (upper-case id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The binary copy per phase:
 `/tmp/morph-bin-<PHASE>/` = `cp -r /home/morph/MorphV2/dist` + `package.json`, `node_modules` and `templates`
 symlinked (MorphV2 bc311aa). The run script recipe: source `/home/morph/MorphProject/morph-lab/.env` in a subshell,
@@ -61,7 +68,12 @@ code plausibly needs (P3: strconv in github); a judge instruction names every sh
 whose every answer is nil is tautological in the judge file — give it a contrast in the record, not only in the probe;
 probe-derived judge files in the mutant tree must not share the probes' helper names (P5: the first mutant round was all
 build errors); no editor or stray file in the tree while a run is in flight (P5: a `.morph-map.json.swp` failed a judge
-at `== frozen`).
+at `== frozen`). a re-cut of ONE card after its generation's siblings were accepted must drop the
+overlay that blanks those accepted files (P6: `Replace {"mcpserver/session.go":""}` broke every build once mount.go
+existed — check the acceptance's overlay.json and read the WHOLE stub log, not only the guard count); a judge that
+mixes two SDK calls returning different types in one example needs the instruction to name a variable per type (P6:
+ListTools vs CallTool); an example's "the fake saw X" must state the whole call list when other calls precede X; a
+test file may import only the standard library, the module and go.mod's direct requirements (guard.mjs since P6).
 
 The session rewrites this section at the end of every phase.
 

@@ -1,21 +1,21 @@
 # Primer: MorphStudio
 
-generated 2026-10-08T19:47:54.966Z · 429 files in the tree · no model call, no network
+generated 2026-10-08T20:33:39.225Z · 462 files in the tree · no model call, no network
 missing: docs/PLAN.md
 
 ## Tests
 
-- 159 tests in 21 test files by the go profile (counted from text, not a run)
+- 179 tests in 24 test files by the go profile (counted from text, not a run)
 
 ## Runs
 
-- archived runs: 6 (V2 6, mrph 0), 2026-10-08 → 2026-10-08
-- cards: 56 written of 56 (0 failed, 0 skipped); requests 67, answers kept 67
-- cost: $0.3939 over 6 priced runs (0 unpriced)
-- by format: V2 6 runs, 56/56 written, $0.3939; mrph 0 runs, 0/0 written, $0.0000
-- models: deepseek/deepseek-v4.1-flash (6 runs)
+- archived runs: 8 (V2 8, mrph 0), 2026-10-08 → 2026-10-08
+- cards: 61 written of 63 (2 failed, 0 skipped); requests 78, answers kept 78
+- cost: $0.4925 over 8 priced runs (0 unpriced)
+- by format: V2 8 runs, 61/63 written, $0.4925; mrph 0 runs, 0/0 written, $0.0000
+- models: deepseek/deepseek-v4.1-flash (8 runs)
 - debt rows (docs/MEASURE.md): none
-- running total (docs/MEASURE.md): "Running total: $0.3086 of $35 executor" vs $0.3939 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
+- running total (docs/MEASURE.md): "Running total: $0.4072 of $35 executor" vs $0.4925 archived here, difference -0.0853 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
 
 ## Chronology (docs/MEASURE.md)
 
@@ -23,8 +23,14 @@ missing: docs/PLAN.md
 
 ## File ownership (git, Morph-Card trailers)
 
-- git carries 56 Morph commits: deepseek/deepseek-v4.1-flash 56
-- 52 paths written by cards, most recent first; per path its cards, newest first:
+- git carries 62 Morph commits: claude-fable-5-1 1, deepseek/deepseek-v4.1-flash 61
+- 58 paths written by cards, most recent first; per path its cards, newest first:
+- mcpserver/pm_examples_test.go ← pm-tools-judge (claude-fable-5-1, run —)
+- mcpserver/mount_examples_test.go ← mcp-mount-judge (deepseek/deepseek-v4.1-flash, run 20261008-200807)
+- mcpserver/session_examples_test.go ← session-tools-judge (deepseek/deepseek-v4.1-flash, run 20261008-200807)
+- mcpserver/mount.go ← mcp-mount (deepseek/deepseek-v4.1-flash, run 20261008-200807)
+- mcpserver/session.go ← session-tools (deepseek/deepseek-v4.1-flash, run 20261008-200807)
+- mcpserver/pm.go ← pm-tools (deepseek/deepseek-v4.1-flash, run 20261008-200807)
 - supervisor/guard_examples_test.go ← runtime-guard-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-193337)
 - api/router_examples_test.go ← router-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-193337); router-judge (deepseek/deepseek-v4.1-flash, run 20261008-083312)
 - supervisor/guard.go ← runtime-guard (deepseek/deepseek-v4.1-flash, run 20261008-193337)
@@ -49,31 +55,25 @@ missing: docs/PLAN.md
 - bootstrap/create.go ← project-create (deepseek/deepseek-v4.1-flash, run 20261008-181657)
 - claude/process.go ← process (deepseek/deepseek-v4.1-flash, run 20261008-181657)
 - claude/args_examples_test.go ← launch-args-judge (deepseek/deepseek-v4.1-flash, run 20261008-181657)
-- github/access.go ← repo-access.r1 (deepseek/deepseek-v4.1-flash, run 20261008-181657)
-- claude/args.go ← launch-args (deepseek/deepseek-v4.1-flash, run 20261008-181657)
-- session/orders_examples_test.go ← order-queue-judge.r1 (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- session/machine_examples_test.go ← session-machine-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- session/orders.go ← order-queue (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- telegram/post_examples_test.go ← milestone-post-judge (deepseek/deepseek-v4.1-flash, run 20261008-173606)
-- … 22 more paths
+- … 28 more paths
 
 ## What is next
 
 - next phase: none open (docs/PLAN.md)
 - handoff (docs/AUTONOMY.md):
   > State at handoff
-  > **Next: P6** (`PLAN.md` row P6: mcpserver — PM Tools, Session Tools, MCP Mount; 6 cards, est. $0.20), with no stop
-  > before it; then P7 and **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤
-  > $0.50 holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them.
-  > Running total $0.3086 of $35 executor; claude for the smokes $0.1386 of $0.55. Processor `ds` (maxTokens ×3 after the
+  > **Next: P7** (`PLAN.md` row P7: daemon, cmd — Daemon Core, Pump, Config And Main; 6 cards, est. $0.35), with no stop
+  > before it; then **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤ $0.50
+  > holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them. Running
+  > total $0.4072 of $35 executor; claude for the smokes $0.1386 of $0.55; claude for debts $2.4027 (P6). Processor `ds`
 
 ## Last decisions (docs/DECISIONS.md)
 
-- 08.10 · P5 · run 20261008-193337 · 8/8 written on ds, $0.0817, 10.2 min, 2 retries (router-judge v1 guard: literal "405" missing; runtime-guard-judge v1 red only at == frozen on a stray .morph-map.json.swp left beside the map during the run, not the card's — gone after); no failure class, no fix ne…
-- 08.10 · P5 · Runtime Guard · read defect, not fixed by hand: Exited overwrites Resumes with the last hour's resumes (guard.go countResumes), so the list is pruned (§2.2: "appended, never pruned") · no example pins it; count and cap correct; known risk for P7: the saved Loop JSON loses older resumes.
-- 08.10 · P5 · Phase Loop · read defect, not fixed by hand: StartChecked fresh appends " · " + Reason only for a Reason beginning "pulled to " (§2.2: any non-empty Reason) · no example pins it; gitrules returns only "" or "pulled to …" today; latent if gitrules gains a fresh reason.
-- 08.10 · P5 · Phase Loop · known risk for P7 (code follows the record): Begin/Continue return the queue's own error (e.g. nothing to continue), which control.Code maps to 500 "internal" · P7's daemon (or a record change) should map it to a 409 sentinel; EndChecked with an empty Outcome begins phase …
-- 08.10 · P5 · Runtime Guard · example 8 (all answers nil) is tautological in the kept judge file; only the probe's contrast variant made it red at the gate · known risk: a later change that answers there is not caught by the example tests.
+- 08.10 · P6 · pm-tools-judge · fix run 20261008-201843 RED ×3 (class environment of the cut + data): the re-cut single-card deck kept the generation-2 overlay blanking mcpserver/session.go, so with mount.go accepted every build said "mount.go:49: undefined: SessionServer" (the stub check counted the…
+- 08.10 · P6 · run 20261008-200807 · 5/6 written on ds, $0.0580, ≈ 9.3 min; pm-tools-judge red ×3 (class data, see the RECORD CHANGED line of the fix); every other card first attempt.
+- 08.10 · P6 · debt · pm-tools-judge paid by Claude Fable 5.1 xhigh: $2.4027, 2.8 min, acceptance green on its first run (7 tests), `morph accept --commit` a1d948a (Morph-Debt: true) · ds lesson (the payer's paragraph): example 6 is the only example mixing ListTools and CallTool and its "ListTools; C…
+- 08.10 · P6 · PM Tools · known risk (mutant survived): projects_list rendering a nil Projects() as [] is pinned by no example (example 6's fake returns one project); a mutant `views = nil` survives the kept tests · P7 or a record example with an empty list.
+- 08.10 · P6 · read · no behaviour defect vs §2.2 (fresh read-only agent); pm.go exports `type Empty struct{}` beyond the record's declared names (unpinned); Session Tools tests do not check the call-list length (example 2), the second PhaseDone call (example 3) or a single Content entry (`stText`); …
 
 ## Open issues (.morph/issues.json)
 

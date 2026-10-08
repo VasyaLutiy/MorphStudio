@@ -179,7 +179,8 @@ System:
             "control_request" with Subtype "can_use_tool": Tool "AskUserQuestion" and ev.Question != nil → Pending =
             {ev.RequestID, *ev.Question, ev.Input, now}, State "question", one Action{Kind: "ask", Headline: the question text,
             Numbers: the options numbered from 1 and joined with " · " ("1 Option A · 2 Option B")}; any other tool → one
-            Action{Kind: "write", Line: stream.Allow(ev.RequestID, ev.Input)} and Allowed++ (the state unchanged);
+            Action{Kind: "write", Line: stream.Allow(ev.RequestID, ev.Input)} and Allowed++ (the state unchanged; an Input
+            that is absent or not valid JSON is sent as {}, so the line is never nil and claude never waits on it);
             "result" → Turns++, CostUSD = ev.Result.TotalCostUSD (it is cumulative: replaced, never added), LastResult =
             ev.Result, Pending = nil, State "ready", one Action{Kind: "turn", Headline: ev.Text, Numbers: fmt.Sprintf("%s · turns %d · $%.4f",
             Result.Subtype, Result.NumTurns, Result.TotalCostUSD)}; then, when Queue is not empty, the first text is removed
@@ -201,9 +202,9 @@ System:
               when: Apply
               then: 'State "question", Pending.RequestID "9f4ffa22-2676-4391-bfd9-bd7d16c3866c", Pending.Question.Options ["Option A", "Option B"], Pending.AskedAt 13:09:08Z, exactly one action {Kind "ask", Headline "Which option do you want: A or B?", Numbers "1 Option A · 2 Option B"}'
               ref: tests/fixtures/stream/probe.jsonl
-            - given: 'm busy; the Bash can_use_tool line of Parse Event example 7 (request_id "r-7", input {"command":"ls"})'
+            - given: 'm busy; stream.Parse of the literal line {"type":"control_request","request_id":"r-7","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_x"}} (Parse Event example 7); then the literal line {"type":"control_request","request_id":"r-8","request":{"subtype":"can_use_tool","tool_name":"Read"}} (no input)'
               when: Apply
-              then: 'State still "busy", Pending nil, Allowed 1, exactly one action {Kind "write", Line exactly {"type":"control_response","response":{"subtype":"success","request_id":"r-7","response":{"behavior":"allow","updatedInput":{"command":"ls"}}}} + "\n"}'
+              then: 'State still "busy", Pending nil, Allowed 1, exactly one action {Kind "write", Line exactly {"type":"control_response","response":{"subtype":"success","request_id":"r-7","response":{"behavior":"allow","updatedInput":{"command":"ls"}}}} + "\n"}; then Allowed 2 and exactly one action {Kind "write", Line exactly {"type":"control_response","response":{"subtype":"success","request_id":"r-8","response":{"behavior":"allow","updatedInput":{}}}} + "\n"}'
             - given: 'm busy with Queue ["second", "third"]; line 7 applied at 2026-10-08T13:10:00Z'
               when: Apply
               then: 'two actions in order: {Kind "turn", Headline "PONG", …} then {Kind "write", Line = stream.User("second")}; State "busy", TurnStartedAt 13:10:00Z, Queue ["third"]; a second result → turn + write User("third"), Queue empty; a third result → one action (turn only), State "ready"'
@@ -262,7 +263,7 @@ System:
     - name: eventlog
       description: >
         Package eventlog in eventlog/: the append-only JSONL log of one session (every line in and out, numbered) with
-        an in-memory tail the API serves by sequence number. Imports os, bufio, encoding/json, errors, fmt,
+        an in-memory tail the API serves by sequence number. Imports os, bufio, bytes, io, encoding/json, errors, fmt,
         path/filepath, strconv, sync and time; the clock is the `now` argument.
       language: go
       functions:
@@ -273,8 +274,9 @@ System:
             `type Log struct` (unexported fields), `func Open(path string) (*Log, error)`,
             `func (l *Log) Append(dir string, msg json.RawMessage, now time.Time) (Entry, error)`,
             `func (l *Log) Since(after int64, max int) []Entry`, `func (l *Log) Last() int64` and `func (l *Log) Path() string`.
-            Open creates the parent directories (0o755) and the file when missing (0o644) and reads every existing line:
-            each must decode into an Entry, else (nil, an error whose text begins "eventlog: read " + path + " line <n>: ");
+            Open creates the parent directories (0o755) and the file when missing (0o644) and reads every existing line,
+            of any length (a tool result line runs past bufio.Scanner's 64 KiB default: read with bufio.Reader.ReadBytes or
+            a Scanner given a larger Buffer): each must decode into an Entry, else (nil, an error whose text begins "eventlog: read " + path + " line <n>: ");
             Last becomes the Seq of the last line (0 for an empty file); the last 2000 entries are kept in memory. A path
             that cannot be opened → (nil, an error beginning "eventlog: open "). Append compacts msg (json.Compact; invalid
             → an error beginning "eventlog: bad msg"), builds Entry{Seq: Last()+1, T: now.UnixMilli() as a float divided by
@@ -311,6 +313,9 @@ System:
             - given: 'the log of example 1'
               when: 'Append("in", []byte(`{"a":`), now)'
               then: 'Entry{} and an error beginning "eventlog: bad msg"; Last still 0; the file still empty'
+            - given: 'the log of example 1; Append("out", []byte(`{"s":"` + strings.Repeat("a", 100000) + `"}`), 2026-10-08T13:09:05Z) (one line of 100 052 bytes in the file, the newline included); then Open(path) again'
+              when: 'Last(); Since(0, 10)'
+              then: 'Last 1; exactly one entry, Seq 1, Dir "out", Msg exactly the 100 008 bytes appended (a line over 64 KiB reads whole, no "token too long" error)'
     - name: telegram
       description: >
         Package telegram in telegram/: the milestone message format and the Bot API call. The HTTP call goes through

@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "phase": "P2",
+  "parts": "decks/P2/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "stream",
+    "runner",
+    "queue"
+  ],
+  "cards": [
+    {
+      "id": "session-machine",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./session) || exit 1; for i in $I; do case $i in encoding/json|errors|fmt|strings|time|morphstudio/stream) ;; *) echo \"imports: package session imports $i (allowed: encoding/json, errors, fmt, strings, time, morphstudio/stream)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' session/machine.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' session/machine.go 2>&1); [ -z \"$C\" ] || { echo \"clock: session/machine.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "order-queue",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./session) || exit 1; for i in $I; do case $i in encoding/json|errors|fmt|strings|time|morphstudio/stream) ;; *) echo \"imports: package session imports $i (allowed: encoding/json, errors, fmt, strings, time, morphstudio/stream)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' session/orders.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' session/orders.go 2>&1); [ -z \"$C\" ] || { echo \"clock: session/orders.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "event-log",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./eventlog) || exit 1; for i in $I; do case $i in bufio|bytes|encoding/json|errors|fmt|io|os|path/filepath|strconv|sync|time) ;; *) echo \"imports: package eventlog imports $i (allowed: bufio, bytes, encoding/json, errors, fmt, io, os, path/filepath, strconv, sync, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' eventlog/log.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' eventlog/log.go 2>&1); [ -z \"$C\" ] || { echo \"clock: eventlog/log.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "milestone-post",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./telegram) || exit 1; for i in $I; do case $i in context|errors|fmt|io|net/http|net/url|strings) ;; *) echo \"imports: package telegram imports $i (allowed: context, errors, fmt, io, net/http, net/url, strings)\"; exit 1;; esac; done\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head; do C=$(gofmt -l -r \"$x -> http.NoBody\" telegram/post.go 2>&1); [ -z \"$C\" ] || { echo \"net: telegram/post.go uses $x (every HTTP call goes through the injected Do)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "session-machine-judge",
+      "files": [
+        {
+          "file": "session/machine_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestSessionMachineExample1",
+            "TestSessionMachineExample2",
+            "TestSessionMachineExample3",
+            "TestSessionMachineExample4",
+            "TestSessionMachineExample5",
+            "TestSessionMachineExample6",
+            "TestSessionMachineExample7",
+            "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e",
+            "1791469200",
+            "0.0021784900000000004",
+            "0.005775230000000001",
+            "success · turns 1 · $0.0022",
+            "success · turns 2 · $0.0058",
+            "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+            "1 Option A · 2 Option B",
+            "r-7",
+            "r-8",
+            "error_during_execution · turns 3 · $0.0029",
+            "aborted_streaming",
+            "probe.jsonl"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "order-queue-judge",
+      "files": [
+        {
+          "file": "session/orders_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestOrderQueueExample1",
+            "TestOrderQueueExample2",
+            "TestOrderQueueExample3",
+            "TestOrderQueueExample4",
+            "TestOrderQueueExample5",
+            "TestOrderQueueExample6",
+            "TestOrderQueueExample7",
+            "smoke checked green. Resume with P12b",
+            "  third  ",
+            "option out of range: 0 of 1..2",
+            "option out of range: 3 of 1..2",
+            "ErrBadOption",
+            "ErrNoQuestion",
+            "ErrNotBusy",
+            "int-1",
+            "int-2",
+            "probe.jsonl"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "event-log-judge",
+      "files": [
+        {
+          "file": "eventlog/log_examples_test.go",
+          "min": 10,
+          "max": 16,
+          "new": true,
+          "lits": [
+            "TestEventLogExample1",
+            "TestEventLogExample2",
+            "TestEventLogExample3",
+            "TestEventLogExample4",
+            "TestEventLogExample5",
+            "TestEventLogExample6",
+            "TestEventLogExample7",
+            "TestEventLogExample8",
+            "TestEventLogExample9",
+            "TestEventLogExample10",
+            "s1.jsonl",
+            "1791464941.189",
+            "1791464942",
+            "eventlog: read ",
+            "eventlog: open ",
+            "eventlog: bad msg",
+            "2500",
+            "100000"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "milestone-post-judge",
+      "files": [
+        {
+          "file": "telegram/post_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestMilestonePostExample1",
+            "TestMilestonePostExample2",
+            "TestMilestonePostExample3",
+            "TestMilestonePostExample4",
+            "TestMilestonePostExample5",
+            "TestMilestonePostExample6",
+            "TestMilestonePostExample7",
+            "TestMilestonePostExample8",
+            "P18 started",
+            "123:ABC",
+            "9:Z",
+            "sendMessage",
+            "application/x-www-form-urlencoded",
+            "%F0%9F%9A%80",
+            "&amp;",
+            "Forbidden: bot was blocked",
+            "bot***/sendMessage"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,269 @@
+package supervisor
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/gitrules"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/stream"
+)
+
+// gdDate returns a UTC time on the fixed example month.
+func gdDate(day, h, m, s int) time.Time {
+	return time.Date(2026, 10, day, h, m, s, 0, time.UTC)
+}
+
+// gdAt returns a UTC time on 2026-10-08.
+func gdAt(h, m, s int) time.Time { return gdDate(8, h, m, s) }
+
+// gdConfig is the configuration the runtime guard examples share.
+func gdConfig() Config {
+	return Config{MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}
+}
+
+// gdQueue loads the three-phase fixture with the example caps.
+func gdQueue(t testing.TB) queue.Queue {
+	t.Helper()
+	data, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p queue.Plan
+	if err := json.Unmarshal(data, &p); err != nil {
+		t.Fatal(err)
+	}
+	q, err := queue.Load(p, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+// gdID is the session id source the examples use.
+func gdID() string { return "id-1" }
+
+// gdRunning builds the running loop of example 1.
+func gdRunning(t testing.TB) *Loop {
+	t.Helper()
+	l := New("demo", gdQueue(t))
+	if _, err := l.Begin(gdAt(15, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	l.StartChecked(gitrules.Start{Mode: "fresh"}, gdID, gdAt(15, 0, 1))
+	return l
+}
+
+// gdPaused is the paused loop example 5 produces.
+func gdPaused(t testing.TB) *Loop {
+	t.Helper()
+	l := gdRunning(t)
+	l.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}, gdAt(13, 9, 3), gdConfig())
+	return l
+}
+
+// TestRuntimeGuardExample1 covers one exit under the resume budget.
+func TestRuntimeGuardExample1(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	testhelp.Equal(t, "state", l.State, "running")
+	testhelp.Equal(t, "phase", l.Phase, "P17")
+	testhelp.Equal(t, "session", l.SessionID, "id-1")
+	testhelp.Equal(t, "phase started", l.PhaseStartedAt, gdAt(15, 0, 1))
+	testhelp.Equal(t, "last event", l.LastEventAt, gdAt(15, 0, 1))
+
+	acts := l.Exited(4, gdAt(15, 20, 0), cfg)
+	testhelp.Equal(t, "actions", acts, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 4), resuming", Numbers: "resume 1 of 3 this hour"}},
+		{Kind: "start_check", Phase: "P17"},
+	})
+	testhelp.Equal(t, "state", l.State, "starting")
+	testhelp.Equal(t, "resumes", l.Resumes, []time.Time{gdAt(15, 20, 0)})
+	testhelp.Equal(t, "session", l.SessionID, "id-1")
+}
+
+// TestRuntimeGuardExample2 covers the crash stop after too many exits.
+func TestRuntimeGuardExample2(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	l.Exited(4, gdAt(15, 20, 0), cfg)
+	l.StartChecked(gitrules.Start{Mode: "resume"}, gdID, gdAt(15, 20, 5))
+	testhelp.Equal(t, "back to running", l.State, "running")
+
+	l.Exited(4, gdAt(15, 30, 0), cfg)
+	l.StartChecked(gitrules.Start{Mode: "resume"}, gdID, gdAt(15, 30, 5))
+	l.Exited(4, gdAt(15, 40, 0), cfg)
+	l.StartChecked(gitrules.Start{Mode: "resume"}, gdID, gdAt(15, 40, 5))
+
+	acts := l.Exited(1, gdAt(15, 50, 0), cfg)
+	testhelp.Equal(t, "actions", acts, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: session keeps exiting", Numbers: "exited 3 times within an hour (last code 1)"}},
+	})
+	testhelp.Equal(t, "state", l.State, "waiting")
+	testhelp.Equal(t, "stop kind", l.Stop.Kind, "crash")
+	testhelp.Equal(t, "queue state", l.Queue.State, "stopped")
+
+	alt := gdRunning(t)
+	alt.Exited(4, gdAt(15, 20, 0), cfg)
+	alt.StartChecked(gitrules.Start{Mode: "resume"}, gdID, gdAt(15, 20, 5))
+	alt.Exited(4, gdAt(15, 30, 0), cfg)
+	alt.StartChecked(gitrules.Start{Mode: "resume"}, gdID, gdAt(15, 30, 5))
+	alt.Exited(4, gdAt(15, 40, 0), cfg)
+	alt.StartChecked(gitrules.Start{Mode: "resume"}, gdID, gdAt(15, 40, 5))
+
+	altActs := alt.Exited(1, gdAt(16, 25, 0), cfg)
+	testhelp.Equal(t, "alt actions", altActs, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 1), resuming", Numbers: "resume 3 of 3 this hour"}},
+		{Kind: "start_check", Phase: "P17"},
+	})
+}
+
+// TestRuntimeGuardExample3 covers the stretch cap stop.
+func TestRuntimeGuardExample3(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	l.StretchUSD = 28
+	l.SessionUSD = 0
+
+	testhelp.Equal(t, "under cap", l.Turn(stream.Result{TotalCostUSD: 1.5}, gdAt(15, 45, 0), cfg), []Action(nil))
+	testhelp.Equal(t, "session spend", l.SessionUSD, 1.5)
+
+	acts := l.Turn(stream.Result{TotalCostUSD: 2.25}, gdAt(16, 0, 0), cfg)
+	testhelp.Equal(t, "actions", acts, []Action{
+		{Kind: "kill"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: stretch cap", Numbers: "stretch cap $30.00 reached ($30.2500)"}},
+	})
+	testhelp.Equal(t, "state", l.State, "waiting")
+	testhelp.Equal(t, "stop kind", l.Stop.Kind, "cap")
+
+	off := gdRunning(t)
+	off.StretchUSD = 28
+	offCfg := cfg
+	offCfg.StretchUSD = 0
+	testhelp.Equal(t, "disabled", off.Turn(stream.Result{TotalCostUSD: 2.25}, gdAt(16, 0, 0), offCfg), []Action(nil))
+}
+
+// TestRuntimeGuardExample4 covers the weekly usage warning.
+func TestRuntimeGuardExample4(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+
+	acts := l.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 0.22, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}, gdAt(15, 30, 0), cfg)
+	testhelp.Equal(t, "actions", acts, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "info", Headline: "P17: weekly usage 60%", Numbers: "resets 2026-10-13T01:00:00Z"}},
+	})
+	testhelp.Equal(t, "alerted", l.Alerted, true)
+
+	testhelp.Equal(t, "once", l.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 0.22, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}, gdAt(15, 31, 0), cfg), []Action(nil))
+
+	off := gdRunning(t)
+	offCfg := cfg
+	offCfg.UsageAlertPercent = 0
+	testhelp.Equal(t, "disabled", off.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 0.22, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}, gdAt(15, 30, 0), offCfg), []Action(nil))
+	testhelp.Equal(t, "not alerted", off.Alerted, false)
+}
+
+// TestRuntimeGuardExample5 covers the pause on an exhausted window.
+func TestRuntimeGuardExample5(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+
+	acts := l.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}, gdAt(13, 9, 3), cfg)
+	testhelp.Equal(t, "actions", acts, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: usage limit, paused", Numbers: "until 2026-10-08T14:20:00Z"}},
+	})
+	testhelp.Equal(t, "state", l.State, "paused")
+	testhelp.Equal(t, "paused until", l.PausedUntil, gdAt(14, 20, 0))
+
+	both := gdRunning(t)
+	both.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 1, ResetsAt: 1791853200},
+	}, gdAt(13, 9, 3), cfg)
+	testhelp.Equal(t, "both paused until", both.PausedUntil, gdDate(13, 1, 0, 0))
+}
+
+// TestRuntimeGuardExample6 covers the resume after the pause.
+func TestRuntimeGuardExample6(t *testing.T) {
+	cfg := gdConfig()
+	l := gdPaused(t)
+	testhelp.Equal(t, "paused state", l.State, "paused")
+	testhelp.Equal(t, "paused until", l.PausedUntil, gdAt(14, 20, 0))
+
+	testhelp.Equal(t, "before reset", l.Tick(gdAt(14, 19, 59), cfg), []Action(nil))
+	acts := l.Tick(gdAt(14, 20, 0), cfg)
+	testhelp.Equal(t, "actions", acts, []Action{
+		{Kind: "write", Line: "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."},
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: resumed after the limit", Numbers: ""}},
+	})
+	testhelp.Equal(t, "state", l.State, "running")
+	testhelp.Equal(t, "last event", l.LastEventAt, gdAt(14, 20, 0))
+}
+
+// TestRuntimeGuardExample7 covers the stall nudge and the wall clock cap.
+func TestRuntimeGuardExample7(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	testhelp.Equal(t, "phase started", l.PhaseStartedAt, gdAt(15, 0, 1))
+	testhelp.Equal(t, "last event", l.LastEventAt, gdAt(15, 0, 1))
+
+	testhelp.Equal(t, "early", l.Tick(gdAt(15, 29, 0), cfg), []Action(nil))
+
+	acts := l.Tick(gdAt(15, 31, 0), cfg)
+	testhelp.Equal(t, "nudge", acts, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: no events for 30 min", Numbers: "one nudge sent"}},
+		{Kind: "write", Line: "Nothing has happened for 30 minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first."},
+	})
+	testhelp.Equal(t, "nudged", l.Nudged, true)
+
+	testhelp.Equal(t, "one nudge only", l.Tick(gdAt(16, 10, 0), cfg), []Action(nil))
+
+	l.Event(gdAt(16, 20, 0))
+	testhelp.Equal(t, "event", l.LastEventAt, gdAt(16, 20, 0))
+
+	cap := l.Tick(gdAt(18, 0, 1), cfg)
+	testhelp.Equal(t, "cap", cap, []Action{
+		{Kind: "kill"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: wall clock cap", Numbers: "wall clock cap 3 h reached"}},
+	})
+	testhelp.Equal(t, "state", l.State, "waiting")
+	testhelp.Equal(t, "stop kind", l.Stop.Kind, "cap")
+}
+
+// TestRuntimeGuardExample8 covers the inert states.
+func TestRuntimeGuardExample8(t *testing.T) {
+	cfg := gdConfig()
+	now := gdAt(15, 30, 0)
+
+	l := gdRunning(t)
+	l.State = "waiting"
+	testhelp.Equal(t, "exited", l.Exited(0, now, cfg), []Action(nil))
+	testhelp.Equal(t, "tick", l.Tick(now, cfg), []Action(nil))
+	testhelp.Equal(t, "turn", l.Turn(stream.Result{TotalCostUSD: 99}, now, cfg), []Action(nil))
+	testhelp.Equal(t, "waiting state", l.State, "waiting")
+
+	idle := New("demo", gdQueue(t))
+	testhelp.Equal(t, "idle limits", idle.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+	}, now, cfg), []Action(nil))
+	testhelp.Equal(t, "idle state", idle.State, "idle")
+}

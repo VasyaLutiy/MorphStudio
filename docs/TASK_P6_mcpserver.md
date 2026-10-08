@@ -223,4 +223,54 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
 
 ## 11. Actual
 
-Left for the run (the preparation facts are in §3, §9 and `docs/DECISIONS.md` 08.10 · P6).
+### Preparation (before the gate)
+
+- Orchestrator: Opus 5.5 agent (fresh context), 73 tool calls, 228k tokens, 17 min (measured by the session from the
+  agent's run); the preparation facts in §3, §9 and `docs/DECISIONS.md` 08.10 · P6.
+- `morph plan` exit 0 (a fresh re-cut byte-identical to the committed deck); `morph deck check` errors 0, warnings 0,
+  hazards 0; generations [1, 2, 2, 1]; the cut holds exactly the 6 phase cards.
+- Largest slice at the cut: session-tools-judge, 25 872 B of existing files.
+- Probes red per example on stubs: 20 / 20 (pm 7, session 6, mount 7); judges red at `== guard` on a one-test stub.
+- Acceptance chains: the slowest 53.4 s (mcp-mount, cold Go cache).
+- Mutants: 30 on a scratch reference (pm 16, session 7, mount 7), each under `timeout 120`, 30 / 30 killed, ≈ 1.2 min.
+- Deck tool changed: `decks/tools/guard.mjs` lets a test file import go.mod's direct requirements (only the go-sdk),
+  so the PM/Session judges can use the SDK's in-memory transports (accepted by the session; posted to the operator).
+- 0 lines of product code by hand.
+
+### Run 20261008-200807 (processor ds, binary copy /tmp/morph-bin-P6 of MorphV2 bc311aa)
+
+- 5 / 6 written; 8 requests; 99 757 input / 74 910 output tokens; $0.0580 executor; ≈ 9.3 min.
+- pm-tools-judge red ×3 at `== own`, every answer whole (finish stop): v1 assigned a CallTool result to a
+  *mcp.ListToolsResult variable (build); r1 expected example 6's call list to be [CreateProject] only (the record said
+  "the fake saw CreateProject", while projects_list was called first); r2 wrote an unqualified `Milestone` (build).
+  Class data; the code card pm-tools is right.
+- Every other card green on its first attempt.
+
+### Fix run 20261008-201843 (pm-tools-judge only, decks/P6/deck-fix.json)
+
+- One re-cut of the record wording (example 6: the whole call list Projects() then CreateProject(…); example 1's fake
+  with package-qualified control types). 0 / 1 written; 3 requests; $0.0406; ≈ 7.3 min.
+- Red ×3: the single-card re-cut kept the generation-2 overlay that blanks mcpserver/session.go, and with mount.go
+  accepted every build said "mount.go:49: undefined: SessionServer"; v1 and r2 also repeated the variable mix-up.
+  The stub check before this run counted the guard lines and missed the vet line.
+- Emergency stop by AUTONOMY "Failure" → the debt.
+
+### Debt (pm-tools-judge, Claude Fable 5.1, effort xhigh)
+
+- Debt deck decks/P6/deck-debt.json = deck-fix with the overlay of the accepted session.go emptied
+  (decks/P6/debt_overlay.py); red on the tree without the target only at its absence.
+- `morph card --md` brief + the six attempts' reasons; `claude -p --model claude-fable-5-1 --effort xhigh`: 13 turns,
+  $2.4027, 2.8 min, acceptance green on its first run, 7 tests; `morph accept --commit` green → a1d948a with
+  `Morph-Debt: true`.
+- Mutations of pm.go against the new tests: error result not IsError killed; Restart force dropped killed; a nil
+  project list not rendered as [] survived (no example pins a nil list; known risk); one build-only mutant not counted.
+
+### Verify on the run branch
+
+- `git status --short` empty; gofmt, `go vet ./...`, `go build ./...` clean; `go test -count=1 ./...` green, 179
+  example tests (P1 31 + P2 32 + P3 29 + P4 35 + P5 32 + P6 20).
+- Read against §2.2 and the record (a fresh read-only agent, 76k tokens/12 calls/1 min): no behaviour defect. pm.go
+  exports `type Empty struct{}` beyond the record's declared names (unpinned). Test weaknesses: Session Tools 2 does not
+  check the call-list length; Session Tools 3 does not pin the second PhaseDone call; `stText` does not check one
+  Content entry; tool names compared in the SDK's order (stricter than "sorted"); the empty expected token, a
+  lower-case "bearer", a session token on an unknown project and a wrong-case kind are pinned by probes only.

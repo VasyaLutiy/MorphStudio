@@ -5,37 +5,40 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Next: P7** (`PLAN.md` row P7: daemon, cmd — Daemon Core, Pump, Config And Main; 6 cards, est. $0.35), with no stop
-before it; then **smoke stop 2, final** (after P7: post 🧪 and stop for the PM, who runs smoke 2; the PLAN's ≤ $0.50
-holds, one Opus turn ≈ $0.07). Operator order 08.10 (through the PM): resume P4–P7 without stops between them. Running
-total $0.4072 of $35 executor; claude for the smokes $0.1386 of $0.55; claude for debts $2.4027 (P6). Processor `ds`
-(maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+**Next: smoke stop 2, final** (PLAN "Smoke stop 2, final": the PM on the VPS over HTTP and MCP, ≤ $0.50 of claude,
+of which $0.1386 is spent on smoke 1). No phase remains after it: the session posted 🧪, touched
+`~/.morph-wait-operator` and stopped; the PM runs the smoke and the operator restarts the session after a check (a
+green smoke → `end` 🎉 and the stretch closes; a red one → a DECISIONS line and an issue labelled for the Component).
+Running total $0.5473 of $35 executor; claude for the smokes $0.1386 of $0.55; claude for debts $2.4027 (P6).
+Processor `ds` (maxTokens ×3 after the cut); fallback `glm53`. Claude auto-memory is off in every phase session
 (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
 
-P6 is done (runs 20261008-200807 and fix 20261008-201843, merged; debt paid): package `mcpserver` (pm.go, session.go,
-mount.go); 179 example tests green (P1 31 + P2 32 + P3 29 + P4 35 + P5 32 + P6 20). Run: 5/6 on ds, $0.0580, 9.3 min;
-pm-tools-judge red ×3 (data: a CallTool result assigned to a ListToolsResult variable, example 6's call list, an
-unqualified `Milestone`); one re-cut of the record wording, fix run 0/1, $0.0406 (the single-card re-cut kept the
-generation-2 overlay blanking the accepted session.go — every build failed); emergency stop → debt paid by Claude Fable
-5.1 xhigh ($2.4027, 2.8 min, first acceptance green, `morph accept` a1d948a, Morph-Debt). Prep by a fresh Opus agent:
-228k tokens, 73 calls, 17 min. The deck tool `decks/tools/guard.mjs` now lets a test file import go.mod's direct
-requirements (only the go-sdk) — the session accepted it and posted it to the operator; upstream MorphV2's template has
-the same gap. Record changed in P6: all three Functions inline their references; PM Tools text-only results, optional
-inputs, example 4 "beta", example 7 a valid second answer, example 6 the whole call list Projects() then
-CreateProject; Session Tools optional next/issue_url/numbers; MCP Mount token before project, empty token refused, JSON
-error bodies; imports errors, slices and the SDK's mcp path. Known risks from P6 (DECISIONS 08.10 · P6): a nil
-Projects() as [] is pinned by no example (mutant survived); pm.go exports `type Empty struct{}`; Session Tools tests
-miss the call-list length, the second PhaseDone call and the single Content entry. Carried for P7 from P5: Runtime Guard
-`Exited` prunes `Resumes`; Phase Loop fresh StartChecked appends only a "pulled to" Reason; Begin/Continue return the
-queue's own error → control.Code 500 (P7's daemon should map it); Guard example 8 tautological; the crash-restart
-"fresh" path clears the resume list; the stretch total undercounts stopped-then-continued and resumed sessions. From P4:
-Registry Add leaves a project in memory after a failed write; Open's non-decode read error is unwrapped; DeleteSecret of
-an unknown project returns nil; `registry.ErrExists` ≠ `control.ErrExists` (P7's daemon must translate registry errors
-into control's). P3's two stand (Process: Write between Lines() closing and the ExitStatus returns a pipe error, not
-ErrExited; a stdout line over 16 MiB hangs the exit until Kill). P2's three stand (Apply panics on a "result" with nil
-Result; Post panics on a nil Do — P7 must pass Do; Append's write error says "open"); P1's two stand (queue `Load` does
-not trim IDs; runner's cannot-start error lacks the name). `.morph/primer.md` re-generated after P6 (`morph primer
---root . --write`).
+P7 is done (run 20261008-211009, merged 3719ec7): packages `daemon` (daemon.go, pump.go) and `cmd/morphd` (config.go,
+main.go); 201 example tests green (P1 31 + P2 32 + P3 29 + P4 35 + P5 32 + P6 20 + P7 22), race ×3 green on daemon and
+cmd. Run: 6/6 on ds, $0.1401, 22.7 min, 2 retries (config-and-main `== listen`, daemon-core-judge vet/gofmt), 0 burned.
+Prep by a fresh Opus agent: 360k tokens, 97 calls, 29 min; record changed (DECISIONS 08.10 · P7 "RECORD CHANGED":
+startPump set by pump.go's init, one daemon mutex, the pump's line handling under it, the MCP path `morphd-mcp.json`,
+inlined examples with varied constants, Daemon Core example 10 CreateProject → control sentinels, Continue's queue error
+→ ErrNotWaiting, main passes `http.DefaultClient.Do`); `.gitignore` gains `/morphd`. **Smoke-2 risks for the PM**
+(DECISIONS 08.10 · P7, TASK_P7 §11): a failing Spawn (wrong `MORPHD_CLAUDE_BIN`) or a claude dying at once respawns
+without bound (Exited → start check "fresh" → spawn; a Spawn error recurses under d.mu to a stack overflow) — check the
+claude binary first; "POST order while idle" may get 409 once S1's `phase_done` ended the session — order before
+phase_done or give S1 two turns; a resumed session gets no first line (waits for the 30-min nudge); morphd listens on
+127.0.0.1 only, so the laptop steps need the reverse proxy. Read defects (none pinned): PlanLoad drops Begin's error;
+a spawn failing after its kill leaves the dead process current (its exit counted twice); Usage gives StretchCostUSD
+without a machine; the pumps map is never pruned. Mutant survivors: PlanLoad with Caps hard-coded {30, 3, 5}; an old
+process's lines applied to the new machine; Wait returning at once. `.morph/primer.md` re-generated after P7.
+
+P6 is done (runs 20261008-200807, fix 20261008-201843, debt a1d948a by Claude Fable 5.1 xhigh $2.4027): package
+`mcpserver`. Its known risks: a nil Projects() as [] is pinned by no example; pm.go exports `type Empty struct{}`;
+Session Tools tests miss the call-list length, the second PhaseDone call and the single Content entry. Carried from P5:
+Runtime Guard `Exited` prunes `Resumes`; Phase Loop fresh StartChecked appends only a "pulled to" Reason; Guard example
+8 tautological; the crash-restart "fresh" path clears the resume list; the stretch total undercounts
+stopped-then-continued and resumed sessions. From P4: Registry Add leaves a project in memory after a failed write;
+Open's non-decode read error is unwrapped; DeleteSecret of an unknown project returns nil. P3's two stand (Process:
+Write between Lines() closing and the ExitStatus returns a pipe error, not ErrExited; a stdout line over 16 MiB hangs
+the exit until Kill). P2's two stand (Apply panics on a "result" with nil Result; Append's write error says "open");
+P1's two stand (queue `Load` does not trim IDs; runner's cannot-start error lacks the name).
 
 P1–P5 done (runs 20261008-171107, 20261008-173606, 20261008-181657, 20261008-185347, 20261008-193337). The phase dir is `decks/<PHASE>/`
 (upper-case id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The binary copy per phase:

@@ -221,7 +221,8 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
 
 ### Preparation (before the gate)
 
-- Orchestrator: Opus 5.5 agent (fresh context), ≈ 55 tool calls, ≈ 300k tokens, ≈ 25 min.
+- Orchestrator: Opus 5.5 agent (fresh context), 74 tool calls, 297k tokens, 23 min (measured by the session from the
+  agent's run).
 - `morph plan` exit 0; `morph deck check` errors 0, warnings 0, hazards 0; generations [2, 4, 2]; the cut holds exactly
   the 8 phase cards.
 - Largest slice at the cut: runtime-guard-judge, 22 662 B of existing files (≈ 32 KB with the written files).
@@ -241,3 +242,29 @@ guard rejections, lines by hand, max slice bytes, minutes, $.
   (the running loop inlined), HTTP Handlers examples 1, 6 and Router examples 1, 3 (literals inlined), supervisor's
   import list. Map: 3 budgets, 4 judge instructions.
 - 0 lines of product code by hand (the reference and the stubs lived only in a scratch worktree, removed).
+
+### Run 20261008-193337 (processor ds, binary copy /tmp/morph-bin-P5 of MorphV2 bc311aa)
+
+- 8 / 8 written, 0 burned; 10 requests; 104 160 input / 112 727 output tokens; $0.0817 executor; 613 s (10.2 min).
+- Attempts: router-judge 2 (v1 rejected at `== guard`: "does not mention the example literal \"405\""; r1 green);
+  runtime-guard-judge 2 (v1 green through `== own` and `== full`, red at `== frozen`: "files left in the tree:
+  .morph-map.json.swp" — a stray editor swap file beside morph-map.json during the run, gone afterwards, not the
+  card's; r1 green); every other card 1. Every finish reason `stop`. No failure class, no fix needed.
+- Judges: 4 / 4 green at `== own` on the accepted code; judge defects 0; guard rejections 1 (above); neighbour-red 0.
+- Verify on the run branch: `git status --short` empty; gofmt, `go vet ./...`, `go build ./...` clean;
+  `go test -count=1 ./...` green, 159 example tests (P1 31 + P2 32 + P3 29 + P4 35 + P5 32); `go test -race ./supervisor
+  ./api` green.
+- Read against §2.2 and the record (a fresh read-only agent, 118k tokens/17 calls/3 min): every Function follows the
+  record's error texts, status codes, body key order and action field sets. Two §2.2 gaps no example pins came out
+  otherwise, recorded as known risks, not fixed by hand:
+  1. Runtime Guard: `Exited` overwrites `Resumes` with the resumes of the last hour (supervisor/guard.go
+     `countResumes`), so the list is pruned (§2.2: "appended, never pruned"); the count and the cap are right, the saved
+     Loop JSON keeps fewer entries.
+  2. Phase Loop: `StartChecked` in fresh mode appends " · " + Reason only when Reason begins with "pulled to "
+     (supervisor/loop.go), not for any non-empty Reason (§2.2); gitrules returns only "" or "pulled to …" today.
+- Judge tests: all 32 examples present, one test each in record order. Runtime Guard example 8 stays tautological in
+  the kept test file (its contrast variant lived only in the probe).
+- Record-level risks for P7 (the code follows the record): Begin/Continue return the queue's own error, which
+  control.Code maps to 500 "internal" (a Continue after the plan ended looks like a server fault — P7 or a later record
+  change should map it to 409); EndChecked with an empty Outcome begins a next phase "" without checking Next
+  (unreachable while the loop keeps the queue running).

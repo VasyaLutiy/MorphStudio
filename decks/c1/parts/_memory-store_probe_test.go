@@ -76,7 +76,7 @@ func TestProbeMemoryStoreExample5(t *testing.T) {
 	g, _ := m.Get("a")
 	g.Name = "changed"
 	g2, _ := m.Get("a")
-	testhelp.Equal(t, "Get(a).Name after changing copies", g2.Name, "")
+	testhelp.Equal(t, "Get(a) after changing copies", g2, project.Project{ID: "a", Slug: "alpha", CreatedAt: probeAt(9, 0)})
 }
 
 func TestProbeMemoryStoreExample6(t *testing.T) {

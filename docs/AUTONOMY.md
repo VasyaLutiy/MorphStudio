@@ -5,18 +5,24 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Next: P2 (`PLAN.md` row P2: session, eventlog, telegram — Session Machine, Order Queue, Event Log, Milestone Post;
-8 cards).** After it: P3 and **smoke stop 1** (after P3), P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the
-smokes are written in `PLAN.md` "Epics and phases". Running total $0.0495 of $35. Processor `ds` (maxTokens ×3 after the
-cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+**Next: P3 (`PLAN.md` row P3: claude, github, bootstrap — Launch Args, Process, Repo Access, Project Create; 8 cards),
+then smoke stop 1 (after P3).** After the smoke: P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the smokes are
+written in `PLAN.md` "Epics and phases". Running total $0.1217 of $35. Processor `ds` (maxTokens ×3 after the cut:
+`scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
 (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`; operator 08.10, "100%").
 
-P1 is done (run 20261008-171107, merged): packages `stream` (parse.go, encode.go), `runner`, `queue`, 31 example tests
-green; 8/8 written on ds, $0.0495, 5.3 min, one retry (phase-queue build). The phase dir is `decks/P1/` (upper-case
-phase id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go` (the name `morph plan` reads), not
-`<card>.probe.*`. Two read defects carried as known risks (DECISIONS 08.10 · P1): queue `Load` does not trim IDs;
-runner's cannot-start error lacks the name. `.morph/primer.md` was re-generated after P1
-(`morph primer --root .` prints JSON; its `markdown` field is the file).
+P2 is done (run 20261008-173606, merged): packages `session` (machine.go, orders.go), `eventlog`, `telegram`; 63 example
+tests green (P1 31 + P2 32); 8/8 written on ds, $0.0722, 10.3 min, two retries (milestone-post unclosed fence;
+order-queue-judge guard, a whitespace literal missing), no fix. Record changed in P2: Session Machine example 4
+(inlined lines, input-less allow → `{}`), Event Log example 10 (lines of any length). Three read defects carried as
+known risks (DECISIONS 08.10 · P2): Apply panics on a "result" with nil Result; Post panics on a nil Do (P7 must pass
+Do); Append's write error says "open". P1's two known risks stand (queue `Load` does not trim IDs; runner's
+cannot-start error lacks the name). `.morph/primer.md` re-generated after P2.
+
+P1 is done (run 20261008-171107): packages `stream`, `runner`, `queue`. The phase dir is `decks/<PHASE>/` (upper-case
+id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go`. The run script recipe: source
+`/home/morph/MorphProject/morph-lab/.env` in a subshell, export `MORPH_PROCESSOR_ds_<KEY>` from `MRPH_PROCESSOR_ds_<KEY>`
+(lower-case `ds`), unset `MRPH_*`, run the binary copy under nohup, stdout to /tmp, `exit=` appended to the log.
 
 P0 (the scaffold, hand data) is done: Go 1.25.14, `go.mod` `go 1.25.0` with go-sdk v1.8.0 vendored (`vendor/`
 committed), `internal/testhelp/probe.go`, `decks/tools/*` (layers by `PLAN.md` "Scaffold"; the per-card stdlib rules for
@@ -24,16 +30,17 @@ each phase's `checks.json` `extra` are in `layers.json` `stdlib_rules`), fixture
 `docs/deps/go-sdk.md`.
 
 Known limits carried: none open. (Q7 settled in the record by 98b1527: bootstrap · Project Create runs
-`morph init --root <dir> --name <n> --language <l> [--module <m>]`, the binary at MorphV2 bc311aa refuses a positional
-`<dir>`.)
+`morph init --root <dir> --name <n> --language <l> [--module <m>]`.)
 
 Lessons for the next preparations: default code targets add a test file (give a smoke cap or code-only targets); a new
 file needs `"intent": "generate"` in the map; a new code folder needs its layer in `decks/tools/layers.json`; size a
 judge from its expected answer (≥ 28 000 for a ~20 KB answer, before any processor factor); vary every constant the code
-must not hard-code across the examples (P1 found two: Fake's Default, Phase Queue's defaults); measure any timing an
-example promises on the real shell before the cut (P1: `sh -c sleep` kept the pipes open 5 s without `WaitDelay`); a
-§2.2 gap no example pins is not enforced — when it matters, add a record example or a probe variant for it; every mutant
-run under a 120 s timeout; kill leftover watchers and workers of the scratch tree.
+must not hard-code across the examples; measure any timing an example promises on the real shell before the cut; a
+§2.2 gap no example pins is not enforced — P1 and P2 each left 2–3 such defects; when a gap matters (a panic, an error
+prefix a caller reads), add a record example or a probe variant for it, not only a §2.2 line; an example that refers
+to another Function's example must inline it (the slice never holds the other); the frozen list carries every earlier
+phase's code; every mutant run under a 120 s timeout; kill leftover watchers and workers of the scratch tree. P3 ends
+with smoke stop 1: after the merge, run the smoke as `PLAN.md` writes it, post 🧪 and stop for the operator.
 
 The session rewrites this section at the end of every phase.
 

@@ -1,0 +1,24 @@
+# Decisions — Morph Studio
+
+Format: date · topic · decision · why (the operator's words).
+
+- 08.10 · isolation (§7.1) · one user = one Hetzner VPS, hourly, hot start from a snapshot · "решаем пока просто"; no containers on a shared box.
+- 08.10 · subscription (§7.2) · measured on the pilot with colleagues · operator 07.10.
+- 08.10 · first goal · replace the PM's ssh + tmux flow with a Go backend on the VPS that drives the claude CLI; built on the Morph-written Go skeleton (github.com/VasyaLutiy/MorphStudio, P15L gocrud) · "сделать это профессионально на Golang".
+- 08.10 · stack · Go (Morph go profile, P15), stdlib first · supersedes the sketch's Node/TS studio-api.
+- 08.10 · PM access · a remote MCP server in Go over the same morphd API, in v1 (last phase); the PM calls status/order/usage as tools, no ssh · operator: "первое что мне пришло на ум".
+- 08.10 · MCP implementation · SUPERSEDED by the line below. Was: stdlib only, JSON-RPC over Streamable HTTP, the subset initialize / tools/list / tools/call · the Morph go profile builds with GOPROXY=off and stdlib modules only (P15), a foreign import fails the build.
+- 08.10 · Claude auto-memory in VPS phase sessions · off, 100% · operator; the repo (AUTONOMY, DECISIONS, MEASURE, primer) is the only context a phase session gets.
+- 08.10 · default caps per phase · Claude $30 list price, 3 h wall clock; adjust from MEASURE after the first phases · operator "да".
+- 08.10 · who drives the phase queue · the morph-pm on the vibe coder's laptop, connected to morphd through the remote MCP (operator); PM proposal how: see START "Session per phase" · operator approved 08.10: PM plan_load of the whole queue after the approval, morphd runs between stops, waits for the PM at stops (continue).
+- 08.10 · not built in v1 · web wizard U0–U4, Hetzner VPS/snapshot provisioning, multi-user (one morphd = one user = one VPS), billing, any browser UI (HTTP API and MCP only) · operator approve.
+- 08.10 · API protection · token in a header; Caddy in front terminates TLS; morphd listens on localhost only · operator approve.
+- 08.10 · Telegram · morphd sends milestones itself through the Bot API (token from .env); tools/tg.sh is dropped · operator "ДА".
+- 08.10 · scenarios · 1–5 of START approved as v1; extensions later · operator.
+- 08.10 · architect agent · Claude Fable (claude-fable-5-1), effort high, NOT xhigh · operator; set in .claude/agents/morph-architect.md.
+- 08.10 · projects · one user may have many projects; one project = one folder `~/projects/<name>/` with its own git repo; morphd keeps a project registry; every API/MCP call carries `project`; per project: queue, state, event log, caps, session history; TG lines prefixed `[<project>]`; one PM session per project (`.morph-pm.json` names it) · operator.
+- 08.10 · concurrency · one active session per VPS for now; the design must allow parallel runs later (a max-parallel setting, default 1) · operator.
+- 08.10 · project repo (§7.4) · the user's GitHub; a fine-grained PAT with limited scope · operator. PM proposal for the scope: the user creates the empty repo, the PAT covers only that repo: Contents RW, Issues RW (AUTONOMY's debt issues), Metadata R; a fine-grained PAT limited to selected repos cannot create repos, so `project_create` takes the repo URL.
+- 08.10 · project binding · the MCP endpoint carries the project: laptop folder `.mcp.json` → `/mcp/<project>` (tools without a project argument); user-level `/mcp` only projects_list/project_create; each VPS session gets `/mcp/<project>/session` with its own token via `--mcp-config`; HTTP API `/projects/{project}/…` · operator approve.
+- 08.10 · GitHub access · the user creates the empty repo; a fine-grained PAT for that repo only: Contents RW, Issues RW, Metadata R; the token reaches morphd by `PUT /projects/{p}/github-token` from the user's own shell (hidden read), never through the chat or an MCP argument; morph-pm skill §3 "Connecting the operator's GitHub repository" walks a newcomer through it · operator approve + order to add it to the skill.
+- 08.10 · MCP implementation · the official Go MCP SDK; MorphV2 P19 (issue #10, P19a/P19b merged, smokes green: Go vendored module offline on ds) — dependencies are declared in the record (`System.dependencies`, `Component.uses`); the architect declares the module, P0 vendors it into vendor/, its API digest goes into the slice · operator + Morph developer.

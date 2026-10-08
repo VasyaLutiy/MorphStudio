@@ -1,0 +1,231 @@
+package api
+
+import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+	"morphstudio/project"
+	"morphstudio/store"
+)
+
+func serve(h func(http.ResponseWriter, *http.Request), method, target, id, contentType, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	if id != "" {
+		req.SetPathValue("id", id)
+	}
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	return rec
+}
+
+func exampleNow() time.Time {
+	return time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
+}
+
+func newExampleHandlers() Handlers {
+	return Handlers{
+		Store: store.NewMem(),
+		Now:   exampleNow,
+		NewID: func() string { return "p-1" },
+	}
+}
+
+// failingStore is a store whose every method fails with the same error.
+type failingStore struct{}
+
+func (failingStore) List() ([]project.Project, error) {
+	return nil, errors.New("disk full")
+}
+func (failingStore) Get(string) (project.Project, error) {
+	return project.Project{}, errors.New("disk full")
+}
+func (failingStore) Create(project.Project) error { return errors.New("disk full") }
+func (failingStore) Update(project.Project) error { return errors.New("disk full") }
+func (failingStore) Delete(string) error          { return errors.New("disk full") }
+
+func TestProjectHandlersExample1(t *testing.T) {
+	h := newExampleHandlers()
+
+	rec := serve(h.List, "GET", "/v1/projects", "", "", "")
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "content type", rec.Header().Get("Content-Type"), "application/json")
+	testhelp.Equal(t, "body", rec.Body.String(), `{"items":[]}`+"\n")
+}
+
+func TestProjectHandlersExample2(t *testing.T) {
+	h := newExampleHandlers()
+
+	rec := serve(h.Create, "POST", "/v1/projects", "", "application/json; charset=utf-8", `{"name":" Alpha ","slug":"alpha"}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusCreated)
+	testhelp.Equal(t, "location", rec.Header().Get("Location"), "/v1/projects/p-1")
+	testhelp.Equal(t, "content type", rec.Header().Get("Content-Type"), "application/json")
+	want := `{"id":"p-1","name":"Alpha","slug":"alpha","description":"","status":"draft","createdAt":"2026-10-08T09:00:00Z","updatedAt":"2026-10-08T09:00:00Z"}` + "\n"
+	testhelp.Equal(t, "body", rec.Body.String(), want)
+
+	got, _ := h.Store.Get("p-1")
+	testhelp.Equal(t, "stored project", got, project.Project{
+		ID:          "p-1",
+		Name:        "Alpha",
+		Slug:        "alpha",
+		Description: "",
+		Status:      "draft",
+		CreatedAt:   exampleNow(),
+		UpdatedAt:   exampleNow(),
+	})
+}
+
+func TestProjectHandlersExample3(t *testing.T) {
+	h := newExampleHandlers()
+	body := `{"name":"a","slug":"a"}`
+
+	for _, ct := range []string{"text/plain", "", "application/xml"} {
+		rec := serve(h.Create, "POST", "/v1/projects", "", ct, body)
+		testhelp.Equal(t, "status", rec.Code, http.StatusUnsupportedMediaType)
+		testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"unsupported_media_type"}}`+"\n")
+	}
+
+	rec := serve(h.List, "GET", "/v1/projects", "", "", "")
+	testhelp.Equal(t, "store stays empty", rec.Body.String(), `{"items":[]}`+"\n")
+}
+
+func TestProjectHandlersExample4(t *testing.T) {
+	h := newExampleHandlers()
+
+	badBodies := []string{
+		`{"name":`,
+		`{"name":"a","slug":"a","owner":"x"}`,
+		`{"name":"a","slug":"a"} {}`,
+		"",
+		`{"name":"a","slug":"a","description":"` + strings.Repeat("x", 1048537) + `"}`,
+	}
+	for _, body := range badBodies {
+		rec := serve(h.Create, "POST", "/v1/projects", "", "application/json", body)
+		testhelp.Equal(t, "status", rec.Code, http.StatusBadRequest)
+		testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"bad_json"}}`+"\n")
+	}
+
+	okBody := `{"name":"a","slug":"a","description":"` + strings.Repeat("x", 1048536) + `"}`
+	rec := serve(h.Create, "POST", "/v1/projects", "", "application/json", okBody)
+	testhelp.Equal(t, "status", rec.Code, http.StatusUnprocessableEntity)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"validation","fields":{"description":"too long"}}}`+"\n")
+}
+
+func TestProjectHandlersExample5(t *testing.T) {
+	mem := store.NewMem()
+	if err := mem.Create(project.Project{ID: "p-0", Slug: "taken"}); err != nil {
+		t.Fatal(err)
+	}
+	h := Handlers{
+		Store: mem,
+		Now:   func() time.Time { return time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC) },
+		NewID: func() string { return "x9" },
+	}
+
+	rec := serve(h.Create, "POST", "/v1/projects", "", "application/json", `{"name":"","slug":"Bad Slug","status":"x"}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusUnprocessableEntity)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"validation","fields":{"name":"required","slug":"invalid","status":"invalid"}}}`+"\n")
+
+	rec = serve(h.Create, "POST", "/v1/projects", "", "application/json", `{"name":"N","slug":"taken"}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusConflict)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"slug_taken"}}`+"\n")
+}
+
+func TestProjectHandlersExample6(t *testing.T) {
+	h := newExampleHandlers()
+	serve(h.Create, "POST", "/v1/projects", "", "application/json", `{"name":" Alpha ","slug":"alpha"}`)
+
+	rec := serve(h.Get, "GET", "/v1/projects/p-1", "p-1", "", "")
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"id":"p-1","name":"Alpha","slug":"alpha","description":"","status":"draft","createdAt":"2026-10-08T09:00:00Z","updatedAt":"2026-10-08T09:00:00Z"}`+"\n")
+
+	rec = serve(h.Get, "GET", "/v1/projects/nope", "nope", "", "")
+	testhelp.Equal(t, "status", rec.Code, http.StatusNotFound)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"not_found"}}`+"\n")
+}
+
+func TestProjectHandlersExample7(t *testing.T) {
+	h := newExampleHandlers()
+	serve(h.Create, "POST", "/v1/projects", "", "application/json", `{"name":" Alpha ","slug":"alpha"}`)
+	if err := h.Store.Create(project.Project{
+		ID:        "p-2",
+		Slug:      "beta",
+		CreatedAt: time.Date(2026, 10, 8, 9, 30, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h.Now = func() time.Time { return time.Date(2026, 10, 9, 10, 30, 0, 0, time.UTC) }
+
+	rec := serve(h.Update, "PUT", "/v1/projects/p-1", "p-1", "application/json", `{"name":"Alpha 2","slug":"alpha-2","description":"d","status":"active"}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"id":"p-1","name":"Alpha 2","slug":"alpha-2","description":"d","status":"active","createdAt":"2026-10-08T09:00:00Z","updatedAt":"2026-10-09T10:30:00Z"}`+"\n")
+
+	rec = serve(h.Update, "PUT", "/v1/projects/zz", "zz", "application/json", `{"name":""}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusNotFound)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"not_found"}}`+"\n")
+
+	rec = serve(h.Update, "PUT", "/v1/projects/zz", "zz", "application/json", `{"name":`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusBadRequest)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"bad_json"}}`+"\n")
+
+	rec = serve(h.Update, "PUT", "/v1/projects/p-1", "p-1", "application/json", `{"name":"X","slug":"beta"}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusConflict)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"slug_taken"}}`+"\n")
+
+	rec = serve(h.Update, "PUT", "/v1/projects/p-1", "p-1", "application/json", `{"name":"Y","slug":"alpha-2"}`)
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"id":"p-1","name":"Y","slug":"alpha-2","description":"","status":"draft","createdAt":"2026-10-08T09:00:00Z","updatedAt":"2026-10-09T10:30:00Z"}`+"\n")
+}
+
+func TestProjectHandlersExample8(t *testing.T) {
+	h := newExampleHandlers()
+	serve(h.Create, "POST", "/v1/projects", "", "application/json", `{"name":" Alpha ","slug":"alpha"}`)
+
+	rec := serve(h.Delete, "DELETE", "/v1/projects/p-1", "p-1", "", "")
+	testhelp.Equal(t, "status", rec.Code, http.StatusNoContent)
+	testhelp.Equal(t, "body", rec.Body.String(), "")
+	testhelp.Equal(t, "content type", rec.Header().Get("Content-Type"), "")
+
+	_, err := h.Store.Get("p-1")
+	testhelp.Equal(t, "get err", err, store.ErrNotFound)
+
+	rec = serve(h.Delete, "DELETE", "/v1/projects/p-1", "p-1", "", "")
+	testhelp.Equal(t, "status", rec.Code, http.StatusNotFound)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"error":{"code":"not_found"}}`+"\n")
+}
+
+func TestProjectHandlersExample9(t *testing.T) {
+	h := Handlers{
+		Store: failingStore{},
+		Now:   exampleNow,
+		NewID: func() string { return "p-1" },
+	}
+	want := `{"error":{"code":"internal"}}` + "\n"
+
+	rec := serve(h.List, "GET", "/v1/projects", "", "", "")
+	testhelp.Equal(t, "list status", rec.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "list body", rec.Body.String(), want)
+
+	rec = serve(h.Get, "GET", "/v1/projects/p-1", "p-1", "", "")
+	testhelp.Equal(t, "get status", rec.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "get body", rec.Body.String(), want)
+
+	rec = serve(h.Create, "POST", "/v1/projects", "", "application/json", `{"name":"a","slug":"a"}`)
+	testhelp.Equal(t, "create status", rec.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "create body", rec.Body.String(), want)
+
+	rec = serve(h.Update, "PUT", "/v1/projects/p-1", "p-1", "application/json", `{"name":"a","slug":"a"}`)
+	testhelp.Equal(t, "update status", rec.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "update body", rec.Body.String(), want)
+
+	rec = serve(h.Delete, "DELETE", "/v1/projects/p-1", "p-1", "", "")
+	testhelp.Equal(t, "delete status", rec.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "delete body", rec.Body.String(), want)
+}

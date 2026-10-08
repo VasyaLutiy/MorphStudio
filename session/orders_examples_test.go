@@ -1,0 +1,275 @@
+package session
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+	"morphstudio/stream"
+)
+
+// orderExampleProbe is the JSONL probe log examples 4, 5 and 7 read the pending
+// AskUserQuestion and the line answering it from.
+const orderExampleProbe = "../tests/fixtures/stream/probe.jsonl"
+
+// orderExampleAskID is the request_id of that AskUserQuestion, on line 27 of
+// the probe log.
+const orderExampleAskID = "9f4ffa22-2676-4391-bfd9-bd7d16c3866c"
+
+// orderExampleText is the text example 1 sends to a ready machine.
+const orderExampleText = "smoke checked green. Resume with P12b"
+
+// orderExamplePadded is example 2's third text, spaces and all: Order trims it
+// and the queue then holds "third".
+const orderExamplePadded = "  third  "
+
+// orderExampleInterruptLine is example 6's line, byte for byte.
+const orderExampleInterruptLine = `{"type":"control_request","request_id":"int-1","request":{"subtype":"interrupt"}}` + "\n"
+
+var (
+	orderExampleNow        = time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC)
+	orderExampleSecondAt   = time.Date(2026, 10, 8, 14, 0, 5, 0, time.UTC)
+	orderExampleThirdAt    = time.Date(2026, 10, 8, 14, 0, 6, 0, time.UTC)
+	orderExampleAnsweredAt = time.Date(2026, 10, 8, 13, 9, 8, 0, time.UTC)
+)
+
+// TestOrderQueueExample1: a ready machine sends the text straight away, writes
+// the user line, and becomes busy with an empty queue.
+func TestOrderQueueExample1(t *testing.T) {
+	m := New()
+
+	res, actions := m.Order(orderExampleText, orderExampleNow)
+
+	testhelp.Equal(t, "result", res, OrderResult{Sent: true, Queued: 0})
+	testhelp.Equal(t, "result json", orderExampleJSON(t, res), `{"sent":true}`)
+	testhelp.Equal(t, "actions", actions, []Action{{Kind: "write", Line: stream.User(orderExampleText)}})
+	testhelp.Equal(t, "state", m.State, "busy")
+	testhelp.Equal(t, "turn started at", m.TurnStartedAt, orderExampleNow)
+	testhelp.Equal(t, "queue", m.Queue, []string{})
+}
+
+// TestOrderQueueExample2: a busy machine queues each text, trimmed, at the back
+// of the queue and leaves the turn in flight alone.
+func TestOrderQueueExample2(t *testing.T) {
+	m := orderExampleBusy(t)
+
+	res, actions := m.Order("second", orderExampleSecondAt)
+	testhelp.Equal(t, "first result", res, OrderResult{Queued: 1})
+	testhelp.Equal(t, "first result json", orderExampleJSON(t, res), `{"queued":1}`)
+	testhelp.Equal(t, "first actions", actions, []Action(nil))
+	testhelp.Equal(t, "queue after one", m.Queue, []string{"second"})
+
+	res, actions = m.Order(orderExamplePadded, orderExampleThirdAt)
+	testhelp.Equal(t, "second result", res, OrderResult{Queued: 2})
+	testhelp.Equal(t, "second result json", orderExampleJSON(t, res), `{"queued":2}`)
+	testhelp.Equal(t, "second actions", actions, []Action(nil))
+	testhelp.Equal(t, "queue", m.Queue, []string{"second", "third"})
+	testhelp.Equal(t, "state", m.State, "busy")
+	testhelp.Equal(t, "turn started at", m.TurnStartedAt, orderExampleNow)
+}
+
+// TestOrderQueueExample3: text that is blank after trimming is a no-op, so the
+// machine stays ready and nothing is written.
+func TestOrderQueueExample3(t *testing.T) {
+	m := New()
+
+	res, actions := m.Order(" ", orderExampleNow)
+	testhelp.Equal(t, "result for spaces", res, OrderResult{})
+	testhelp.Equal(t, "json for spaces", orderExampleJSON(t, res), `{}`)
+	testhelp.Equal(t, "actions for spaces", actions, []Action(nil))
+
+	res, actions = m.Order("", orderExampleNow)
+	testhelp.Equal(t, "result for empty", res, OrderResult{})
+	testhelp.Equal(t, "json for empty", orderExampleJSON(t, res), `{}`)
+	testhelp.Equal(t, "actions for empty", actions, []Action(nil))
+
+	testhelp.Equal(t, "state", m.State, "ready")
+	testhelp.Equal(t, "queue", m.Queue, []string{})
+	testhelp.Equal(t, "turn started at", m.TurnStartedAt, time.Time{})
+}
+
+// TestOrderQueueExample4: answering the pending question grants it with the
+// chosen option and marks the machine busy; the line is the one the probe log's
+// line 28 carries.
+func TestOrderQueueExample4(t *testing.T) {
+	m := orderExampleQuestion(t)
+
+	dir, want := testhelp.ProbeLine(t, orderExampleProbe, 28)
+	testhelp.Equal(t, "line 28 direction", dir, "in")
+
+	actions, err := m.Answer(2, orderExampleAnsweredAt)
+	testhelp.Equal(t, "err", err, nil)
+	action := orderExampleOnly(t, "answer", actions)
+	testhelp.Equal(t, "kind", action.Kind, "write")
+	orderExampleSameJSON(t, "answer line", action.Line, want)
+	testhelp.Equal(t, "pending", m.Pending, (*Pending)(nil))
+	testhelp.Equal(t, "state", m.State, "busy")
+}
+
+// TestOrderQueueExample5: an option out of range is ErrBadOption with the range
+// in its text and leaves the pending question alone; a second answer with no
+// question pending is ErrNoQuestion.
+func TestOrderQueueExample5(t *testing.T) {
+	m := orderExampleQuestion(t)
+	pending := *m.Pending
+
+	_, err := m.Answer(0, orderExampleAnsweredAt)
+	orderExampleError(t, "answer 0", err, ErrBadOption, "option out of range: 0 of 1..2")
+
+	_, err = m.Answer(3, orderExampleAnsweredAt)
+	orderExampleError(t, "answer 3", err, ErrBadOption, "option out of range: 3 of 1..2")
+
+	testhelp.Equal(t, "pending after the failures", *m.Pending, pending)
+	testhelp.Equal(t, "state after the failures", m.State, "question")
+
+	actions, err := m.Answer(1, orderExampleAnsweredAt)
+	testhelp.Equal(t, "answer 1 err", err, nil)
+	testhelp.Equal(t, "kind", orderExampleOnly(t, "answer 1", actions).Kind, "write")
+	testhelp.Equal(t, "pending after the answer", m.Pending, (*Pending)(nil))
+	testhelp.Equal(t, "state after the answer", m.State, "busy")
+
+	actions, err = m.Answer(1, orderExampleAnsweredAt)
+	orderExampleError(t, "answer again", err, ErrNoQuestion, "no pending question")
+	testhelp.Equal(t, "answer again actions", actions, []Action(nil))
+}
+
+// TestOrderQueueExample6: a ready machine has nothing to interrupt; a busy one
+// writes the interrupt line and stays busy.
+func TestOrderQueueExample6(t *testing.T) {
+	ready := New()
+
+	actions, err := ready.Interrupt("int-1")
+	orderExampleError(t, "interrupt when ready", err, ErrNotBusy, "session is not busy")
+	testhelp.Equal(t, "ready actions", actions, []Action(nil))
+	testhelp.Equal(t, "ready state", ready.State, "ready")
+
+	m := orderExampleBusy(t)
+
+	actions, err = m.Interrupt("int-1")
+	testhelp.Equal(t, "err", err, nil)
+	action := orderExampleOnly(t, "interrupt", actions)
+	testhelp.Equal(t, "kind", action.Kind, "write")
+	testhelp.Equal(t, "line", string(action.Line), orderExampleInterruptLine)
+	testhelp.Equal(t, "state", m.State, "busy")
+}
+
+// TestOrderQueueExample7: a questioning machine writes the interrupt line too,
+// and keeps its state and its pending question for the aborted result to clear.
+func TestOrderQueueExample7(t *testing.T) {
+	m := orderExampleQuestion(t)
+	pending := *m.Pending
+
+	actions, err := m.Interrupt("int-2")
+	testhelp.Equal(t, "err", err, nil)
+	action := orderExampleOnly(t, "interrupt", actions)
+	testhelp.Equal(t, "kind", action.Kind, "write")
+	testhelp.Equal(t, "request id", orderExampleRequestID(t, action.Line), "int-2")
+	testhelp.Equal(t, "state", m.State, "question")
+	testhelp.Equal(t, "pending kept", *m.Pending, pending)
+}
+
+// orderExampleJSON marshals v so a test can pin the exact bytes of a result.
+func orderExampleJSON(t testing.TB, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
+}
+
+// orderExampleOnly returns the single action of a transition, failing the test
+// when actions does not hold exactly one.
+func orderExampleOnly(t testing.TB, what string, actions []Action) Action {
+	t.Helper()
+	if len(actions) != 1 {
+		t.Fatalf("%s: got %d actions, want 1", what, len(actions))
+	}
+	return actions[0]
+}
+
+// orderExampleError fails unless err wraps sentinel and err.Error() is want.
+func orderExampleError(t testing.TB, what string, err, sentinel error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s: got no error, want %v", what, sentinel)
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("%s: got %v, want an error wrapping %v", what, err, sentinel)
+	}
+	testhelp.Equal(t, what, err.Error(), want)
+}
+
+// orderExampleSameJSON fails unless got and want decode to the same JSON value,
+// so key order and surrounding whitespace do not matter.
+func orderExampleSameJSON(t testing.TB, what string, got, want []byte) {
+	t.Helper()
+	var g, w any
+	if err := json.Unmarshal(got, &g); err != nil {
+		t.Fatalf("%s: got is not json: %v", what, err)
+	}
+	if err := json.Unmarshal(want, &w); err != nil {
+		t.Fatalf("%s: want is not json: %v", what, err)
+	}
+	testhelp.Equal(t, what, g, w)
+}
+
+// orderExampleRequestID decodes the request_id of a control_request line.
+func orderExampleRequestID(t testing.TB, line []byte) string {
+	t.Helper()
+	var l struct {
+		Type      string `json:"type"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(line), &l); err != nil {
+		t.Fatalf("line is not json: %v", err)
+	}
+	testhelp.Equal(t, "line type", l.Type, "control_request")
+	return l.RequestID
+}
+
+// orderExampleBusy returns the busy machine example 1 ends with.
+func orderExampleBusy(t testing.TB) *Machine {
+	t.Helper()
+	m := New()
+	m.Order(orderExampleText, orderExampleNow)
+	testhelp.Equal(t, "state", m.State, "busy")
+	return m
+}
+
+// orderExampleQuestion returns a machine in state "question", pending on the
+// AskUserQuestion line 27 of the probe log carries.
+func orderExampleQuestion(t testing.TB) *Machine {
+	t.Helper()
+	ev := orderExampleAsked(t)
+	m := New()
+	m.State = "question"
+	m.Pending = &Pending{
+		RequestID: ev.RequestID,
+		Question:  *ev.Question,
+		Input:     ev.Input,
+		AskedAt:   orderExampleAnsweredAt,
+	}
+	return m
+}
+
+// orderExampleAsked parses line 27 of the probe log, the can_use_tool
+// control_request that asks the question.
+func orderExampleAsked(t testing.TB) stream.Event {
+	t.Helper()
+	dir, msg := testhelp.ProbeLine(t, orderExampleProbe, 27)
+	testhelp.Equal(t, "line 27 direction", dir, "out")
+	ev, err := stream.Parse(msg)
+	if err != nil {
+		t.Fatalf("%s line 27: %v", orderExampleProbe, err)
+	}
+	testhelp.Equal(t, "line 27 request id", ev.RequestID, orderExampleAskID)
+	testhelp.Equal(t, "line 27 type", ev.Type, "control_request")
+	if ev.Question == nil {
+		t.Fatalf("%s line 27: no question", orderExampleProbe)
+	}
+	return ev
+}

@@ -1,0 +1,158 @@
+```
+package gitrules
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+	"morphstudio/runner"
+)
+
+func ecMeasure(t *testing.T, dir string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "tests", "fixtures", "git", "measure.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "MEASURE.md"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func ecWrite(t *testing.T, dir, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "MEASURE.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func ecExample1Fake() *runner.Fake {
+	return &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD":            {Stdout: "main\n"},
+		"git rev-parse HEAD":                         {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":                  {Stdout: "aaa111\n"},
+		"git status --porcelain":                     {Stdout: ""},
+		"git branch --list morph/* --no-merged main": {Stdout: ""},
+	}}
+}
+
+func ecKeys(f *runner.Fake) []string {
+	out := make([]string, len(f.Calls))
+	for i, c := range f.Calls {
+		out[i] = runner.Key(c.Name, c.Args...)
+	}
+	return out
+}
+
+func TestPhaseEndCheckExample1(t *testing.T) {
+	dir := t.TempDir()
+	ecMeasure(t, dir)
+	f := ecExample1Fake()
+
+	got := EndCheck(context.Background(), f, dir, "P17")
+	want := End{OK: true, Local: "aaa111", Remote: "aaa111", Problems: []string{}}
+	testhelp.Equal(t, "EndCheck", got, want)
+
+	if !testhelp.Equal(t, "call count", len(f.Calls), 6) {
+		return
+	}
+	wantKeys := []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+		"git branch --list morph/* --no-merged main",
+	}
+	testhelp.Equal(t, "call keys", ecKeys(f), wantKeys)
+	testhelp.Equal(t, "Calls[5].Args", f.Calls[5].Args, []string{"branch", "--list", "morph/*", "--no-merged", "main"})
+}
+
+func TestPhaseEndCheckExample2(t *testing.T) {
+	dir := t.TempDir()
+	ecMeasure(t, dir)
+	f := ecExample1Fake()
+	f.Script["git rev-parse HEAD"] = runner.Result{Stdout: "bbb222\n"}
+
+	got := EndCheck(context.Background(), f, dir, "P17")
+	want := End{OK: false, Local: "bbb222", Remote: "aaa111", Problems: []string{"not pushed: HEAD bbb222, origin/main aaa111"}}
+	testhelp.Equal(t, "EndCheck", got, want)
+}
+
+func TestPhaseEndCheckExample3(t *testing.T) {
+	dir := t.TempDir()
+	ecMeasure(t, dir)
+	f := ecExample1Fake()
+
+	got := EndCheck(context.Background(), f, dir, "P18")
+	want := End{OK: false, Local: "aaa111", Remote: "aaa111", Problems: []string{"no MEASURE row for P18"}}
+	testhelp.Equal(t, "EndCheck", got, want)
+}
+
+func TestPhaseEndCheckExample4(t *testing.T) {
+	dir := t.TempDir()
+	f := ecExample1Fake()
+	f.Script["git rev-parse HEAD"] = runner.Result{Stdout: "bbb222\n"}
+	f.Script["git status --porcelain"] = runner.Result{Stdout: " M a.go\n"}
+	f.Script["git branch --list morph/* --no-merged main"] = runner.Result{Stdout: " morph/20261008-141116\n* morph/20261008-152814\n"}
+
+	got := EndCheck(context.Background(), f, dir, "P17")
+	want := End{OK: false, Local: "bbb222", Remote: "aaa111", Problems: []string{
+		"not pushed: HEAD bbb222, origin/main aaa111",
+		"dirty tree (1 paths)",
+		"unmerged run branch morph/20261008-141116",
+		"unmerged run branch morph/20261008-152814",
+		"docs/MEASURE.md missing",
+	}}
+	testhelp.Equal(t, "EndCheck", got, want)
+}
+
+func TestPhaseEndCheckExample5(t *testing.T) {
+	dir := t.TempDir()
+	ecMeasure(t, dir)
+	f := ecExample1Fake()
+	f.Script["git rev-parse --abbrev-ref HEAD"] = runner.Result{Stdout: "morph/x\n"}
+
+	got := EndCheck(context.Background(), f, dir, "P17")
+	want := End{OK: false, Local: "aaa111", Remote: "aaa111", Problems: []string{"on branch morph/x, not main"}}
+	testhelp.Equal(t, "EndCheck", got, want)
+}
+
+func TestPhaseEndCheckExample6(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git fetch -q origin": {Code: 1, Stderr: "fatal: not a git repository\n"},
+	}}
+
+	got := EndCheck(context.Background(), f, t.TempDir(), "P17")
+	want := End{OK: false, Local: "", Remote: "", Problems: []string{"git fetch -q origin failed: fatal: not a git repository"}}
+	testhelp.Equal(t, "EndCheck", got, want)
+	testhelp.Equal(t, "call count", len(f.Calls), 1)
+}
+
+func TestPhaseEndCheckExample7(t *testing.T) {
+	dir := t.TempDir()
+	ecWrite(t, dir, "| P17 | x |\n| P170 debt | y |\n")
+	f := ecExample1Fake()
+
+	got := EndCheck(context.Background(), f, dir, "P17")
+	want := End{OK: true, Local: "aaa111", Remote: "aaa111", Problems: []string{}}
+	testhelp.Equal(t, "EndCheck both rows", got, want)
+
+	dir2 := t.TempDir()
+	ecWrite(t, dir2, "| P170 debt | y |\n")
+	f2 := ecExample1Fake()
+
+	got2 := EndCheck(context.Background(), f2, dir2, "P17")
+	want2 := End{OK: false, Local: "aaa111", Remote: "aaa111", Problems: []string{"no MEASURE row for P17"}}
+	testhelp.Equal(t, "EndCheck only P170", got2, want2)
+}
+```

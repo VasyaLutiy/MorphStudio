@@ -1,0 +1,188 @@
+```go
+package gitrules
+
+import (
+	"context"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+	"morphstudio/runner"
+)
+
+// scKeys returns the runner.Key of each recorded call in order.
+func scKeys(calls []runner.Call) []string {
+	keys := make([]string, 0, len(calls))
+	for _, c := range calls {
+		keys = append(keys, runner.Key(c.Name, c.Args...))
+	}
+	return keys
+}
+
+// scDirs returns the Dir of each recorded call in order.
+func scDirs(calls []runner.Call) []string {
+	dirs := make([]string, 0, len(calls))
+	for _, c := range calls {
+		dirs = append(dirs, c.Dir)
+	}
+	return dirs
+}
+
+// scWantDirs returns n copies of dir for comparing against scDirs.
+func scWantDirs(n int, dir string) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = dir
+	}
+	return out
+}
+
+func TestPhaseStartCheckExample1(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"},
+		"git rev-parse HEAD":              {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":       {Stdout: "aaa111\n"},
+		"git status --porcelain":          {Stdout: ""},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "fresh", Branch: "main", Local: "aaa111", Remote: "aaa111", Reason: ""})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(5, "/p"))
+}
+
+func TestPhaseStartCheckExample2(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD":               {Stdout: "main\n"},
+		"git rev-parse HEAD":                            {Stdout: "bbb222\n"},
+		"git rev-parse origin/main":                     {Stdout: "aaa111\n"},
+		"git status --porcelain":                        {Stdout: ""},
+		"git merge-base --is-ancestor origin/main HEAD": {Code: 0},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "resume", Branch: "main", Local: "bbb222", Remote: "aaa111", Reason: "local ahead of origin/main"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+		"git merge-base --is-ancestor origin/main HEAD",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(6, "/p"))
+}
+
+func TestPhaseStartCheckExample3(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD":               {Stdout: "main\n"},
+		"git rev-parse HEAD":                            {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":                     {Stdout: "ccc333\n"},
+		"git status --porcelain":                        {Stdout: ""},
+		"git merge-base --is-ancestor origin/main HEAD": {Code: 1},
+		"git merge-base --is-ancestor HEAD origin/main": {Code: 0},
+		"git pull -q --ff-only":                         {Code: 0},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "fresh", Branch: "main", Local: "ccc333", Remote: "ccc333", Reason: "pulled to ccc333"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+		"git merge-base --is-ancestor origin/main HEAD",
+		"git merge-base --is-ancestor HEAD origin/main",
+		"git pull -q --ff-only",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(8, "/p"))
+}
+
+func TestPhaseStartCheckExample4(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD":               {Stdout: "main\n"},
+		"git rev-parse HEAD":                            {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":                     {Stdout: "ccc333\n"},
+		"git status --porcelain":                        {Stdout: ""},
+		"git merge-base --is-ancestor origin/main HEAD": {Code: 1},
+		"git merge-base --is-ancestor HEAD origin/main": {Code: 1},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "diverged", Branch: "main", Local: "aaa111", Remote: "ccc333", Reason: "local aaa111 and origin/main ccc333 diverged"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+		"git merge-base --is-ancestor origin/main HEAD",
+		"git merge-base --is-ancestor HEAD origin/main",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(7, "/p"))
+}
+
+func TestPhaseStartCheckExample5(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"},
+		"git rev-parse HEAD":              {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":       {Stdout: "aaa111\n"},
+		"git status --porcelain":          {Stdout: " M docs/TASK_P18.md\n?? decks/p18/\n"},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "resume", Branch: "main", Local: "aaa111", Remote: "aaa111", Reason: "dirty tree (2 paths)"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(5, "/p"))
+}
+
+func TestPhaseStartCheckExample6(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD": {Stdout: "morph/20261008-083312\n"},
+		"git rev-parse HEAD":              {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":       {Stdout: "aaa111\n"},
+		"git status --porcelain":          {Stdout: ""},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "resume", Branch: "morph/20261008-083312", Local: "aaa111", Remote: "aaa111", Reason: "on branch morph/20261008-083312"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+		"git rev-parse --abbrev-ref HEAD",
+		"git rev-parse HEAD",
+		"git rev-parse origin/main",
+		"git status --porcelain",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(5, "/p"))
+}
+
+func TestPhaseStartCheckExample7(t *testing.T) {
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git fetch -q origin": {Code: 128, Stderr: "fatal: unable to access 'https://github.com/o/r/': Could not resolve host\n"},
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "error", Reason: "git fetch -q origin failed: fatal: unable to access 'https://github.com/o/r/': Could not resolve host"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(1, "/p"))
+}
+
+func TestPhaseStartCheckExample8(t *testing.T) {
+	f := &runner.Fake{Errors: map[string]string{
+		"git fetch -q origin": "runner: exec: \"git\": executable file not found",
+	}}
+	got := StartCheck(context.Background(), f, "/p")
+	testhelp.Equal(t, "StartCheck", got, Start{Mode: "error", Reason: "git fetch -q origin failed: runner: exec: \"git\": executable file not found"})
+	testhelp.Equal(t, "call keys", scKeys(f.Calls), []string{
+		"git fetch -q origin",
+	})
+	testhelp.Equal(t, "call dirs", scDirs(f.Calls), scWantDirs(1, "/p"))
+}
+```

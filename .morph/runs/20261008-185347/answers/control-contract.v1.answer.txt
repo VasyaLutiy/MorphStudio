@@ -1,0 +1,176 @@
+```
+package control
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"morphstudio/eventlog"
+	"morphstudio/github"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+// QueueView describes the walking plan of a project.
+type QueueView struct {
+	State    string `json:"state"`
+	Approved string `json:"approved"`
+	Index    int    `json:"index"`
+	Phases   int    `json:"phases"`
+	Current  string `json:"current"`
+	Reason   string `json:"reason"`
+}
+
+// Stop describes why the daemon stopped a walk.
+type Stop struct {
+	Kind     string    `json:"kind"`
+	Phase    string    `json:"phase"`
+	Reason   string    `json:"reason"`
+	IssueURL string    `json:"issue_url,omitempty"`
+	At       time.Time `json:"at"`
+}
+
+// Status is the answer of a status call.
+type Status struct {
+	State     string        `json:"state"`
+	Phase     string        `json:"phase"`
+	Minutes   int           `json:"minutes"`
+	CostUSD   float64       `json:"cost_usd"`
+	FiveHour  int           `json:"five_hour"`
+	SevenDay  int           `json:"seven_day"`
+	SessionID string        `json:"session_id"`
+	Queue     QueueView     `json:"queue"`
+	Repo      github.Access `json:"repo"`
+	Stop      *Stop         `json:"stop,omitempty"`
+}
+
+// Question is a pending AskUserQuestion request.
+type Question struct {
+	RequestID string    `json:"request_id"`
+	Text      string    `json:"text"`
+	Header    string    `json:"header"`
+	Options   []string  `json:"options"`
+	AskedAt   time.Time `json:"asked_at"`
+}
+
+// Usage reports the Claude limits and spend.
+type Usage struct {
+	FiveHour         int       `json:"five_hour"`
+	SevenDay         int       `json:"seven_day"`
+	FiveHourResetsAt int64     `json:"five_hour_resets_at"`
+	SevenDayResetsAt int64     `json:"seven_day_resets_at"`
+	SessionCostUSD   float64   `json:"session_cost_usd"`
+	StretchCostUSD   float64   `json:"stretch_cost_usd"`
+	LimitsAt         time.Time `json:"limits_at"`
+}
+
+// Events is a page of event log entries.
+type Events struct {
+	Entries []eventlog.Entry `json:"entries"`
+	Last    int64            `json:"last"`
+}
+
+// ProjectView is the summary of a project.
+type ProjectView struct {
+	Name      string    `json:"name"`
+	Language  string    `json:"language"`
+	RepoURL   string    `json:"repo_url"`
+	State     string    `json:"state"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Milestone is a progress point reported by a session.
+type Milestone struct {
+	Kind     string `json:"kind"`
+	Headline string `json:"headline"`
+	Numbers  string `json:"numbers"`
+}
+
+// TokenResult is the outcome of storing a GitHub token.
+type TokenResult struct {
+	Access    github.Access `json:"access"`
+	Pushed    bool          `json:"pushed"`
+	PushError string        `json:"push_error,omitempty"`
+}
+
+// Control is the daemon's view and command surface.
+type Control interface {
+	Projects() []ProjectView
+	CreateProject(ctx context.Context, name, language, repoURL string) (ProjectView, error)
+	Status(project string) (Status, error)
+	Events(project string, since int64, max int) (Events, error)
+	Order(project, text string) (session.OrderResult, error)
+	Pending(project string) (*Question, error)
+	Answer(project string, option int) error
+	Interrupt(project string) error
+	Usage(project string) (Usage, error)
+	Restart(project string, force bool) error
+	PlanLoad(project string, plan queue.Plan) (QueueView, error)
+	Continue(project string) error
+	StopCheck(project string) (*Stop, error)
+	PutGithubToken(ctx context.Context, project, token string) (TokenResult, error)
+	PhaseDone(project, sessionToken, phase, next string) error
+	WaitOperator(project, sessionToken, kind, reason, issueURL string) error
+	Milestone(project, sessionToken string, m Milestone) error
+}
+
+var (
+	ErrUnknownProject = errors.New("unknown project")
+	ErrNoSession      = errors.New("no session running")
+	ErrBusy           = errors.New("session is busy")
+	ErrNotWaiting     = errors.New("not waiting")
+	ErrBadToken       = errors.New("session token mismatch")
+	ErrBadInput       = errors.New("bad input")
+	ErrExists         = errors.New("project exists")
+)
+
+var (
+	ErrNoQuestion = session.ErrNoQuestion
+	ErrBadOption  = session.ErrBadOption
+	ErrNotBusy    = session.ErrNotBusy
+)
+
+// Percent rounds a utilization to a whole percent clamped to 0..100.
+func Percent(utilization float64) int {
+	p := int(utilization*100 + 0.5)
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return p
+}
+
+// Code maps an error to an HTTP status and a stable code string.
+func Code(err error) (int, string) {
+	if err == nil {
+		return 200, ""
+	}
+	switch {
+	case errors.Is(err, ErrUnknownProject):
+		return 404, "unknown_project"
+	case errors.Is(err, ErrBadInput):
+		return 400, "bad_input"
+	case errors.Is(err, ErrBadOption):
+		return 400, "bad_option"
+	case errors.Is(err, ErrBadToken):
+		return 401, "bad_session_token"
+	case errors.Is(err, ErrExists):
+		return 409, "exists"
+	case errors.Is(err, ErrNoSession):
+		return 409, "no_session"
+	case errors.Is(err, ErrBusy):
+		return 409, "busy"
+	case errors.Is(err, ErrNoQuestion):
+		return 409, "no_question"
+	case errors.Is(err, ErrNotBusy):
+		return 409, "not_busy"
+	case errors.Is(err, ErrNotWaiting):
+		return 409, "not_waiting"
+	default:
+		return 500, "internal"
+	}
+}
+```

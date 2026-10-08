@@ -1,32 +1,33 @@
-# MorphStudio
+# MorphStudio — morphd
 
-The future web UI and backend of a Morph orchestrator SaaS. This repository starts with its first piece: a
-**skeleton of the backend API in Go**. The code was written by [MorphV2](https://github.com/VasyaLutiy/morph), not
-by hand. It is also MorphV2's first live check of its Go language profile (task `docs/TASK_P15L_gocrud.md` in MorphV2).
+`morphd` is a Go daemon on the user's VPS that drives the claude CLI session of a Morph-built project, in place of the
+PM's ssh + tmux flow. The PM (Claude Code on the operator's laptop) talks to it over a remote MCP endpoint; the operator
+over an HTTP API with a bearer token. One user = one VPS = one morphd; many projects per user.
 
-## What is here
+What it does: starts a fresh claude session per phase (`/morph-orchestrator <phase>`, auto-memory off), reads its
+stream-json, answers its questions through the PM, queues orders while it is busy, checks the git state at the end of
+a phase, walks the approved phase queue between stops, keeps a JSONL event log per session and posts milestones to
+Telegram. Not production: no TLS (Caddy in front), no deploy unit, no browser UI, no multi-user, no provisioning.
 
-A RESTful CRUD API for `Project` built on the Go standard library only (Go 1.22, `go.mod` requires nothing):
+## How it is built
 
-| package | what |
+By [MorphV2](https://github.com/VasyaLutiy/morph) cards, not by hand: the record `contour.yaml` (17 Components,
+27 Functions, 199 examples) and `morph-map.json` are cut into 7 phases (P1–P7, 54 cards) in `PLAN.md`. Every code file
+and every example test is written by an executor model and accepted by the record's examples. The phases run
+autonomously on the VPS by `docs/AUTONOMY.md`; measurements in `docs/MEASURE.md`, decisions in `docs/DECISIONS.md`.
+
+| where | what |
 |---|---|
-| `project` | `Input`/`Project`, input validation (name, slug, description, status), `New`, `Apply` |
-| `store` | the `Store` interface, an in-memory store and a JSON-file store (atomic rewrite) |
-| `auth` | HTTP Basic auth: salted SHA-256 hashes, constant-time check, middleware |
-| `api` | handlers for `GET/POST /v1/projects` and `GET/PUT/DELETE /v1/projects/{id}`, the router, `GET /healthz` |
-
-This is a skeleton, not production. It has no database driver, no `cmd/server`, no users CRUD, no TLS and no deploy.
-
-## How it was built
-
-- The data came first: a Contour record (`contour.yaml`), a map, checks and probes. Then `morph plan` cut a deck of 14
-  cards in 5 generations (7 code cards, 7 judge cards that write the example tests).
-- `morph run` executed the deck on `deepseek/deepseek-v4.1-flash`. Every acceptance ran in this order: `go build` +
-  `gofmt -l`, `go vet`, a layer guard, a probe, the package's tests, then `go test ./...`.
-- Result: 14/14 cards from one run with no fix (12 at the first attempt), **$0.0852**, 7.1 minutes.
-- Every card is its own commit with `Morph-Card` / `Morph-Model` trailers. `.morph/runs/` keeps the deck, the report
-  and the model's answers, and `.morph/primer.md` is MorphV2's primer of this tree.
+| `PLAN.md`, `contour.yaml`, `morph-map.json` | the plan, the record, the map |
+| `docs/START.md`, `docs/DECISIONS.md` | the brief and the operator's decisions |
+| `docs/deps/go-sdk.md` | the digest of the one dependency, the official Go MCP SDK v1.8.0 (vendored in `vendor/`) |
+| `internal/testhelp`, `tests/fixtures/` | test helpers and fixtures (the measured claude stream-json probe) |
+| `decks/tools/` | the Go guard, the layer table, the token scaler |
+| `.morph/runs/` | run archives (the first one is the P15L gocrud skeleton this repository started from) |
 
 ```
-GOFLAGS=-mod=mod GOPROXY=off go vet ./... && gofmt -l . && GOFLAGS=-mod=mod GOPROXY=off go test -count=1 ./...
+export GOFLAGS=-mod=vendor GOPROXY=off
+go build ./... && go vet ./... && go test -count=1 ./...
 ```
+
+Go 1.25. Stdlib only, plus `github.com/modelcontextprotocol/go-sdk`.

@@ -1,10 +1,36 @@
 {
   "layers": {
-    "project": [],
-    "store": ["project"],
-    "auth": [],
-    "api": ["project", "store", "auth"],
-    "internal/testhelp": []
+    "stream": [],
+    "runner": [],
+    "queue": [],
+    "eventlog": [],
+    "telegram": [],
+    "github": [],
+    "claude": [],
+    "internal/testhelp": [],
+    "session": ["stream"],
+    "bootstrap": ["runner", "github"],
+    "registry": ["queue"],
+    "gitrules": ["runner"],
+    "control": ["queue", "github", "eventlog", "session", "stream"],
+    "supervisor": ["queue", "gitrules", "control", "stream"],
+    "api": ["control", "queue", "github", "eventlog", "session"],
+    "mcpserver": ["control", "queue", "github", "eventlog", "session", "supervisor"],
+    "daemon": ["stream", "session", "eventlog", "telegram", "runner", "queue", "claude", "github", "bootstrap", "registry", "gitrules", "control", "supervisor"],
+    "cmd/morphd": ["stream", "runner", "queue", "eventlog", "telegram", "github", "claude", "session", "bootstrap", "registry", "gitrules", "control", "supervisor", "api", "mcpserver", "daemon"]
   },
-  "pure": []
+  "pure": [],
+  "stdlib_rules": {
+    "_note": "Not read by guard.mjs. Per-card stdlib rules (PLAN Scaffold) for the extra lines of each phase's checks.json (P15L pattern: go list -e -overlay + gofmt -r).",
+    "os/exec": ["runner", "claude"],
+    "time.Now": ["cmd/morphd"],
+    "math/rand": ["cmd/morphd"],
+    "crypto/rand": ["cmd/morphd"],
+    "net.Dial": ["cmd/morphd"],
+    "http.Get": ["cmd/morphd"],
+    "http.Post": ["cmd/morphd"],
+    "http.DefaultClient": ["cmd/morphd"],
+    "syscall": ["claude"],
+    "unsafe": []
+  }
 }

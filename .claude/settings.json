@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "tools/tg-hook.sh stop" } ] }
+    ],
+    "Notification": [
+      { "hooks": [ { "type": "command", "command": "tools/tg-hook.sh notification" } ] }
+    ]
+  }
+}

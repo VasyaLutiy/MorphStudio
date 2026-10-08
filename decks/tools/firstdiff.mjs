@@ -1,8 +1,7 @@
-// MorphV2 first-difference locator for a Go module (P15): reads a `go test` log and, for every failed comparison
-// printed by the module's internal/testhelp Equal ("got:  <x>" on one line, "want: <y>" on the next, indented under
-// the failing test's line), prints where the two first differ, with 40 chars of context on each side, as
-// decks/tools/firstdiff.mjs does for vitest. A Go repository keeps this file as its decks/tools/firstdiff.mjs:
-// `morph plan --checks` inlines that path into every acceptance.
+// First-difference locator of a Go module: reads a `go test` log and, for every failed comparison printed by the
+// module's internal/testhelp Equal ("got:  <x>" on one line, "want: <y>" on the next, indented under the failing test's
+// line), prints where the two first differ, with 40 chars of context on each side. `morph plan --checks` inlines this
+// file into every acceptance.
 //   node firstdiff.mjs <go test log>
 import fs from "node:fs";
 

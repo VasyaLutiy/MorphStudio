@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "phase": "P1",
+  "parts": "decks/P1/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor"
+  ],
+  "cards": [
+    {
+      "id": "parse-event",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./stream) || exit 1; for i in $I; do case $i in bytes|encoding/json|errors|fmt|strings) ;; *) echo \"imports: package stream imports $i (allowed: bytes, encoding/json, errors, fmt, strings)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' stream/parse.go 2>&1); [ -z \"$C\" ] || { echo \"clock: $C reads time.Now (the clock is injected as a now argument or Now)\"; exit 1; }\n"
+    },
+    {
+      "id": "encode-lines",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./stream) || exit 1; for i in $I; do case $i in bytes|encoding/json|errors|fmt|strings) ;; *) echo \"imports: package stream imports $i (allowed: bytes, encoding/json, errors, fmt, strings)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' stream/encode.go 2>&1); [ -z \"$C\" ] || { echo \"clock: $C reads time.Now (the clock is injected as a now argument or Now)\"; exit 1; }\n"
+    },
+    {
+      "id": "exec-runner",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./runner) || exit 1; for i in $I; do case $i in bytes|context|errors|fmt|os|os/exec|strings|sync|time) ;; *) echo \"imports: package runner imports $i (allowed: bytes, context, errors, fmt, os, os/exec, strings, sync, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' runner/runner.go 2>&1); [ -z \"$C\" ] || { echo \"clock: $C reads time.Now (the clock is injected as a now argument or Now)\"; exit 1; }\n"
+    },
+    {
+      "id": "phase-queue",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./queue) || exit 1; for i in $I; do case $i in encoding/json|errors|fmt|strings) ;; *) echo \"imports: package queue imports $i (allowed: encoding/json, errors, fmt, strings)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' queue/queue.go 2>&1); [ -z \"$C\" ] || { echo \"clock: $C reads time.Now (the clock is injected as a now argument or Now)\"; exit 1; }\n"
+    },
+    {
+      "id": "parse-event-judge",
+      "files": [
+        {
+          "file": "stream/parse_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestParseEventExample1",
+            "TestParseEventExample2",
+            "TestParseEventExample3",
+            "TestParseEventExample4",
+            "TestParseEventExample5",
+            "TestParseEventExample6",
+            "TestParseEventExample7",
+            "TestParseEventExample8",
+            "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e",
+            "1791853200",
+            "0.0028906000000000005",
+            "toolu_01FUdZWoHspVQKBCdwkjgj1R",
+            "r-7",
+            "stream: not an object",
+            "stream: bad json",
+            "stream: empty line"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "encode-lines-judge",
+      "files": [
+        {
+          "file": "stream/encode_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestEncodeLinesExample1",
+            "TestEncodeLinesExample2",
+            "TestEncodeLinesExample3",
+            "TestEncodeLinesExample4",
+            "TestEncodeLinesExample5",
+            "TestEncodeLinesExample6",
+            "TestEncodeLinesExample7",
+            "TestEncodeLinesExample8",
+            "init-2",
+            "int-9",
+            "Reply with exactly one word: PONG",
+            "u003c",
+            "u0026",
+            "updatedInput",
+            "Option B",
+            "stream: input is not an object",
+            "stream: bad input"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exec-runner-judge",
+      "files": [
+        {
+          "file": "runner/runner_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestExecRunnerExample1",
+            "TestExecRunnerExample2",
+            "TestExecRunnerExample3",
+            "TestExecRunnerExample4",
+            "TestExecRunnerExample5",
+            "TestExecRunnerExample6",
+            "TestExecRunnerExample7",
+            "printf hi; printf err >&2; exit 3",
+            "MORPH_X=7",
+            "/nonexistent/bin/x",
+            "/nonexistent/dir",
+            "context.DeadlineExceeded",
+            "runner: fake offline",
+            "default\\n"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "phase-queue-judge",
+      "files": [
+        {
+          "file": "queue/queue_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestPhaseQueueExample1",
+            "TestPhaseQueueExample2",
+            "TestPhaseQueueExample3",
+            "TestPhaseQueueExample4",
+            "TestPhaseQueueExample5",
+            "TestPhaseQueueExample6",
+            "TestPhaseQueueExample7",
+            "TestPhaseQueueExample8",
+            "queue-3.json",
+            "7b31dfe",
+            "queue: approved hash required",
+            "queue: no phases",
+            "queue: nothing to continue",
+            "not pushed",
+            "plan says"
+          ]
+        }
+      ]
+    }
+  ]
+}

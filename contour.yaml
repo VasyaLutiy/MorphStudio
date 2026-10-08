@@ -107,7 +107,7 @@ System:
             `func User(text string) []byte`, `func Allow(requestID string, input json.RawMessage) ([]byte, error)` and
             `func Answer(requestID string, input json.RawMessage, question, label string) ([]byte, error)`. Every line is
             the json.Marshal of a struct whose fields are declared in the order written below (encoding/json's HTML
-            escaping stays on, so < > & become < > &) followed by exactly one "\n".
+            escaping stays on, so < > & become \u003c \u003e \u0026) followed by exactly one "\n".
             Initialize: {"type":"control_request","request_id":<id>,"request":{"subtype":"initialize"}}.
             Interrupt: the same with subtype "interrupt".
             User: {"type":"user","message":{"role":"user","content":<text>},"parent_tool_use_id":null}.
@@ -133,7 +133,7 @@ System:
               ref: tests/fixtures/stream/probe.jsonl
             - given: 'text "a <b> & \"c\"\nd" (a Go string with a real newline)'
               when: User
-              then: 'exactly {"type":"user","message":{"role":"user","content":"a <b> & \"c\"\nd"},"parent_tool_use_id":null} + "\n" (the <, >, & and \n are six-character and two-character escapes in the bytes)'
+              then: 'exactly {"type":"user","message":{"role":"user","content":"a \u003cb\u003e \u0026 \"c\"\nd"},"parent_tool_use_id":null} + "\n" (the <, >, & and \n are six-character and two-character escapes in the bytes; in a Go test the want is a raw string literal, since an interpreted Go string would turn the six-character escapes back into < > &)'
             - given: 'requestID "r-7", input {"command": "ls"} (with the space)'
               when: Allow
               then: 'exactly {"type":"control_response","response":{"subtype":"success","request_id":"r-7","response":{"behavior":"allow","updatedInput":{"command":"ls"}}}} + "\n", error nil'
@@ -368,7 +368,7 @@ System:
       description: >
         Package runner in runner/: the only package that runs a shell command (git, morph). The Runner interface, the
         os/exec implementation and the Fake every other package's tests script. Imports os/exec, bytes, context,
-        errors, fmt, os, strings, sync.
+        errors, fmt, os, strings, sync, time (time only for Cmd.WaitDelay; never time.Now).
       language: go
       functions:
         - name: Exec Runner
@@ -379,7 +379,7 @@ System:
             `type OS struct{}`, `type Call struct { Dir string; Name string; Args []string }` and
             `type Fake struct { Calls []Call; Script map[string]Result; Errors map[string]string; Default Result }` (plus an
             unexported mutex). `func Key(name string, args ...string) string` = name and the args joined with single spaces.
-            OS.Run: exec.CommandContext(ctx, name, args...) with Dir = dir and Env = os.Environ() followed by env (nil env
+            OS.Run: exec.CommandContext(ctx, name, args...) with Dir = dir, WaitDelay = 500 * time.Millisecond (a killed `sh -c` leaves its child holding the output pipes; without WaitDelay Run waits for that child) and Env = os.Environ() followed by env (nil env
             adds nothing); stdout and stderr captured whole; a non-zero exit is NOT an error: (Result{out, err, code}, nil);
             the command cannot start (not found, bad dir) → (Result{Code: -1}, an error beginning "runner: "); ctx done
             before exit → the process is killed and (Result{Code: -1}, ctx.Err()).
@@ -403,9 +403,9 @@ System:
             - given: 'ctx with a 200 ms timeout; OS{}.Run(ctx, t.TempDir(), nil, "sh", "-c", "sleep 5")'
               when: Run
               then: 'returns within 2 s with Code -1 and errors.Is(err, context.DeadlineExceeded)'
-            - given: 'f := &Fake{Script: map[string]Result{"git rev-parse HEAD": {Stdout: "abc\n"}}, Errors: map[string]string{"git fetch -q origin": "runner: fake offline"}, Default: Result{Code: 0}}'
+            - given: 'f := &Fake{Script: map[string]Result{"git rev-parse HEAD": {Stdout: "abc\n"}}, Errors: map[string]string{"git fetch -q origin": "runner: fake offline"}, Default: Result{Stdout: "default\n", Code: 4}}'
               when: 'f.Run(ctx, "/p", nil, "git", "rev-parse", "HEAD"); f.Run(ctx, "/p", nil, "git", "fetch", "-q", "origin"); f.Run(ctx, "/q", nil, "git", "status")'
-              then: '{Stdout "abc\n", Code 0}, nil; {Code -1} and error text "runner: fake offline"; Result{} (the Default), nil; f.Calls == []Call{{"/p", "git", ["rev-parse", "HEAD"]}, {"/p", "git", ["fetch", "-q", "origin"]}, {"/q", "git", ["status"]}}'
+              then: '{Stdout "abc\n", Code 0}, nil; {Code -1} and error text "runner: fake offline"; {Stdout "default\n", Code 4} (the Default), nil; f.Calls == []Call{{"/p", "git", ["rev-parse", "HEAD"]}, {"/p", "git", ["fetch", "-q", "origin"]}, {"/q", "git", ["status"]}}'
             - given: 'Key("git", "rev-parse", "HEAD"); Key("morph")'
               when: Key
               then: '"git rev-parse HEAD"; "morph"'
@@ -473,9 +473,9 @@ System:
             - given: 'a done queue; a zero Queue{}'
               when: 'Continue(); Stop("x"); Current()'
               then: 'error "queue: nothing to continue (state \"done\")"; the done queue unchanged; the zero queue: Current false, Continue error "queue: nothing to continue (state \"\")"'
-            - given: 'Plan{Approved: "abc", Phases: [{ID "P1", StopAfter: "operator", Caps: {Hours: 1}}]}, defaults {30, 3, 5}'
+            - given: 'Plan{Approved: "abc", Phases: [{ID "P1", StopAfter: "operator", Caps: {Hours: 1}}]}, defaults {20, 2, 4}'
               when: 'Load; Start; Done("P1", "")'
-              then: 'Caps {30, 1, 5}; Outcome{Stop: "end"} (no next phase wins over stop_after), State "done"'
+              then: 'Caps {20, 1, 4}; Outcome{Stop: "end"} (no next phase wins over stop_after), State "done"'
     - name: claude
       description: >
         Package claude in claude/: the launch of the claude CLI process. The argument list and the MCP config file are

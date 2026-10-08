@@ -5,26 +5,35 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**Next: P1 (`PLAN.md` row P1: stream, runner, queue — Parse Event, Encode Lines, Exec Runner, Phase Queue; 8 cards).**
-After it: P2, then P3 and **smoke stop 1** (after P3), P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the smokes
-are written in `PLAN.md` "Epics and phases". Running total $0 of $35. Processor `ds` (maxTokens ×3 after the cut:
-`scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
+**Next: P2 (`PLAN.md` row P2: session, eventlog, telegram — Session Machine, Order Queue, Event Log, Milestone Post;
+8 cards).** After it: P3 and **smoke stop 1** (after P3), P4, P5, P6, P7 and **smoke stop 2, final** (after P7); the
+smokes are written in `PLAN.md` "Epics and phases". Running total $0.0495 of $35. Processor `ds` (maxTokens ×3 after the
+cut: `scale_tokens.py … 3`); fallback `glm53`. Claude auto-memory is off in every phase session
 (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`; operator 08.10, "100%").
+
+P1 is done (run 20261008-171107, merged): packages `stream` (parse.go, encode.go), `runner`, `queue`, 31 example tests
+green; 8/8 written on ds, $0.0495, 5.3 min, one retry (phase-queue build). The phase dir is `decks/P1/` (upper-case
+phase id); Go probes are `decks/<phase>/parts/_<card>_probe_test.go` (the name `morph plan` reads), not
+`<card>.probe.*`. Two read defects carried as known risks (DECISIONS 08.10 · P1): queue `Load` does not trim IDs;
+runner's cannot-start error lacks the name. `.morph/primer.md` was re-generated after P1
+(`morph primer --root .` prints JSON; its `markdown` field is the file).
 
 P0 (the scaffold, hand data) is done: Go 1.25.14, `go.mod` `go 1.25.0` with go-sdk v1.8.0 vendored (`vendor/`
 committed), `internal/testhelp/probe.go`, `decks/tools/*` (layers by `PLAN.md` "Scaffold"; the per-card stdlib rules for
 each phase's `checks.json` `extra` are in `layers.json` `stdlib_rules`), fixtures under `tests/fixtures/`,
-`docs/deps/go-sdk.md`. Re-generate `.morph/primer.md` after P1.
+`docs/deps/go-sdk.md`.
 
-Known limits carried: `morph init` of the binary at MorphV2 bc311aa takes the target as `--root <dir>`; a positional
-`<dir>` is refused ("unexpected argument") — the record's bootstrap · Project Create (P3) names `morph init <dir> …`
-(Q7): settle it with the PM before P3 is prepared.
+Known limits carried: none open. (Q7 settled in the record by 98b1527: bootstrap · Project Create runs
+`morph init --root <dir> --name <n> --language <l> [--module <m>]`, the binary at MorphV2 bc311aa refuses a positional
+`<dir>`.)
 
 Lessons for the next preparations: default code targets add a test file (give a smoke cap or code-only targets); a new
 file needs `"intent": "generate"` in the map; a new code folder needs its layer in `decks/tools/layers.json`; size a
 judge from its expected answer (≥ 28 000 for a ~20 KB answer, before any processor factor); vary every constant the code
-must not hard-code across the examples; every mutant run under a 120 s timeout; kill leftover watchers and workers of the
-scratch tree.
+must not hard-code across the examples (P1 found two: Fake's Default, Phase Queue's defaults); measure any timing an
+example promises on the real shell before the cut (P1: `sh -c sleep` kept the pipes open 5 s without `WaitDelay`); a
+§2.2 gap no example pins is not enforced — when it matters, add a record example or a probe variant for it; every mutant
+run under a 120 s timeout; kill leftover watchers and workers of the scratch tree.
 
 The session rewrites this section at the end of every phase.
 

@@ -5,7 +5,9 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**STOPPED at smoke stop 1 (after P3), RED — waiting for the operator.** Next after the operator's check: P4 (`PLAN.md` row
+**Operator order 08.10 (through the PM): smoke stop 1 is GREEN by the PM's re-run (DECISIONS 08.10 · smoke stop 1 re-run: budget $0.25, Opus, PONG, $0.0650, limits present). Resume now: work P4, then P5, P6, P7 without stops between them, then smoke stop 2 (final) — post 🧪 and stop for the PM, who runs smoke 2.** The history of the stop below stays for the record. Smoke 2 budget note: the PLAN's ≤ $0.50 holds; one Opus turn costs ≈ $0.07.
+
+Was: STOPPED at smoke stop 1 (after P3), RED. Next: P4 (`PLAN.md` row
 P4: registry, gitrules, control — Project Registry, Secret Files, Phase Start Check, Phase End Check, Control Contract;
 10 cards), then P5, P6, P7 and **smoke stop 2, final** (after P7). Running total $0.1825 of $35 executor; claude for the
 smokes $0.0736 of $0.55. Processor `ds` (maxTokens ×3 after the cut: `scale_tokens.py … 3`); fallback `glm53`. Claude

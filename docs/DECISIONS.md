@@ -47,3 +47,6 @@ Format: date · topic · decision · why (the operator's words).
 - 08.10 · P1 · map · all 27 judge instructions: "per example of `<file>` taken from go.mod" → "listed below (the examples of the Function)" · the examples come from the record, not go.mod (a wording defect of the architect's map).
 - 08.10 · P1 · probes · Go probes are named decks/P1/parts/_<card>_probe_test.go (the name morph plan reads for Go), not <card>.probe.* · MorphV2 builder/buildAcceptances.ts probeFile.
 - 08.10 · P1 · mutants · 30 on a scratch reference, 30 killed, none survive; no known risk carried.
+- 08.10 · P1 · run 20261008-171107 · 8/8 written on ds, $0.0495, 1 retry (phase-queue v1 build red: bool returned as error; r1 green); no failure class, no fix needed.
+- 08.10 · P1 · Phase Queue · read defect, not fixed by hand: `Load` keeps Approved/IDs untrimmed and checks duplicates untrimmed (§2.2 says trimmed) · no example pins it; known risk for P4/P5 callers: trim IDs before Load or add a record example when queue is next touched.
+- 08.10 · P1 · Exec Runner · read defect, not fixed by hand: cannot-start error lacks the command name; ctx-done Result keeps captured output (§2.2: empty) · only the "runner: " prefix and Code are pinned; known risk, harmless to callers that read Code and err.

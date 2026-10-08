@@ -1,0 +1,304 @@
+version: 1
+System:
+  name: morphstudio
+  description: >
+    The skeleton of the Morph Studio backend: a RESTful CRUD API over projects, in Go (module path "morphstudio",
+    Go 1.22, the standard library only; go.mod requires nothing). Four packages, one directory each at the module root:
+    project (the Project shape and its validation, pure), store (the Store interface, an in-memory store and a JSON-file
+    store), auth (HTTP Basic authentication over salted SHA-256 hashes) and api (the HTTP handlers and the router).
+    A time written as 2026-10-08T09:00:00Z in an example is time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC). Tests compare
+    with Equal of morphstudio/internal/testhelp.
+  guardrails:
+    - Injected Clock And Ids
+    - No Network In Tests
+  groups:
+    - name: project
+      description: >
+        Package project in project/: the input and the stored shape of a project, validation and construction. Imports
+        strings, regexp, time and unicode/utf8 only; no I/O, no clock, no randomness.
+      language: go
+      functions:
+        - name: Validate Input
+          description: The two shapes of the package and the validation of a client's input into a normalised input and field errors.
+          behavior: >
+            Declares, exactly (field order, names and JSON tags as written):
+            `type Input struct { Name string `json:"name"`; Slug string `json:"slug"`; Description string `json:"description"`; Status string `json:"status"` }`
+            and `type Project struct { ID string `json:"id"`; Name string `json:"name"`; Slug string `json:"slug"`;
+            Description string `json:"description"`; Status string `json:"status"`; CreatedAt time.Time `json:"createdAt"`;
+            UpdatedAt time.Time `json:"updatedAt"` }` (one field per line in the file). Exported as
+            `func Validate(in Input) (Input, map[string]string)`. Normalisation first, always (the normalised input is
+            returned whether or not there are errors): Name, Slug and Description trimmed with strings.TrimSpace; Status
+            is NOT trimmed, and an empty Status becomes "draft". Then each field is checked on the normalised value, lengths
+            counted in runes (utf8.RuneCountInString), one message per field, the first rule that fails:
+            name — empty → "required", more than 64 runes → "too long";
+            slug — empty → "required", more than 40 runes → "too long", not matching ^[a-z0-9]+(-[a-z0-9]+)*$ → "invalid";
+            description — more than 500 runes → "too long" (empty is valid);
+            status — not exactly one of "draft", "active", "archived" → "invalid".
+            The map holds only the fields that failed, keyed "name", "slug", "description", "status"; a valid input
+            returns a nil map (not an empty one).
+          steps:
+            - produces: map[string]string
+          examples:
+            - given: 'Input{Name: "  Morph Studio ", Slug: " morph-studio ", Description: "\tThe backend\n", Status: ""}'
+              when: validated
+              then: 'Input{Name: "Morph Studio", Slug: "morph-studio", Description: "The backend", Status: "draft"}, errors nil'
+            - given: Input{} (every field empty)
+              when: validated
+              then: 'Input{Status: "draft"}, errors map[string]string{"name": "required", "slug": "required"}'
+            - given: 'Input{Name: " " + 64 × "é" + " ", Slug: 40 × "a", Description: 500 × "ж", Status: "archived"}'
+              when: validated
+              then: 'Input{Name: 64 × "é", Slug: 40 × "a", Description: 500 × "ж", Status: "archived"}, errors nil — the limits count runes, not bytes, after the trim'
+            - given: 'Input{Name: 65 × "é", Slug: 41 × "a", Description: 501 × "ж", Status: "Active"}'
+              when: validated
+              then: 'the same Input back (nothing to trim), errors map[string]string{"name": "too long", "slug": "too long", "description": "too long", "status": "invalid"}'
+            - given: 'Name "x", Status "active", and each Slug in turn: "a1-b2-c3", "0", "Morph", "morph--studio", "-morph", "morph-", "morph_studio", "morph studio", 41 × "A"'
+              when: validated
+              then: 'slug errors: none, none, "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "too long" (length is checked before the pattern); no other field fails'
+            - given: 'Input{Name: "   ", Slug: "ok", Description: "  ", Status: " active "}'
+              when: validated
+              then: 'Input{Name: "", Slug: "ok", Description: "", Status: " active "}, errors map[string]string{"name": "required", "status": "invalid"} — Status is never trimmed'
+        - name: Build Project
+          description: A stored Project built from an input, and an existing Project with an input applied.
+          behavior: >
+            Exported as `func New(in Input, id string, now time.Time) Project` and
+            `func Apply(p Project, in Input, now time.Time) Project` in package project, using the types of
+            project/validate.go (do not declare them again). New copies Name, Slug, Description and Status from in
+            verbatim (it neither validates nor normalises: the caller validated), sets ID to id and CreatedAt and
+            UpdatedAt to now. Apply returns p with Name, Slug, Description and Status replaced by in's (an empty field
+            replaces too) and UpdatedAt set to now; ID and CreatedAt are kept.
+          steps:
+            - produces: Project
+          examples:
+            - given: 'in Input{Name: "Alpha", Slug: "alpha", Description: "first", Status: "draft"}, id "p1", now 2026-10-08T09:00:00Z'
+              when: New
+              then: 'Project{ID: "p1", Name: "Alpha", Slug: "alpha", Description: "first", Status: "draft", CreatedAt: 2026-10-08T09:00:00Z, UpdatedAt: 2026-10-08T09:00:00Z}'
+            - given: 'in Input{Name: "Gamma", Slug: "gamma-2", Description: "", Status: "active"}, id "7f3a", now 2025-01-02T03:04:05Z'
+              when: New
+              then: 'Project{ID: "7f3a", Name: "Gamma", Slug: "gamma-2", Description: "", Status: "active", CreatedAt: 2025-01-02T03:04:05Z, UpdatedAt: 2025-01-02T03:04:05Z}'
+            - given: 'in Input{Name: " x ", Slug: "BAD", Description: "d", Status: ""}, id "q", now 2026-10-08T09:00:00Z'
+              when: New
+              then: 'Project{ID: "q", Name: " x ", Slug: "BAD", Description: "d", Status: "", CreatedAt and UpdatedAt 2026-10-08T09:00:00Z} — copied verbatim'
+            - given: 'p = the Project of example 1, in Input{Name: "Beta", Slug: "beta", Description: "", Status: "archived"}, now 2026-10-09T10:30:00Z'
+              when: Apply
+              then: 'Project{ID: "p1", Name: "Beta", Slug: "beta", Description: "", Status: "archived", CreatedAt: 2026-10-08T09:00:00Z, UpdatedAt: 2026-10-09T10:30:00Z}'
+    - name: store
+      description: >
+        Package store in store/: where projects are kept. Imports morphstudio/project and the standard library (os,
+        encoding/json, sync, path/filepath, errors, fmt, sort and the like); no clock, no randomness, no network.
+      language: go
+      functions:
+        - name: Memory Store
+          description: The store contract (interface and errors) and an in-memory implementation safe for concurrent use.
+          behavior: >
+            Declares in package store, exactly:
+            `var ErrNotFound = errors.New("not found")`, `var ErrSlugTaken = errors.New("slug taken")` and
+            `type Store interface { List() ([]project.Project, error); Get(id string) (project.Project, error);
+            Create(p project.Project) error; Update(p project.Project) error; Delete(id string) error }`.
+            Exported `type Mem struct` (unexported fields: a sync.Mutex and the projects by ID) and
+            `func NewMem() *Mem`; *Mem implements Store, every method under the mutex. List returns every project sorted
+            by CreatedAt ascending, then by ID ascending, as a NEW slice (an empty store gives a non-nil empty slice
+            []project.Project{}), error nil. Get(id) returns the project, or project.Project{} and ErrNotFound. Create(p)
+            returns ErrSlugTaken when a stored project has p.Slug, else stores p. Update(p): no stored project with p.ID →
+            ErrNotFound (checked first); another stored project (a different ID) has p.Slug → ErrSlugTaken; else replaces
+            the stored project. Delete(id): unknown → ErrNotFound, else removes it. The errors are returned as the
+            variables themselves, never wrapped. Values are copies: changing a returned Project or the returned slice does
+            not change the store.
+          steps:
+            - produces: Store
+          examples:
+            - given: NewMem()
+              when: List
+              then: '[]project.Project{} (non-nil, length 0), error nil; and var _ Store = (*Mem)(nil) compiles'
+            - given: 'Create, in this order, {ID "b", Slug "beta", CreatedAt 2026-10-08T10:00:00Z}, {ID "a", Slug "alpha", CreatedAt 2026-10-08T09:00:00Z}, {ID "c", Slug "gamma", CreatedAt 2026-10-08T10:00:00Z} (each error nil)'
+              when: List
+              then: 'IDs in order "a", "b", "c" — CreatedAt first, ID breaks the tie; Get("b") returns the project stored as "b"'
+            - given: 'the store of example 2'
+              when: 'Create {ID "d", Slug "alpha"}; Get("zz"); Update {ID "zz", Slug "alpha"}; Delete("zz")'
+              then: 'ErrSlugTaken; project.Project{} and ErrNotFound; ErrNotFound (not ErrSlugTaken: the ID is checked first); ErrNotFound; List still "a", "b", "c"'
+            - given: 'the store of example 2'
+              when: 'Update {ID "b", Slug "beta", Name "B2", CreatedAt 2026-10-08T10:00:00Z}; then Update {ID "b", Slug "alpha", CreatedAt 2026-10-08T10:00:00Z}'
+              then: 'nil (its own slug is not taken) and Get("b").Name is "B2"; then ErrSlugTaken and Get("b").Slug is still "beta"'
+            - given: 'the store of example 2'
+              when: 'l := List(); l[0].Name = "changed"; g, _ := Get("a"); g.Name = "changed"'
+              then: 'Get("a").Name is still "" (the name it was created with) — List and Get return copies'
+            - given: 'the store of example 2'
+              when: 'Delete("a"); then Get("a"); then Create {ID "e", Slug "alpha", CreatedAt 2026-10-08T08:00:00Z}'
+              then: 'nil; ErrNotFound; nil (the slug is free again); List IDs "e", "b", "c"'
+        - name: File Store
+          description: A Store kept in one JSON file, rewritten whole and atomically after every successful change.
+          behavior: >
+            Exported `type File struct` (unexported fields) and `func OpenFile(path string) (*File, error)` in package
+            store; *File implements Store with the same semantics, errors and ordering as *Mem (it may keep a *Mem inside).
+            OpenFile reads path: a missing file is an empty store (OpenFile does not create the file); a file that is not
+            a JSON array of project.Project → (nil, an error whose text begins "store: read "). Every successful Create,
+            Update and Delete writes the whole List() as one JSON array (encoding/json, an empty store as []) to a
+            temporary file in the same directory (os.CreateTemp(filepath.Dir(path), ...)), closes it and os.Rename's it
+            onto path, leaving no other file behind. An operation that fails (ErrNotFound, ErrSlugTaken, or a write
+            error) leaves the file and the in-memory state unchanged and returns the error (a write error is returned
+            as is, never as ErrNotFound or ErrSlugTaken).
+          steps:
+            - calls: Memory Store
+            - produces: Store
+          examples:
+            - given: 'path = <t.TempDir()>/projects.json, no such file'
+              when: OpenFile(path), then List
+              then: 'a non-nil *File, error nil; List []project.Project{}, nil; the file still does not exist'
+            - given: 'the store of example 1'
+              when: 'Create {ID "b", Name "Beta", Slug "beta", Status "draft", CreatedAt 2026-10-08T10:00:00Z, UpdatedAt the same}, then Create {ID "a", Name "Alpha", Slug "alpha", Status "active", CreatedAt and UpdatedAt 2026-10-08T09:00:00Z}'
+              then: 'both nil; the file decodes (json.Unmarshal into []project.Project) to exactly List(): IDs "a", "b" with every field equal; the directory holds only projects.json'
+            - given: 'the file written by example 2'
+              when: 'OpenFile(path) again, a new store'
+              then: 'List() equals the first store''s List() field by field (the times round-trip through JSON)'
+            - given: 'the store of example 2 and the file''s bytes before'
+              when: 'Create {ID "c", Slug "alpha"}; Update {ID "zz", Slug "zz"}; Delete("zz")'
+              then: 'ErrSlugTaken; ErrNotFound; ErrNotFound; the file''s bytes unchanged; the directory holds only projects.json'
+            - given: 'the store of example 2'
+              when: 'Delete("a"), then Delete("b")'
+              then: 'nil, nil; the file''s content with surrounding white space trimmed is exactly []; List []project.Project{}'
+            - given: 'a file projects.json holding the text {not json'
+              when: OpenFile
+              then: '(*File)(nil) and an error whose Error() begins "store: read "'
+            - given: 'path = <t.TempDir()>/missing-dir/projects.json (the directory does not exist)'
+              when: 'OpenFile(path), then Create {ID "a", Slug "alpha"}'
+              then: 'OpenFile gives an empty store and nil; Create returns a non-nil error that is neither ErrNotFound nor ErrSlugTaken; List is still []project.Project{} (a failed write changes nothing)'
+    - name: auth
+      description: >
+        Package auth in auth/: HTTP Basic authentication over salted SHA-256 hashes. Imports net/http, crypto/sha256,
+        crypto/subtle, encoding/hex and the like from the standard library; no clock, no randomness (the salt is given).
+      language: go
+      functions:
+        - name: Basic Auth
+          description: Password hashing, verification and the middleware that guards a handler with HTTP Basic authentication.
+          behavior: >
+            In package auth: `type Users map[string]string` (user name → a hash string built by HashPassword).
+            `func HashPassword(password, salt string) string` returns "sha256$" + salt + "$" + the lower-case hex of
+            sha256.Sum256([]byte(salt + password)).
+            `func Verify(users Users, user, password string) bool`: false for an unknown user; otherwise splits the
+            stored hash as strings.SplitN(hash, "$", 3), false unless it has 3 parts and the first is "sha256" (a
+            malformed hash), and true exactly when crypto/subtle.ConstantTimeCompare of []byte(HashPassword(password,
+            salt)) and []byte(hash) returns 1 (so a hash in upper-case hex never verifies).
+            `func Require(users Users, realm string, next http.Handler) http.Handler`: reads the credentials with
+            (*http.Request).BasicAuth (scheme case-insensitive, the password is everything after the first colon); when
+            there are none (no header, another scheme, bad base64, no colon) or Verify is false, it answers status 401
+            with headers WWW-Authenticate: Basic realm="<realm>" and Content-Type: application/json and the body exactly
+            {"error":{"code":"unauthorized"}} followed by "\n", and does not call next; otherwise it calls
+            next.ServeHTTP(w, r) unchanged.
+          steps:
+            - produces: http.Handler
+          examples:
+            - given: password "secret", salt "s1"; then password "pa:ss", salt "NaCl"; then both empty
+              when: HashPassword
+              then: '"sha256$s1$f9b1214b8df1807692f471b9644de543bee606254884c13ba2e18f598eb2924d"; "sha256$NaCl$6bec8f041f5c92bd702205eb9e39eaae99a019caf941ca18646f37868c220533"; "sha256$$e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"'
+            - given: 'users Users{"alice": HashPassword("secret", "s1"), "dora": HashPassword("pa:ss", "NaCl")}'
+              when: 'Verify(users, "alice", "secret"); ("alice", "wrong"); ("bob", "secret"); ("dora", "pa:ss"); ("dora", "secret")'
+              then: true; false; false; true; false
+            - given: 'users Users{"carol": "md5$s1$f9b1214b8df1807692f471b9644de543bee606254884c13ba2e18f598eb2924d", "erin": "sha256$s1", "fay": "sha256$s1$F9B1214B8DF1807692F471B9644DE543BEE606254884C13BA2E18F598EB2924D"}'
+              when: 'Verify with password "secret" for "carol", "erin", "fay"'
+              then: false; false; false
+            - given: 'h = Require(users of example 2, "test-realm", next) where next answers 204 and sets header X-Next: yes; a GET /v1/projects with no Authorization header, served on httptest.NewRecorder'
+              when: served
+              then: 'status 401, header WWW-Authenticate exactly Basic realm="test-realm", Content-Type exactly application/json, body exactly {"error":{"code":"unauthorized"}} + "\n", no X-Next header'
+            - given: 'h = Require(users of example 2, "studio", next of example 4) and in turn Authorization "Bearer YWxpY2U6c2VjcmV0", "Basic !!!", "Basic YWxpY2U=" (alice, no colon), "Basic YWxpY2U6d3Jvbmc=" (alice:wrong), "Basic Ym9iOnNlY3JldA==" (bob:secret)'
+              when: served
+              then: 'each 401 with WWW-Authenticate exactly Basic realm="studio" and the unauthorized body; next never called'
+            - given: 'h = Require(users of example 2, "studio", next of example 4) and in turn Authorization "Basic YWxpY2U6c2VjcmV0" (alice:secret), "basic YWxpY2U6c2VjcmV0" (lower-case scheme), and for dora "Basic ZG9yYTpwYTpzcw==" (dora:pa:ss)'
+              when: served
+              then: 'each status 204 with X-Next: yes and no WWW-Authenticate header — next was called'
+    - name: api
+      description: >
+        Package api in api/: the HTTP handlers over a store.Store and the router with Basic authentication. Imports
+        net/http, encoding/json, mime, errors, io, strings, time and morphstudio/project, morphstudio/store,
+        morphstudio/auth; never a listener, never the clock (Now and NewID are injected).
+      language: go
+      functions:
+        - name: Project Handlers
+          description: The five CRUD handlers over the injected store, clock and id source, with JSON in and out.
+          behavior: >
+            In package api: `type Handlers struct { Store store.Store; Now func() time.Time; NewID func() string }` and
+            five methods with the signature `func (h Handlers) X(w http.ResponseWriter, r *http.Request)`: List, Create,
+            Get, Update, Delete. The {id} of a path is r.PathValue("id"). Every response with a body sets exactly
+            Content-Type: application/json, then the status, then writes the body with json.NewEncoder(w).Encode(v)
+            (so every body ends with "\n"); an error body is {"error":{"code":"<code>"}}; a validation error body is
+            {"error":{"code":"validation","fields":{...}}} with the fields map of project.Validate (encoding/json writes
+            its keys sorted). Reading an input (Create, Update), in this order: the Content-Type header parsed with
+            mime.ParseMediaType must give "application/json" (parameters like charset allowed) else 415
+            "unsupported_media_type"; the body is read through http.MaxBytesReader(w, r.Body, 1<<20) by a json.Decoder
+            with DisallowUnknownFields into project.Input, then a second Decode must return io.EOF; a syntax error, an
+            unknown key, trailing data, an empty body or a body over 1 MiB → 400 "bad_json".
+            List: Store.List → 200 {"items":[...]} (an empty list is [], never null). Create: read the input;
+            project.Validate → errors → 422 validation; else p := project.New(normalised input, h.NewID(), h.Now());
+            Store.Create(p): ErrSlugTaken → 409 "slug_taken"; nil → 201 with header Location: /v1/projects/<id> and the
+            Project as body. Get: Store.Get(id): ErrNotFound → 404 "not_found"; nil → 200 the Project. Update: read the
+            input (415/400 first); Store.Get(id): ErrNotFound → 404; Validate → 422; p := project.Apply(existing,
+            normalised input, h.Now()); Store.Update(p): ErrNotFound → 404, ErrSlugTaken → 409; nil → 200 the Project.
+            Delete: Store.Delete(id): ErrNotFound → 404; nil → 204 with no body and no Content-Type header. Any other
+            error of the store (compared with errors.Is) → 500 "internal".
+          steps:
+            - uses: project
+            - uses: store
+            - produces: http.Handler
+          examples:
+            - given: 'h = Handlers{Store: store.NewMem(), Now: a func returning 2026-10-08T09:00:00Z, NewID: a func returning "p-1"}; GET /v1/projects'
+              when: h.List on httptest.NewRecorder
+              then: 'status 200, Content-Type exactly application/json, body exactly {"items":[]} + "\n"'
+            - given: 'h of example 1; POST /v1/projects, Content-Type "application/json; charset=utf-8", body {"name":" Alpha ","slug":"alpha"}'
+              when: h.Create
+              then: 'status 201, Location exactly /v1/projects/p-1, Content-Type application/json, body exactly {"id":"p-1","name":"Alpha","slug":"alpha","description":"","status":"draft","createdAt":"2026-10-08T09:00:00Z","updatedAt":"2026-10-08T09:00:00Z"} + "\n"; h.Store.Get("p-1") returns that Project'
+            - given: 'h of example 1 (empty store); POST /v1/projects with body {"name":"a","slug":"a"} and in turn Content-Type "text/plain", no Content-Type at all, "application/xml"'
+              when: h.Create
+              then: 'each status 415, body exactly {"error":{"code":"unsupported_media_type"}} + "\n"; the store stays empty'
+            - given: 'h of example 1; POST /v1/projects, Content-Type application/json, and in turn the bodies {"name": (cut), {"name":"a","slug":"a","owner":"x"} (unknown key), {"name":"a","slug":"a"} {} (trailing data), the empty body, and {"name":"a","slug":"a","description":"x…x"} of exactly 1048577 bytes'
+              when: h.Create
+              then: 'each status 400, body exactly {"error":{"code":"bad_json"}} + "\n"; while the same body padded to exactly 1048576 bytes is read whole and answers 422 with fields {"description":"too long"}'
+            - given: 'h with NewID "x9" and Now 2025-01-02T03:04:05Z over a store holding {ID "p-0", Slug "taken"}; POST /v1/projects, Content-Type application/json'
+              when: 'h.Create with body {"name":"","slug":"Bad Slug","status":"x"}; then with body {"name":"N","slug":"taken"}'
+              then: 'status 422, body exactly {"error":{"code":"validation","fields":{"name":"required","slug":"invalid","status":"invalid"}}} + "\n"; then status 409, body exactly {"error":{"code":"slug_taken"}} + "\n"'
+            - given: 'the store after example 2 (project p-1)'
+              when: 'GET /v1/projects/p-1 with path value id "p-1"; then GET with id "nope"'
+              then: 'status 200 with the body of example 2; then status 404, body exactly {"error":{"code":"not_found"}} + "\n"'
+            - given: 'the store after example 2 plus {ID "p-2", Slug "beta", CreatedAt 2026-10-08T09:30:00Z}, Now returning 2026-10-09T10:30:00Z; PUT, Content-Type application/json'
+              when: 'h.Update id "p-1" body {"name":"Alpha 2","slug":"alpha-2","description":"d","status":"active"}; id "zz" body {"name":""}; id "zz" body {"name": (cut); id "p-1" body {"name":"X","slug":"beta"}; id "p-1" body {"name":"Y","slug":"alpha-2"}'
+              then: 'status 200, body exactly {"id":"p-1","name":"Alpha 2","slug":"alpha-2","description":"d","status":"active","createdAt":"2026-10-08T09:00:00Z","updatedAt":"2026-10-09T10:30:00Z"} + "\n"; 404 not_found (before validation); 400 bad_json (before the lookup); 409 slug_taken; 200 with name "Y" (its own slug is free)'
+            - given: 'the store after example 2'
+              when: 'DELETE id "p-1"; then DELETE id "p-1" again'
+              then: 'status 204, empty body, no Content-Type header, Get("p-1") gives store.ErrNotFound; then status 404, body exactly {"error":{"code":"not_found"}} + "\n"'
+            - given: 'h over a store whose every method returns errors.New("disk full")'
+              when: 'List; Get id "p-1"; Create with a valid body {"name":"a","slug":"a"}; Update id "p-1" with that body; Delete id "p-1"'
+              then: 'each status 500, body exactly {"error":{"code":"internal"}} + "\n"'
+        - name: Router
+          description: The routes of the API on Go 1.22's http.ServeMux, the /v1/ routes behind Basic authentication.
+          behavior: >
+            Exported as `func NewRouter(h Handlers, users auth.Users) http.Handler` in package api. A new http.ServeMux
+            with the patterns "GET /healthz" (no authentication: 200, Content-Type application/json, body {"status":"ok"}
+            + "\n" written by json.Encoder), "GET /v1/projects" → h.List, "POST /v1/projects" → h.Create,
+            "GET /v1/projects/{id}" → h.Get, "PUT /v1/projects/{id}" → h.Update, "DELETE /v1/projects/{id}" → h.Delete;
+            each /v1/ handler wrapped in auth.Require(users, "morph-studio", ...). A wrong method on a known path is the
+            mux's 405, an unknown path the mux's 404 (only the status is pinned).
+          steps:
+            - uses: auth
+            - uses: project
+            - uses: store
+            - produces: http.Handler
+          examples:
+            - given: 'r = NewRouter(Handlers{Store: store.NewMem(), Now: 2026-10-08T09:00:00Z, NewID: "r-1"}, users Users{"ann": auth.HashPassword("pw1", "x")}); GET /healthz, no Authorization'
+              when: served on httptest.NewRecorder
+              then: 'status 200, Content-Type application/json, body exactly {"status":"ok"} + "\n"'
+            - given: 'r of example 1; GET /v1/projects with no Authorization; then POST /v1/projects, Content-Type application/json, body {"name":"A","slug":"a"}, Authorization "Basic YW5uOndyb25n" (ann:wrong)'
+              when: served
+              then: 'each status 401, WWW-Authenticate exactly Basic realm="morph-studio", body exactly {"error":{"code":"unauthorized"}} + "\n"; the store stays empty'
+            - given: 'r of example 1, every request with Authorization "Basic YW5uOnB3MQ==" (ann:pw1)'
+              when: 'POST /v1/projects {"name":"A","slug":"a"}; GET /v1/projects; GET /v1/projects/r-1; PUT /v1/projects/r-1 {"name":"B","slug":"b"}; DELETE /v1/projects/r-1; GET /v1/projects/r-1'
+              then: 'statuses 201 (Location /v1/projects/r-1), 200 (body {"items":[the project]}), 200 (name "A"), 200 (name "B"), 204, 404'
+            - given: 'r of example 1, Authorization ann:pw1'
+              when: 'PATCH /v1/projects/r-1; DELETE /v1/projects; POST /healthz; GET /nowhere'
+              then: 'statuses 405, 405, 405, 404'
+Guardrail:
+  - name: Injected Clock And Ids
+    description: >
+      No package reads the clock or a random source: time comes from an injected Now func() time.Time, ids from an
+      injected NewID func() string; time.Now, math/rand and crypto/rand are never used, os/exec and net dialing never
+      imported.
+  - name: No Network In Tests
+    description: >
+      Tests never open a listener or dial: HTTP is tested with httptest.NewRecorder and httptest.NewRequest; a test
+      writes files only under t.TempDir().

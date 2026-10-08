@@ -1,0 +1,10 @@
+{
+  "layers": {
+    "project": [],
+    "store": ["project"],
+    "auth": [],
+    "api": ["project", "store", "auth"],
+    "internal/testhelp": []
+  },
+  "pure": []
+}

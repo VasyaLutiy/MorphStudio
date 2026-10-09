@@ -75,3 +75,25 @@ line in `docs/DECISIONS.md` and, where it differs from the proposal, a record ch
     Depends: Runtime Guard (Limits, Tick), Parse Event.
 18. **Queued projects under max-parallel 1.** Proposal: a second project's `plan_load` answers `queued`; it starts at
     the next daemon Tick (30 s) once no project is running/starting/paused. Depends: Daemon Core (PlanLoad, Tick).
+
+**Added 09.10 (P7b, after smoke stop 2 RED — D1 session id, D2 invisible crash / restart storm, D3 limits before any
+event).** Proposals used in the record marked "(proposed, Q<n>)" in PLAN's decisions table until the operator answers.
+
+19. **What resets the per-hour restart count.** The guard restarts a session that exits on its own (fresh or `--resume`,
+    both count) at most `MORPHD_RESUMES_PER_HOUR` times per hour, then stops the project with kind `crash`. Does the PM's
+    explicit `restart` and the operator's `continue` after such a stop reset the count? Proposal: yes — `plan_load`,
+    `continue` (Begin) and `restart` set the list to nil (a human acted; the next storm gets its own 3 attempts); a
+    fresh start check never resets it. Depends: Phase Loop (Begin, Restart, StartChecked), Runtime Guard (Exited).
+20. **One id source.** Only the claude session id must be a version 4 UUID; the session token and the interrupt
+    request id could stay 32 hex chars. Proposal: one `newID` for all three (a UUID is 122 random bits, enough for a
+    bearer token; one function, one example set, nothing to confuse). Depends: Config And Main (newID), Daemon Core.
+21. **The name `MORPHD_RESUMES_PER_HOUR`.** The cap now counts every restart, not resumes only. Proposal: keep the env
+    key and `Config.ResumesPerHour` / `supervisor.Config.MaxResumesPerHour` (the VPS `.env` and the morph-pm skill use the
+    name; renaming buys nothing but a config break); the loop's own list is renamed `Restarts` (`"restarts"` in
+    `state.json`). Depends: Config And Main, Runtime Guard.
+22. **Status after a crash.** The brief asks for "a crashed/restarting state with the exit code". Proposal: no new value
+    of `state` (the loop is `starting` for the instant of the restart and `busy` again at once); instead `status` gains
+    `last_exit` `{code, at, stderr, restarts}` (absent until an exit), the stop past the cap is `{kind: "crash", reason:
+    "exited 4 times within an hour (last code 1): <first stderr line>"}`, every exit is an `exit` entry of the session's
+    event log with the last 20 stderr lines, and every restart is a 🐕 watchdog line "restart n of 3 this hour · <first
+    stderr line>". Depends: Control Contract (Exit, Status), Runtime Guard, Pump.

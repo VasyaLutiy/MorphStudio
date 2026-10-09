@@ -50,6 +50,9 @@
 | `project_create {name, language, repo_url}`: morph init, first push | P3, P7 | bootstrap · Project Create; daemon · Daemon Core | Project Create 1–7 (the eight commands, `morph init --root <dir> …`, `--module` for Go; FirstPush at the token PUT — Q8) |
 | MCP binding: `/mcp/<project>` tools without `project`; user-level `/mcp` with projects_list / project_create; the session's `/mcp/<project>/session` with its own token via `--mcp-config` | P3, P6 | claude · Launch Args; mcpserver · PM Tools, Session Tools, MCP Mount | Launch Args 5–6 (the mcp-config file); PM Tools 1, 6; Session Tools 1; MCP Mount 1–6 (tokens per path) |
 | GitHub token: HTTP only, stored mode 600, never returned; status reports reachable + push access with a plain reason | P3, P4, P5 | github · Repo Access; registry · Secret Files; api · HTTP Handlers | Repo Access 4–8 (401/403/404 reasons); Secret Files 1, 4 (0600); HTTP Handlers 8 (the token appears nowhere in the body) |
+| session ids the claude CLI accepts (2.1.294: "Invalid session ID. Must be a valid UUID."): RFC 4122 v4, lower-case 8-4-4-4-12 | P7b | cmd · Config And Main | Config And Main 6 (`UUIDv4` of the probe's own bytes → `967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e`, the zero and all-ff bytes), 7 (`newID` matches the v4 regexp, two differ) |
+| an exit before `phase_done` / `wait_operator` is a crash: logged with its stderr, counted whether the restart is fresh or `--resume`, ≤ N per hour, then a `crash` stop with a 🛑 naming the code and the first stderr line; no restart storm (smoke 2 RED: 57 spawns in 2 min) | P7b | supervisor · Phase Loop, Runtime Guard; daemon · Daemon Core; pump · Pump; control · Control Contract | Runtime Guard 1, 2 (4 exits → "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."), 8 (an exit while waiting is nothing), 9 (the first stderr line); Phase Loop 1, 2, 9 (what resets the count); Pump 8 (a real `sh` claude that dies with exit 1: exactly 4 spawns, the `exit` entry with the stderr, the stop), 9 (an exit after wait_operator: no restart); Daemon Core 11 (a Spawn that always fails: 4 attempts, no "started" post, `continue` gives 4 more); Control Contract 10 (`last_exit` JSON) |
+| `five_hour` / `seven_day` null until the first `rate_limit_event` (`limits_at` null too) | P7b | control · Control Contract; daemon · Daemon Core | Control Contract 8, 9 (the exact null bodies); Daemon Core 1 (idle project: `LimitsUnknown`, `Usage{}` marshals the five nulls); Pump 1 (22 / 60 once seen) |
 
 Every rule of the brief is an example or a Guardrail: Guardrails "Injected Clock And Ids", "No Network In Tests",
 "No Shell Outside Runner", "Secrets Never Logged"; Requirements "Claude Behind An Interface", "Bearer Token On Every
@@ -104,12 +107,26 @@ Route", "The Session Reports Only Itself". Every not-build item is in "Out of sc
 | P4 | registry, gitrules, control | Project Registry, Secret Files, Phase Start Check, Phase End Check, Control Contract | 10 | 3 | P1, P2, P3 | 0.20 | — |
 | P5 | supervisor, api | Phase Loop, Runtime Guard, HTTP Handlers, Router | 8 | 3 | P4 | 0.25 | — |
 | P6 | mcpserver | PM Tools, Session Tools, MCP Mount | 6 | 4 | P4 | 0.20 | — |
-| P7 | daemon, cmd | Daemon Core, Pump, Config And Main | 6 | 4 | P2–P6 | 0.35 | **smoke 2 (final)** |
+| P7 | daemon, cmd | Daemon Core, Pump, Config And Main | 6 | 4 | P2–P6 | 0.35 | smoke 2 (RED 08.10: D1 session id, D2 invisible crash / restart storm, D3 limits 0 before any event) |
+| P7b | control, supervisor, daemon, pump, cmd (re-cut of 12 built cards: `morph plan --only`) | Control Contract, Phase Loop, Runtime Guard, Daemon Core, Pump, Config And Main | 12 | 7 | P7 | 0.40 | **smoke 2 re-run (final)** |
 
 Measured by the dry cut (V2 binary built from origin/main bc311aa, 08.10, on a scratch copy with the P0 placeholders):
 every phase `morph plan` exit 0 and `morph deck check` 0 errors; generations P1 [3,4,1], P2 [3,4,1], P3 [2,4,2],
 P4 [3,5,2], P5 [2,4,2], P6 [1,2,2,1], P7 [1,1,3,1]; the largest slice 19 files (daemon-core), the heaviest judge slice
 ≈ 83 KB (the probe log), all under 200 KB.
+
+P7b (V2 binary built from origin/main 179c795, P20, on a scratch copy of the tree after P7, 09.10): `morph plan --spec
+contour.yaml --map morph-map.json --component control --component supervisor --component daemon --component pump
+--component cmd --judge --only control-contract,control-contract-judge,phase-loop,phase-loop-judge,runtime-guard,runtime-guard-judge,daemon-core,daemon-core-judge,pump,pump-judge,config-and-main,config-and-main-judge`
+exit 0, `morph deck check` 0 errors / 0 warnings, 12 cards, generations [1,2,2,2,1,3,1] (control-contract →
+phase-loop + control-contract-judge → runtime-guard + phase-loop-judge → daemon-core + runtime-guard-judge → pump →
+config-and-main + daemon-core-judge + pump-judge → config-and-main-judge: the chain control → supervisor → daemon → cmd
+is one package behind another, so the deck is 7 generations of 1–3 cards, not 4; the dependencies on the 15 cards left
+out are external and done); the heaviest slice pump-judge 172 869 B (the probe log, daemon.go, pump.go), all under
+200 KB. A P7b card re-generates its file whole from the record on the current tree; the orchestrator's `checks.json`
+freezes every package but control, supervisor, daemon and cmd/morphd. Why one phase and not P7b/P7c: 12 cards is the
+cap and every generation is a 1–3 card step whose siblings never build each other's package; a split would double the
+orchestrator session for the same 12 cards.
 
 - **Smoke stop 1 (after P3, the PM on the VPS, ≤ $0.05 of claude)**: a throwaway `main` outside the repository
   (`/tmp/smoke-p3/main.go`, not committed) that calls `claude.Start(ctx, "claude", claude.Args(claude.Launch{SessionID:
@@ -129,10 +146,19 @@ P4 [3,5,2], P5 [2,4,2], P6 [1,2,2,1], P7 [1,1,3,1]; the largest slice 19 files (
   done: stop after operator`, `GET stop` → `{"stop":{"kind":"operator",…}}`; `POST order` while idle → `{"sent":true}`;
   `POST interrupt` during a turn → the next `result` has `terminal_reason "aborted_streaming"`; from the laptop
   `claude mcp add --transport http morph https://<host>/mcp/smoke --header "Authorization: Bearer $MORPH_TOKEN"` and
-  the `status` tool answers the same JSON as `GET status`. Red → a DECISIONS line and an issue labelled for the
-  Component; the stretch stops for the operator.
-- **Total**: 7 phases, 54 cards (27 code, 27 judge), 199 record examples; executor estimate $1.45 on `ds` (cap $5 per
-  phase, $35 for the stretch); claude for the two smokes ≤ $0.55.
+  the `status` tool answers the same JSON as `GET status`. Added for the re-run after P7b: before `POST plan`, `GET
+  status` shows `"five_hour":null,"seven_day":null` and `GET usage` shows all five limit keys (`five_hour`, `seven_day`,
+  both `_resets_at`, `limits_at`) null; after the session's first `rate_limit_event` both show the percentages (`GET
+  events` holds the event line); the `session_id` of `status` and of the `system` `init` event is a lower-case
+  8-4-4-4-12 UUID with `4` at the version position; `status` holds no `last_exit` key while the session runs. Should the
+  session exit on its own before `phase_done`: `GET events` ends with an `exit` entry `{"code":<n>,"stderr":"…"}`, TG
+  shows `[smoke] 🐕 S1: session exited (code <n>), restarting` with `restart 1 of 3 this hour · <first stderr line>`,
+  `status` shows `last_exit`, and never more than 4 session files appear under `<state>/smoke/sessions/` within an hour
+  (the fourth exit posts `🛑 S1: session keeps exiting` and `GET stop` → `{"stop":{"kind":"crash",…}}`). Red → a
+  DECISIONS line and an issue labelled for the Component; the stretch stops for the operator.
+- **Total**: 7 phases + P7b, 54 cards (27 code, 27 judge) of which P7b re-cuts 12 (66 card runs), 210 record examples;
+  executor estimate $1.85 on `ds` (cap $5 per phase, $35 for the stretch); claude for the two smokes and the smoke 2
+  re-run ≤ $1.05.
 
 ### Measures per phase
 
@@ -162,6 +188,10 @@ bytes, the run id.
 | Q16 | event log retention | one file per session under the state dir, never rotated in v1 | operator 08.10 |
 | Q17 | the rate-limit pause rule | `utilization >= 1` of a window → pause until its `resetsAt`; revisit at the first real limit | operator 08.10 |
 | Q18 | queued projects under max-parallel | the oldest queued project starts at the next Tick when a slot frees | operator 08.10 |
+| Q19 | what resets the per-hour restart count (every exit the loop still wanted is a crash; fresh and `--resume` restarts both count; past `MORPHD_RESUMES_PER_HOUR` the project stops with kind `crash`) | `plan_load`, `continue` and `restart` reset it; a fresh start check never does | (proposed, Q19) |
+| Q20 | which ids must be UUIDs | one `newID` (RFC 4122 v4, lower-case 8-4-4-4-12) for the session id, the session token and the interrupt request id | (proposed, Q20) |
+| Q21 | the name `MORPHD_RESUMES_PER_HOUR` now that every restart counts | keep the env key and the Config fields; the loop's list is `restarts` | (proposed, Q21) |
+| Q22 | how a crash shows in `status` | no new `state` value; `last_exit {code, at, stderr, restarts}` (absent until an exit), `stop.kind "crash"` with the exit code and the first stderr line in `reason`, an `exit` entry in `events` with the last 20 stderr lines, a 🐕 line per restart | (proposed, Q22) |
 
 ## Out of scope
 
@@ -233,7 +263,8 @@ One line each; nothing here is written by a card.
 
 ## Zero Contour
 
-`contour.yaml` (≈ 158 KB, 17 Components, 27 Functions, 199 examples; sizes by YAML dump of each Component):
+`contour.yaml` (≈ 190 KB, 18 Components, 27 Functions, 210 examples; sizes by YAML dump of each Component; `pump` is
+the second Component of package daemon — daemon/pump.go — split off at P7b because the two together passed 30 KB):
 
 | Component | KB | Functions | examples |
 |---|---|---|---|
@@ -248,12 +279,13 @@ One line each; nothing here is written by a card.
 | bootstrap | 6.0 | 1 | 7 |
 | registry | 7.1 | 2 | 13 |
 | gitrules | 8.0 | 2 | 15 |
-| control | 7.8 | 1 | 7 |
-| supervisor | 17.6 | 2 | 17 |
-| daemon | 17.2 | 2 | 16 |
-| api | 10.7 | 2 | 15 |
-| mcpserver | 12.4 | 3 | 20 |
-| cmd | 5.0 | 1 | 5 |
+| control | 11.2 | 1 | 10 |
+| supervisor | 23.7 | 2 | 18 |
+| daemon | 23.7 | 1 | 11 |
+| pump | 15.0 | 1 | 9 |
+| api | 12.2 | 2 | 15 |
+| mcpserver | 18.2 | 3 | 20 |
+| cmd | 8.0 | 1 | 7 |
 
 Requirements: Claude Behind An Interface · Bearer Token On Every Route · The Session Reports Only Itself.
 Guardrails: Injected Clock And Ids · No Network In Tests · No Shell Outside Runner · Secrets Never Logged.
@@ -261,7 +293,10 @@ Dependency: `github.com/modelcontextprotocol/go-sdk` v1.8.0 (go), doc `docs/deps
 
 ## morph-map.json
 
-Committed with this plan (54 entries). The cards of P1:
+Committed with this plan (54 entries; P7b re-cuts 12 of them — control-contract, phase-loop, runtime-guard, daemon-core,
+pump, config-and-main and their judges — by `morph plan --only`, the judges' instructions widened for the new examples,
+budgets control-contract 14 000, daemon-core 26 000, pump 12 000, judges 18 000 / 26 000 / 34 000 / 32 000 / 20 000). The
+cards of P1:
 
 | card | target | slice | depends on | max_tokens |
 |---|---|---|---|---|
@@ -274,8 +309,8 @@ Committed with this plan (54 entries). The cards of P1:
 | exec-runner-judge | runner/runner_examples_test.go | go.mod, runner.go, testhelp.go | exec-runner | 14 000 |
 | phase-queue-judge | queue/queue_examples_test.go | go.mod, queue.go, testhelp.go, fixtures/plan/queue-3.json | phase-queue | 18 000 |
 
-Budgets are before the processor's ×3 (`scale_tokens.py … 3` on `ds`); the heaviest judges: daemon-core-judge 32 000,
-http-handlers-judge 28 000, pump-judge 28 000, pm-tools-judge 28 000.
+Budgets are before the processor's ×3 (`scale_tokens.py … 3` on `ds`); the heaviest judges: daemon-core-judge 34 000,
+pump-judge 32 000, http-handlers-judge 28 000, pm-tools-judge 28 000.
 
 ## Verification
 
@@ -284,7 +319,7 @@ The operator knows the framework is done when smoke stop 2 is green as written a
 `smoke` project through a real claude session to `phase_done` and its stop, serves `status`, `events`, `order`,
 `interrupt`, `usage` over HTTP and the same `status` over the remote MCP from the laptop, posts the start and stop
 lines to Telegram with the `[smoke]` prefix, and `GOFLAGS=-mod=vendor GOPROXY=off go test -count=1 ./...` is green
-with ≈ 199 example tests (one per record example; the count is the sum of the examples of the Functions merged).
+with ≈ 210 example tests (one per record example; the count is the sum of the examples of the Functions merged).
 
 ## Record rules for this project
 

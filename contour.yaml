@@ -883,7 +883,7 @@ System:
       dataObjects:
         - name: Status
           description: The answer of `status`.
-          schema: "type Status struct { State, Phase string; Minutes int; CostUSD float64; FiveHour, SevenDay int; SessionID string; Queue QueueView; Repo github.Access; Stop *Stop }"
+          schema: "type Status struct { State, Phase string; Minutes int; CostUSD float64; FiveHour, SevenDay int; LimitsUnknown bool; SessionID string; Queue QueueView; Repo github.Access; Stop *Stop; LastExit *Exit }  // five_hour and seven_day marshal null while LimitsUnknown"
       functions:
         - name: Control Contract
           description: The views, the Control interface and the mapping of errors to HTTP status and code.
@@ -891,12 +891,18 @@ System:
             Declares in control/control.go, exactly, one field per line:
             `type QueueView struct { State string `json:"state"`; Approved string `json:"approved"`; Index int `json:"index"`; Phases int `json:"phases"`; Current string `json:"current"`; Reason string `json:"reason"` }`;
             `type Stop struct { Kind string `json:"kind"`; Phase string `json:"phase"`; Reason string `json:"reason"`; IssueURL string `json:"issue_url,omitempty"`; At time.Time `json:"at"` }`;
+            `type Exit struct { Code int `json:"code"`; At time.Time `json:"at"`; Stderr string `json:"stderr"`; Restarts int `json:"restarts"` }`
+            (the last exit of a project's session: the exit code, when, the first stderr line, the guard's restarts within that hour);
             `type Status struct { State string `json:"state"`; Phase string `json:"phase"`; Minutes int `json:"minutes"`; CostUSD float64 `json:"cost_usd"`;
-            FiveHour int `json:"five_hour"`; SevenDay int `json:"seven_day"`; SessionID string `json:"session_id"`; Queue QueueView `json:"queue"`;
-            Repo github.Access `json:"repo"`; Stop *Stop `json:"stop,omitempty"` }`;
+            FiveHour int `json:"five_hour"`; SevenDay int `json:"seven_day"`; LimitsUnknown bool `json:"-"`; SessionID string `json:"session_id"`; Queue QueueView `json:"queue"`;
+            Repo github.Access `json:"repo"`; Stop *Stop `json:"stop,omitempty"`; LastExit *Exit `json:"last_exit,omitempty"` }`
+            with `func (s Status) MarshalJSON() ([]byte, error)`: the fields in that order with their tags, except that "five_hour" and "seven_day"
+            are written as null (not the ints) when LimitsUnknown is true (no rate_limit_event seen yet); LimitsUnknown itself is never a key;
             `type Question struct { RequestID string `json:"request_id"`; Text string `json:"text"`; Header string `json:"header"`; Options []string `json:"options"`; AskedAt time.Time `json:"asked_at"` }`;
             `type Usage struct { FiveHour int `json:"five_hour"`; SevenDay int `json:"seven_day"`; FiveHourResetsAt int64 `json:"five_hour_resets_at"`; SevenDayResetsAt int64 `json:"seven_day_resets_at"`;
-            SessionCostUSD float64 `json:"session_cost_usd"`; StretchCostUSD float64 `json:"stretch_cost_usd"`; LimitsAt time.Time `json:"limits_at"` }`;
+            SessionCostUSD float64 `json:"session_cost_usd"`; StretchCostUSD float64 `json:"stretch_cost_usd"`; LimitsAt time.Time `json:"limits_at"` }`
+            with `func (u Usage) MarshalJSON() ([]byte, error)`: the fields in that order with their tags, except that when LimitsAt.IsZero() (no
+            rate_limit_event seen yet) "five_hour", "seven_day", "five_hour_resets_at", "seven_day_resets_at" and "limits_at" are all written as null;
             `type Events struct { Entries []eventlog.Entry `json:"entries"`; Last int64 `json:"last"` }`;
             `type ProjectView struct { Name string `json:"name"`; Language string `json:"language"`; RepoURL string `json:"repo_url"`; State string `json:"state"`; CreatedAt time.Time `json:"created_at"` }`;
             `type Milestone struct { Kind string `json:"kind"`; Headline string `json:"headline"`; Numbers string `json:"numbers"` }`;
@@ -944,6 +950,15 @@ System:
             - given: 'Usage{FiveHour: 22, SevenDay: 60, FiveHourResetsAt: 1791469200, SevenDayResetsAt: 1791853200, SessionCostUSD: 0.0064, StretchCostUSD: 5.2609, LimitsAt: 2026-10-08T13:09:03Z}'
               when: json.Marshal
               then: 'exactly {"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}'
+            - given: 'Status{State: "idle", LimitsUnknown: true}; then Status{State: "busy", Phase: "S1", Minutes: 2, CostUSD: 0.03, FiveHour: 77, SevenDay: 72, LimitsUnknown: true, SessionID: "s-9"}'
+              when: json.Marshal
+              then: 'exactly {"state":"idle","phase":"","minutes":0,"cost_usd":0,"five_hour":null,"seven_day":null,"session_id":"","queue":{"state":"","approved":"","index":0,"phases":0,"current":"","reason":""},"repo":{"checked":false,"reachable":false,"push":false,"reason":"","checked_at":"0001-01-01T00:00:00Z"}} (no "stop", no "last_exit", no "limits_unknown"); then the output holds ,"five_hour":null,"seven_day":null,"session_id":"s-9", (the ints 77 and 72 appear nowhere) and begins {"state":"busy","phase":"S1","minutes":2,"cost_usd":0.03,'
+            - given: 'Usage{} (every field zero); then Usage{SessionCostUSD: 0.5, StretchCostUSD: 1.25} (LimitsAt zero)'
+              when: json.Marshal
+              then: 'exactly {"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0,"stretch_cost_usd":0,"limits_at":null}; then exactly {"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0.5,"stretch_cost_usd":1.25,"limits_at":null}'
+            - given: 'Exit{Code: 1, At: 2026-10-09T08:14:02Z, Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3}; then Status{State: "waiting", Phase: "S1", LimitsUnknown: true, Stop: &Stop{Kind: "crash", Phase: "S1", Reason: "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.", At: 2026-10-09T08:14:02Z}, LastExit: &Exit{Code: 1, At: 2026-10-09T08:14:02Z, Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3}}'
+              when: json.Marshal
+              then: 'exactly {"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}; then the output ends with ,"stop":{"kind":"crash","phase":"S1","reason":"exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.","at":"2026-10-09T08:14:02Z"},"last_exit":{"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}} and holds "five_hour":null'
     - name: supervisor
       description: >
         Package supervisor in supervisor/: the phase loop of one project as a pure machine — begin a phase, react to
@@ -962,9 +977,11 @@ System:
             Declares in supervisor/loop.go, exactly:
             `type Action struct { Kind string; Phase string; SessionID string; Resume bool; BudgetUSD float64; Line string; Milestone control.Milestone }`;
             `type Loop struct { Project string `json:"project"`; Queue queue.Queue `json:"queue"`; State string `json:"state"`; Phase string `json:"phase"`;
-            SessionID string `json:"session_id"`; PhaseStartedAt time.Time `json:"phase_started_at"`; Resumes []time.Time `json:"resumes"`;
+            SessionID string `json:"session_id"`; PhaseStartedAt time.Time `json:"phase_started_at"`; Restarts []time.Time `json:"restarts"`;
             Stop *control.Stop `json:"stop,omitempty"`; PausedUntil time.Time `json:"paused_until"`; StretchUSD float64 `json:"stretch_usd"`;
-            SessionUSD float64 `json:"session_usd"`; LastEventAt time.Time `json:"last_event_at"`; Nudged bool `json:"nudged"`; Alerted bool `json:"alerted"` }`;
+            SessionUSD float64 `json:"session_usd"`; LastEventAt time.Time `json:"last_event_at"`; Nudged bool `json:"nudged"`; Alerted bool `json:"alerted"`;
+            LastExit *control.Exit `json:"last_exit,omitempty"` }` (Restarts: the times the guard restarted the session after an exit, fresh or
+            --resume alike, within the last hour; LastExit: the last exit the guard acted on — both written by Runtime Guard's Exited only);
             `type Config struct { MaxResumesPerHour int; StallMinutes int; StretchUSD float64; UsageAlertPercent int }`;
             `var ErrPhaseMismatch = errors.New("phase mismatch")`;
             `func New(project string, q queue.Queue) *Loop` (State "idle"); `func (l *Loop) Begin(now time.Time) ([]Action, error)`;
@@ -977,9 +994,10 @@ System:
             spawn {Kind, Phase, SessionID, Resume, BudgetUSD}; first_line and write {Kind, Line}; kill {Kind}; post {Kind, Milestone}.
             Begin (meant for State "idle" or "waiting"): Queue.Start() must succeed — its error is returned as is and nothing
             changes (a starting, running or paused loop holds a running queue, so a Begin there fails on the queue's state);
-            then Phase = that id, State "starting", Stop nil, Nudged false, Alerted false, SessionUSD 0, actions
-            [{Kind "start_check", Phase}].
-            StartChecked (State "starting"; any other state → nil): Mode "fresh" → SessionID = newID(), Resumes nil,
+            then Phase = that id, State "starting", Stop nil, Nudged false, Alerted false, SessionUSD 0, Restarts nil, LastExit nil
+            (the PM's plan_load or continue starts the restart count afresh), actions [{Kind "start_check", Phase}].
+            StartChecked (State "starting"; any other state → nil) never touches Restarts or LastExit (a fresh start after an exit still
+            counts, so a session that dies at once cannot restart without bound): Mode "fresh" → SessionID = newID(),
             PhaseStartedAt = now, LastEventAt = now, State "running", actions [{Kind "spawn", Phase, SessionID, Resume false,
             BudgetUSD = the current phase''s Caps.ClaudeUSD}, {Kind "first_line", Line "/morph-orchestrator " + Phase},
             {post start "<phase> started" numbers "session <id> · cap $<ClaudeUSD 'f' -1> · <Hours 'f' -1> h"}] (a Reason
@@ -1005,20 +1023,21 @@ System:
             (Queue.Start, Phase = its id, State "starting", Stop nil, …, actions [{start_check}]); the session id is drawn in
             StartChecked, so neither Begin nor Continue takes an id source.
             Restart: State "running" or "paused" → actions [{Kind "kill"}, {Kind "start_check", Phase}], State "starting",
-            SessionID "", Resumes nil; "idle", "starting" or "waiting" → (nil, control.ErrNoSession).
+            SessionID "", Restarts nil (the PM's explicit restart resets the count; LastExit kept); "idle", "starting" or "waiting" →
+            (nil, control.ErrNoSession).
           steps:
             - uses: queue
             - uses: gitrules
             - uses: control
             - produces: Loop Action
           examples:
-            - given: 'q, _ := queue.Load(the queue.Plan decoded from tests/fixtures/plan/queue-3.json, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5}) (phases P17 none, P18 smoke with Caps.ClaudeUSD 12, P19 none; State "queued"); l := New("demo", q); ids := a func returning "id-1", "id-2", … in turn'
+            - given: 'q, _ := queue.Load(the queue.Plan decoded from tests/fixtures/plan/queue-3.json, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5}) (phases P17 none, P18 smoke with Caps.ClaudeUSD 12, P19 none; State "queued"); l := New("demo", q) with l.Restarts set to [2026-10-08T14:00:00Z] and l.LastExit to &control.Exit{Code: 7, At: 2026-10-08T14:00:00Z, Stderr: "old", Restarts: 1} before the call; ids := a func returning "id-1", "id-2", … in turn'
               when: 'l.Begin(2026-10-08T15:00:00Z)'
-              then: 'actions exactly [{Kind "start_check", Phase "P17"}], nil; State "starting", Phase "P17", Queue.State "running"; a second Begin → error text "queue: cannot start in state \"running\"" and no change'
+              then: 'actions exactly [{Kind "start_check", Phase "P17"}], nil; State "starting", Phase "P17", Queue.State "running", Restarts nil ([]time.Time(nil)), LastExit nil; a second Begin → error text "queue: cannot start in state \"running\"" and no change'
               ref: tests/fixtures/plan/queue-3.json
-            - given: 'the loop after example 1; StartChecked(gitrules.Start{Mode: "fresh", Local: "aaa111", Remote: "aaa111"}, ids, 15:00:01Z)'
+            - given: 'the loop after example 1 (State "starting", P17) with l.Restarts set to [2026-10-08T14:50:00Z] and l.LastExit to &control.Exit{Code: 1, At: 2026-10-08T14:50:00Z, Stderr: "boom", Restarts: 1} before the call; StartChecked(gitrules.Start{Mode: "fresh", Local: "aaa111", Remote: "aaa111"}, ids, 15:00:01Z)'
               when: StartChecked
-              then: 'exactly [{Kind "spawn", Phase "P17", SessionID "id-1", Resume false, BudgetUSD 30}, {Kind "first_line", Line "/morph-orchestrator P17"}, {Kind "post", Milestone {start, "P17 started", "session id-1 · cap $30 · 3 h"}}]; State "running", SessionID "id-1", PhaseStartedAt 15:00:01Z'
+              then: 'exactly [{Kind "spawn", Phase "P17", SessionID "id-1", Resume false, BudgetUSD 30}, {Kind "first_line", Line "/morph-orchestrator P17"}, {Kind "post", Milestone {start, "P17 started", "session id-1 · cap $30 · 3 h"}}]; State "running", SessionID "id-1", PhaseStartedAt 15:00:01Z; Restarts still exactly [14:50:00Z] and LastExit still that Exit (a fresh start keeps the restart count)'
             - given: 'a loop in State "starting" for P18 with SessionID "" (the loop at the end of example 5, or one built with its Queue at Index 1 and Queue.State "running"); StartChecked(Start{Mode: "resume", Reason: "local ahead of origin/main"}, ids returning "id-7", now)'
               when: StartChecked
               then: 'exactly [{spawn P18 "id-7" Resume true BudgetUSD 12}, {post start "P18 resumed" "session id-7 · local ahead of origin/main"}] — no first_line; with SessionID "id-3" kept from before, the spawn carries "id-3"'
@@ -1037,23 +1056,27 @@ System:
             - given: 'a running loop at P18 (Index 1 of the fixture queue, SessionUSD 0.5, StretchUSD 1.0); EndChecked(OK true) at 17:00:00Z; then Continue(17:30:00Z); then a running loop at P19 with EndChecked(OK true)'
               when: 'EndChecked; Continue; EndChecked'
               then: '[{kill}, {post stop "P18 done: stop after smoke" "next P19 · waiting for continue"}], State "waiting", Stop.Kind "smoke", StretchUSD 1.5; Continue → [{start_check P19}], State "starting", Phase "P19", nil; the P19 end → [{kill}, {post end "P19 done: plan complete" "stretch $1.5000"}], State "waiting", Stop.Kind "end", Queue.State "done"; a Continue then → error text "queue: nothing to continue (state \"done\")"'
-            - given: 'the running loop of example 2; WaitOperator("gate", "forecast $1.4 over the cap", "", 15:10:00Z); then on a fresh running loop WaitOperator("emergency", "card x red after fix", "https://github.com/o/r/issues/12", now); then Restart on the waiting loop; then Restart on a running loop'
+            - given: 'the running loop of example 2; WaitOperator("gate", "forecast $1.4 over the cap", "", 15:10:00Z); then on a fresh running loop WaitOperator("emergency", "card x red after fix", "https://github.com/o/r/issues/12", now); then Restart on the waiting loop; then Restart on a running loop whose Restarts is [15:05:00Z] and LastExit &control.Exit{Code: 3, At: 15:05:00Z, Stderr: "", Restarts: 1}'
               when: 'WaitOperator; Restart'
-              then: '[{post stop "P17: wait_operator gate" "forecast $1.4 over the cap"}], State "waiting", Stop {gate, P17, "forecast $1.4 over the cap", IssueURL ""}; then numbers "card x red after fix · https://github.com/o/r/issues/12" and Stop.IssueURL set; Restart → (nil, control.ErrNoSession); on the running loop → [{kill}, {start_check P17}], State "starting", SessionID ""'
+              then: '[{post stop "P17: wait_operator gate" "forecast $1.4 over the cap"}], State "waiting", Stop {gate, P17, "forecast $1.4 over the cap", IssueURL ""}; then numbers "card x red after fix · https://github.com/o/r/issues/12" and Stop.IssueURL set; Restart → (nil, control.ErrNoSession); on the running loop → [{kill}, {start_check P17}], State "starting", SessionID "", Restarts nil ([]time.Time(nil)), LastExit still that Exit'
         - name: Runtime Guard
           description: What the loop does on its own between the session's reports — exits, limits, stalls and caps.
           behavior: >
             Declares in supervisor/guard.go, over the Loop of supervisor/loop.go:
-            `func (l *Loop) Exited(code int, now time.Time, cfg Config) []Action`, `func (l *Loop) Turn(r stream.Result, now time.Time, cfg Config) []Action`,
+            `func (l *Loop) Exited(code int, stderr string, now time.Time, cfg Config) []Action`, `func (l *Loop) Turn(r stream.Result, now time.Time, cfg Config) []Action`,
             `func (l *Loop) Limits(lim stream.Limits, now time.Time, cfg Config) []Action`, `func (l *Loop) Event(now time.Time)` and
             `func (l *Loop) Tick(now time.Time, cfg Config) []Action`.
             Event: LastEventAt = now (every line from the process).
-            Exited: State "running" or "paused" → the resumes within the last hour (Resumes with now - t < 1 h) counted:
-            fewer than cfg.MaxResumesPerHour → Resumes += now, State "starting", actions [{post watchdog "<phase>: session exited
-            (code <code>), resuming" numbers "resume <n> of <max> this hour"}, {Kind "start_check", Phase}]; else State "waiting",
-            Stop {Kind "crash", Phase, Reason "exited <n> times within an hour (last code <code>)", At now}, Queue.Stop("crash"),
-            actions [{post stop "<phase>: session keeps exiting" numbers Reason}]. State "starting" (the process died before
-            the check came back) → the same rule. Other states → nil.
+            Exited (an exit the daemon saw while the loop still wanted the session: a crash, whatever the code): State "running",
+            "paused" or "starting" (the process died before the check came back) → line := the first line of stderr that is not blank,
+            strings.TrimSpace-d, cut to its first 200 runes ("" when none); Restarts := its entries within the last hour (now - t < 1 h, older
+            ones dropped; nil, never an empty non-nil slice, when none remain), n := their count; n < cfg.MaxResumesPerHour → Restarts += now, LastExit = &control.Exit{Code: code, At: now, Stderr: line,
+            Restarts: n + 1}, State "starting", actions [{post watchdog "<phase>: session exited (code <code>), restarting" numbers "restart <n+1>
+            of <max> this hour" + (" · " + line when line != "")}, {Kind "start_check", Phase}] (fresh or --resume is the start check's
+            call; either counts); else LastExit = &control.Exit{Code, At: now, Stderr: line, Restarts: n}, State "waiting", Stop {Kind "crash",
+            Phase, Reason "exited <n+1> times within an hour (last code <code>)" + (": " + line when line != ""), At now}, Queue.Stop("crash"),
+            actions [{post stop "<phase>: session keeps exiting" numbers Reason}]. Other states → nil and nothing changes (an exit after
+            wait_operator, a stop or a kill is not a crash).
             Turn: SessionUSD = r.TotalCostUSD; when StretchUSD + SessionUSD >= cfg.StretchUSD and cfg.StretchUSD > 0 and State is
             "running" or "paused" → State "waiting", Stop {Kind "cap", Phase, Reason fmt "stretch cap $%.2f reached ($%.4f)"
             with cfg.StretchUSD and the sum, At now}, Queue.Stop("cap"), actions [{Kind "kill"}, {post stop "<phase>: stretch cap"
@@ -1076,13 +1099,13 @@ System:
             - uses: stream
             - produces: Loop Action
           examples:
-            - given: 'cfg := Config{MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}; the running loop: q, _ := queue.Load(the queue.Plan decoded from tests/fixtures/plan/queue-3.json, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5}); l := New("demo", q); l.Begin(2026-10-08T15:00:00Z); l.StartChecked(gitrules.Start{Mode: "fresh"}, a func returning "id-1", 15:00:01Z) — State "running", Phase "P17", SessionID "id-1", PhaseStartedAt and LastEventAt 15:00:01Z (every "running loop" below is this one, with the fields the example sets); Exited(4, 15:20:00Z, cfg)'
+            - given: 'cfg := Config{MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}; the running loop: q, _ := queue.Load(the queue.Plan decoded from tests/fixtures/plan/queue-3.json, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5}); l := New("demo", q); l.Begin(2026-10-08T15:00:00Z); l.StartChecked(gitrules.Start{Mode: "fresh"}, a func returning "id-1", 15:00:01Z) — State "running", Phase "P17", SessionID "id-1", PhaseStartedAt and LastEventAt 15:00:01Z (every "running loop" below is this one, with the fields the example sets); Exited(4, "", 15:20:00Z, cfg)'
               ref: tests/fixtures/plan/queue-3.json
               when: Exited
-              then: 'exactly [{post watchdog "P17: session exited (code 4), resuming" "resume 1 of 3 this hour"}, {Kind "start_check", Phase "P17"}]; State "starting", Resumes [15:20:00Z], SessionID still "id-1"'
-            - given: 'the loop after example 1 brought back to running by StartChecked(resume) at 15:20:05Z, then Exited at 15:30:00Z and 15:40:00Z (each followed by a resume), then Exited(1, 15:50:00Z, cfg)'
+              then: 'exactly [{post watchdog "P17: session exited (code 4), restarting" "restart 1 of 3 this hour"}, {Kind "start_check", Phase "P17"}]; State "starting", Restarts [15:20:00Z], SessionID still "id-1", *LastExit == control.Exit{Code: 4, At: 15:20:00Z, Stderr: "", Restarts: 1}'
+            - given: 'the loop after example 1 brought back to running by StartChecked(gitrules.Start{Mode: "fresh"}, ids, 15:20:05Z) (Restarts still [15:20:00Z]); then Exited(1, "Error: Invalid session ID. Must be a valid UUID.\n", 15:30:00Z, cfg); StartChecked(Start{Mode: "resume", Reason: "dirty tree (1 paths)"}, ids, 15:30:05Z); Exited(137, "", 15:40:00Z, cfg); StartChecked(Start{Mode: "fresh"}, ids, 15:40:05Z); then Exited(1, "Error: Invalid session ID. Must be a valid UUID.\n", 15:50:00Z, cfg)'
               when: Exited
-              then: 'the fourth exit within the hour → [{post stop "P17: session keeps exiting" "exited 3 times within an hour (last code 1)"}]; State "waiting", Stop.Kind "crash", Queue.State "stopped"; with the fourth exit at 16:25:00Z instead (the 15:20 resume older than an hour) → a resume, "resume 3 of 3 this hour"'
+              then: 'the second exit → [{post watchdog "P17: session exited (code 1), restarting" "restart 2 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."}, {start_check P17}]; the third → numbers "restart 3 of 3 this hour"; the fourth exit within the hour → exactly [{post stop "P17: session keeps exiting" "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."}]; State "waiting", Stop exactly {Kind "crash", Phase "P17", Reason "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.", At 15:50:00Z}, Queue.State "stopped", Restarts [15:20:00Z, 15:30:00Z, 15:40:00Z], *LastExit == control.Exit{Code: 1, At: 15:50:00Z, Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3}; with the fourth exit at 16:25:00Z instead (the 15:20 restart older than an hour) → a restart, numbers "restart 3 of 3 this hour · Error: Invalid session ID. Must be a valid UUID.", Restarts exactly [15:30:00Z, 15:40:00Z, 16:25:00Z], State "starting"'
             - given: 'a running loop (StretchUSD 28, SessionUSD 0); Turn(stream.Result{TotalCostUSD: 1.5}, now, cfg); then Turn(stream.Result{TotalCostUSD: 2.25}, 2026-10-08T16:00:00Z, cfg)'
               when: Turn
               then: 'nil and SessionUSD 1.5; then [{kill}, {post stop "P17: stretch cap" "stretch cap $30.00 reached ($30.2500)"}], State "waiting", Stop.Kind "cap"; with cfg.StretchUSD 0 the second call returns nil'
@@ -1098,13 +1121,17 @@ System:
             - given: 'a running loop with PhaseStartedAt 15:00:01Z and LastEventAt 15:00:01Z (phase P17, Caps.Hours 3); Tick(15:29:00Z, cfg); Tick(15:31:00Z, cfg); Tick(16:10:00Z, cfg); Event(16:20:00Z); Tick(18:00:01Z, cfg)'
               when: 'Tick and Event'
               then: 'nil; then [{post watchdog "P17: no events for 30 min" "one nudge sent"}, {Kind "write", Line "Nothing has happened for 30 minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first."}] and Nudged true; then nil (one nudge only); Event sets LastEventAt; the last Tick → [{kill}, {post stop "P17: wall clock cap" "wall clock cap 3 h reached"}], State "waiting", Stop.Kind "cap"'
-            - given: 'a loop in State "waiting"; Exited(0, now, cfg); Tick(now, cfg); Turn(Result{TotalCostUSD: 99}, now, cfg); a loop in State "idle": Limits with FiveHour 1'
+            - given: 'a loop in State "waiting" (Restarts nil, LastExit nil); Exited(0, "bye\n", now, cfg); Tick(now, cfg); Turn(Result{TotalCostUSD: 99}, now, cfg); a loop in State "idle": Limits with FiveHour 1'
               when: called
-              then: 'each nil; the waiting loop''s State stays "waiting" and the idle one "idle"'
+              then: 'each nil; the waiting loop''s State stays "waiting", its Restarts nil and LastExit nil (an exit while waiting is not a crash), and the idle one "idle"'
+            - given: 'a running loop; Exited(2, "\n\n  node: bad option --foo \n(use node --help for usage)\n", 15:05:00Z, cfg); then on another running loop Exited(3, strings.Repeat("x", 250) + "\nsecond\n", 15:06:00Z, cfg); then on another running loop with cfg.MaxResumesPerHour 0 Exited(-3, "claude: start fork/exec /opt/claude/bin/claude: no such file or directory", 15:07:00Z, Config{MaxResumesPerHour: 0, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50})'
+              when: Exited
+              then: 'the first → numbers "restart 1 of 3 this hour · node: bad option --foo" and LastExit.Stderr "node: bad option --foo" (the first non-blank line, trimmed); the second → numbers "restart 1 of 3 this hour · " + 200 x''s (cut to 200 runes); the third → exactly [{post stop "P17: session keeps exiting" "exited 1 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}], State "waiting", Stop.Kind "crash", Restarts nil, *LastExit == control.Exit{Code: -3, At: 15:07:00Z, Stderr: "claude: start fork/exec /opt/claude/bin/claude: no such file or directory", Restarts: 0}'
     - name: daemon
       description: >
-        Package daemon in daemon/: the running morphd — the projects with their loops, machines, logs and processes,
-        the implementation of control.Control, and the pump that moves lines between the process and the machine.
+        Package daemon in daemon/, file daemon/daemon.go: the running morphd — the projects with their loops, machines,
+        logs and processes, the implementation of control.Control, and the execution of loop actions (the pump that
+        moves lines between the process and the machine is daemon/pump.go, the Component pump of the same package).
         All I/O goes through the injected dependencies. Imports every package of the module but api, mcpserver and
         cmd/morphd, plus context, encoding/json, errors, fmt, net/http, os, path/filepath, sort, strconv, strings, sync,
         time, unicode/utf8.
@@ -1131,8 +1158,8 @@ System:
             Append("in", line, Now()); nothing when no process is current). One mutex d.mu guards every project: every exported method takes it for
             its whole call; a method without a ctx argument uses the ctx given to Open; every time is a call of Now().
             Open loads every registry project (Registry.List): its State by LoadState (ErrNoState → State{Loop: *supervisor.New(name, queue.Queue{})},
-            any other error returned); then every loop found "running", "starting" or "paused" gets Exited(-2, Now(), Config.Loop) executed at once (the
-            daemon restarted under it). Projects(): one ProjectView{Name, Language, RepoURL, State: the loop's State, CreatedAt} per registry project in
+            any other error returned); then every loop found "running", "starting" or "paused" gets Exited(-2, "", Now(), Config.Loop) executed at once (the
+            daemon restarted under it; it counts as a restart). Projects(): one ProjectView{Name, Language, RepoURL, State: the loop's State, CreatedAt} per registry project in
             name order, an empty registry → [] (not nil). CreateProject: a registered name → control.ErrExists (no command run); bootstrap.Create(ctx,
             Runner, Spec{name, language, repoURL, ProjectsDir, CredentialsFile: Registry.SecretPath(name, "git-credentials"), MorphBin}) — its error, when
             the Report has no Steps (the spec refused before any command), → fmt.Errorf("%w: %v", control.ErrBadInput, err), else returned as is; then
@@ -1141,16 +1168,18 @@ System:
             Language, RepoURL, State "idle", CreatedAt}. Every other method: a project the daemon does not hold → control.ErrUnknownProject.
             Status: {State: the loop's State, replaced by the machine's State ("busy", "ready", "question") when the loop is "running" and a process is
             current; Phase: the loop's; Minutes: int(Now() - PhaseStartedAt in minutes) when the loop is running or paused, else 0; CostUSD: the machine's;
-            FiveHour/SevenDay: control.Percent of the machine's Limits windows (0 without a machine or Limits); SessionID: the machine's SessionID when not
+            FiveHour/SevenDay: control.Percent of the machine's Limits windows and LimitsUnknown false; without a machine or with Limits nil (no
+            rate_limit_event seen yet) FiveHour and SevenDay 0 and LimitsUnknown true (the JSON shows null); SessionID: the machine's SessionID when not
             empty (the init line's), else the loop's; Queue: QueueView{State, Approved, Index, Phases: len(Phases), Current: the ID of Queue.Current() when
-            ok, Reason} of the loop's queue; Repo: the State's; Stop: the loop's}. Events → the current log's Since(since, max) and Last(); no log yet →
+            ok, Reason} of the loop's queue; Repo: the State's; Stop: the loop's; LastExit: the loop's}. Events → the current log's Since(since, max) and Last(); no log yet →
             Events{Entries: []eventlog.Entry{} (empty, not nil), Last: 0}. Order → ErrNoSession when no process is current; else res, acts :=
             machine.Order(text, Now()), each "write" action → writeLine; → res. Pending → nil, nil without a machine or a pending question; else
             &Question{RequestID, Text, Header, Options, AskedAt} of the pending one. Answer → ErrNoSession when no process is current; else
             machine.Answer(option, Now()) (its error as is: ErrNoQuestion, ErrBadOption), writes → writeLine. Interrupt → ErrNoSession when no process is
             current; else machine.Interrupt("int-" + NewID()) (NewID called first; its error as is), writes → writeLine. Usage → {FiveHour, SevenDay as
             in Status; FiveHourResetsAt, SevenDayResetsAt: the windows' ResetsAt; SessionCostUSD: the machine's CostUSD; StretchCostUSD: the loop's
-            StretchUSD + SessionUSD; LimitsAt: the machine's LimitsAt} (zeros without a machine). Restart(force): a current process whose machine is not
+            StretchUSD + SessionUSD; LimitsAt: the machine's LimitsAt} — without a machine every machine-derived field is zero (LimitsAt zero, so the
+            JSON shows the five limit keys null) and StretchCostUSD is still the loop's sum. Restart(force): a current process whose machine is not
             "ready" and !force → ErrBusy; else loop.Restart(Now()) (its error as is) and execute. PlanLoad: the loop's State neither "idle" nor
             "waiting" → ErrBusy; q, err := queue.Load(plan, the project's Caps) (err → fmt.Errorf("%w: %v", control.ErrBadInput, err)); the loop
             replaced by *supervisor.New(project, q) and queuedAt = Now(); then, when fewer than Config.MaxParallel projects have a loop "running",
@@ -1163,12 +1192,15 @@ System:
             "session-token") failing or differing from sessionToken → ErrBadToken; then loop.PhaseDone(phase, next) (its error as is) and execute /
             loop.WaitOperator(kind, reason, issueURL, Now()) and execute / Post(ctx, project, m.Kind, m.Headline, m.Numbers) (its error ignored).
             execute, per action in order: "start_check" → gitrules.StartCheck(ctx, Runner, Dir), then execute(loop.StartChecked(start, NewID, Now()));
-            "spawn" → a current process still held is killed first; token := NewID(), PutSecret(project, "session-token", token); path :=
+            "spawn" → a current process still held is killed and cleared (nil) first, so no later failure leaves it current; token := NewID(), PutSecret(project, "session-token", token); path :=
             claude.WriteMCPConfig(filepath.Join(Registry.Base(), project), "morphd", Config.MCPBaseURL + "/mcp/" + project + "/session", token) (the file
             <base>/<project>/morphd-mcp.json); the log eventlog.Open(<base>/<project>/sessions/<SessionID>.jsonl); p, err := Spawn(ctx,
             claude.Launch{Bin: ClaudeBin, Dir, SessionID, Resume, BudgetUSD of the action, Model, MCPConfigPath: path, Extra: ExtraArgs}); on success a
             new session.New() machine, p the current process, the log the current log, then startPump(d, ctx, project, p, log) when startPump is not
-            nil; an error of any of these steps → execute(loop.Exited(-3, Now(), Config.Loop)); "first_line" and "write" → machine.Order(Line, Now()) and
+            nil; an error err of any of these steps → execute(loop.Exited(-3, err.Error(), Now(), Config.Loop)) and the remaining actions of the
+            batch are skipped (no first line, no "started" post for a session that did not start; the State is still saved) — synchronous and under
+            d.mu, so a Spawn that always fails recurses at most MaxResumesPerHour + 1 times and ends in the loop's crash stop, never deeper;
+            "first_line" and "write" → machine.Order(Line, Now()) and
             its writes → writeLine (nothing without a machine); "end_check" → gitrules.EndCheck(ctx, Runner, Dir, the loop's Phase), then
             execute(loop.EndChecked(end, Now())); "kill" → the current process's Kill() (nothing when none; the process stays current until its pump
             sees the exit); "post" → Post(ctx, project, Kind, Headline, Numbers) of the Milestone, its error ignored. After every batch:
@@ -1194,8 +1226,8 @@ System:
             - "Launch Args · the spawn argv is Args(l) · tests compare l, not the argv"
           examples:
             - given: 'tmp := t.TempDir(); reg := registry.Open(tmp/state) with project registry.Project{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", Dir: tmp/projects/demo, Caps: {30, 3, 5}, CreatedAt: 2026-10-08T14:00:00Z}, and tmp/projects/demo/docs/MEASURE.md written with the bytes of tests/fixtures/git/measure.md (rows "| P16 primer-go |" and "| P17 debt |"); deps := Deps{Registry: reg, Runner: &runner.Fake{Script: {"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git rev-parse HEAD": {Stdout: "aaa111\n"}, "git rev-parse origin/main": {Stdout: "aaa111\n"}, "git status --porcelain": {Stdout: ""}}}, Spawn: a fake recording each claude.Launch and returning a new claude.NewFake() kept in order, Post: a recorder of [4]string{project, kind, headline, numbers} returning telegram.Status{}, nil, GitHubDo: a fake answering literal *http.Response values, Now: a clock from 2026-10-08T15:00:00Z advancing 1 s per call, NewID: "id-1", "id-2", … (the three guarded by one mutex), Config: Config{ClaudeBin: "/opt/claude/bin/claude", MorphBin: "/usr/local/bin/morph", ProjectsDir: tmp/projects, MCPBaseURL: "http://127.0.0.1:7181", Defaults: {25, 2, 4}, MaxParallel: 1, Loop: {MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}}}; d, err := Open(context.Background(), deps)'
-              when: 'd.Projects(); d.Status("demo"); d.Status("nope"); d.StopCheck("demo")'
-              then: 'err nil; exactly []control.ProjectView{{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", State: "idle", CreatedAt: 2026-10-08T14:00:00Z}}; exactly control.Status{State: "idle"} (every other field zero), nil; (control.Status{}, an error errors.Is control.ErrUnknownProject); (nil, nil); no Spawn call'
+              when: 'd.Projects(); d.Status("demo"); d.Status("nope"); d.StopCheck("demo"); d.Usage("demo")'
+              then: 'err nil; exactly []control.ProjectView{{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", State: "idle", CreatedAt: 2026-10-08T14:00:00Z}}; exactly control.Status{State: "idle", LimitsUnknown: true} (every other field zero), nil, and its json.Marshal holds "five_hour":null,"seven_day":null; (control.Status{}, an error errors.Is control.ErrUnknownProject); (nil, nil); exactly control.Usage{} (every field zero), nil, whose json.Marshal is exactly {"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0,"stretch_cost_usd":0,"limits_at":null}; no Spawn call'
             - given: 'd of example 1; plan := the queue.Plan json.Unmarshal-ed from tests/fixtures/plan/queue-3.json'
               when: 'd.PlanLoad("demo", plan)'
               then: 'control.QueueView{State: "running", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17"}, nil; the fake Spawn got exactly one claude.Launch{Bin: "/opt/claude/bin/claude", Dir: tmp/projects/demo, SessionID: "id-1", Resume: false, BudgetUSD: 30, MCPConfigPath: tmp/state/demo/morphd-mcp.json} (Model "", Extra nil); that file holds exactly claude.MCPConfigJSON("http://127.0.0.1:7181/mcp/demo/session", "id-2"); reg.ReadSecret("demo", "session-token") is "id-2"; the fake process Written() == [][]byte{stream.User("/morph-orchestrator P17")}; the recorder holds exactly [{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"}]; d.Status("demo") has State "busy", Phase "P17", SessionID "id-1"; the file tmp/state/demo/sessions/id-1.jsonl has 1 line, its "dir" "in"'
@@ -1226,13 +1258,26 @@ System:
             - given: 'd of example 1 (the runner''s unscripted calls answer the Fake''s zero Default, Code 0)'
               when: 'd.CreateProject(ctx, "demo", "go", "https://github.com/acme/demo"); d.CreateProject(ctx, "gamma", "python", "https://github.com/acme/gamma"); d.Projects(); d.CreateProject(ctx, "delta", "cobol", "https://github.com/acme/delta")'
               then: 'an error errors.Is control.ErrExists and no runner call; control.ProjectView{Name: "gamma", Language: "python", RepoURL: "https://github.com/acme/gamma", State: "idle", CreatedAt: not zero}, nil, reg.Get("gamma") has Dir tmp/projects/gamma and Caps {25, 2, 4} (Config.Defaults), the runner''s first call {Dir: tmp/projects, Name: "/usr/local/bin/morph", Args: ["init", "--root", tmp/projects/gamma, "--name", "gamma", "--language", "python"]}; the names and states "demo" "idle", "gamma" "idle"; an error errors.Is control.ErrBadInput with the text exactly `bad input: bootstrap: unknown language "cobol"`'
+            - given: 'd of example 1 built with Spawn := a func recording each claude.Launch and returning (nil, errors.New("claude: start fork/exec /opt/claude/bin/claude: no such file or directory")) every time; plan := the queue.Plan of tests/fixtures/plan/queue-3.json'
+              when: 'd.PlanLoad("demo", plan); d.Status("demo"); d.StopCheck("demo"); d.Events("demo", 0, 10); then d.Continue("demo")'
+              then: 'PlanLoad → control.QueueView{State: "stopped", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17", Reason: "crash"}, nil (no error: the stop is a state, not a failure); the recorder got exactly 4 Launches, SessionIDs "id-1", "id-3", "id-5", "id-7", every Resume false; reg.ReadSecret("demo", "session-token") is "id-8"; the posts exactly [{"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 1 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}, {"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 2 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}, {"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 3 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}, {"demo", "stop", "P17: session keeps exiting", "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}] (no "P17 started" post at all); Status has State "waiting", Phase "P17", SessionID "id-7", LimitsUnknown true, Stop.Kind "crash", Stop.Reason "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory", *LastExit == control.Exit{Code: -3, At: not zero, Stderr: "claude: start fork/exec /opt/claude/bin/claude: no such file or directory", Restarts: 3}; StopCheck → the same Stop, nil; Events → control.Events{Entries: []eventlog.Entry{}, Last: 0} (no log became current); the file tmp/state/demo/state.json decodes to a State whose Loop.State is "waiting" and Loop.Restarts has 3 entries; then Continue → nil and the recorder has 8 Launches (continue resets the count: 4 new attempts, SessionIDs "id-9", "id-11", "id-13", "id-15"), Status again "waiting" with Stop.Kind "crash", 8 posts in total'
+              ref: tests/fixtures/plan/queue-3.json
+    - name: pump
+      description: >
+        Package daemon in daemon/, file daemon/pump.go (the second Component of the package; it reads the unexported
+        fields of daemon/daemon.go): the goroutine that moves every line of a claude process into the session log, the
+        machine and the loop, and that turns the process's exit into a logged, counted event. Imports morphstudio/claude,
+        morphstudio/eventlog, morphstudio/stream, morphstudio/supervisor, context, encoding/json, strings.
+      language: go
+      functions:
         - name: Pump
           description: The goroutine that reads the process, logs every line, feeds the machine and the loop, and executes what they return.
           behavior: >
             Declares in daemon/pump.go, over the Daemon of daemon/daemon.go (its fields d.deps, d.mu, d.projects and the proj fields machine, proc,
             state, pumps; its helpers d.execute and d.writeLine, both called with d.mu held): an init func setting daemon.go's startPump to a function
             (called by the spawn action with d.mu held) that stores a new done channel in the project's pumps map under p and starts
-            `go` d.pump(ctx, project, p, l), closing the channel when pump returns; `func (d *Daemon) pump(ctx context.Context, project string, p
+            `go` d.pump(ctx, project, p, l); when pump returns the goroutine closes the channel and deletes the map entry under d.mu (the map
+            never grows past the live pumps); `func (d *Daemon) pump(ctx context.Context, project string, p
             claude.Process, l *eventlog.Log)`; and `func (d *Daemon) Wait(project string)`: under d.mu it takes the done channels of the project's pumps
             whose process is not the current one, releases d.mu and waits for each (immediate when none; tests call it once a newer spawn replaced the
             process or an exit was handled). pump: for every line from p.Lines(), the whole handling under d.mu (so a caller that sees the line
@@ -1243,11 +1288,15 @@ System:
             Limits → lacts := loop.Limits(*ev.Limits, now, Config.Loop); then each machine action in order: "write" → d.writeLine(project, Line); "ask"
             → Post(ctx, project, "ask", Headline, Numbers); "turn" → Post(ctx, project, "idle", the loop's Phase + " turn ended: " + the first 200
             runes of Headline (or "(no text)" when Headline is empty), Numbers); "limit" → nothing; then d.execute(ctx, project, lacts) (which saves
-            the State; never d.Execute, which locks). When Lines() closes: st := <-p.Exit(); under d.mu: if p is still the current process, the
-            current process is cleared (nil) and d.execute(ctx, project, loop.Exited(st.Code, Now(), Config.Loop)); else nothing (a process replaced by
-            a newer spawn is pumped to its end but its exit changes nothing).
+            the State; never d.Execute, which locks). When Lines() closes: st := <-p.Exit(); under d.mu: first the exit goes into the process's
+            own log l as its own entry, l.Append("exit", json.Marshal of {"code": st.Code, "stderr": tail}, Now()) where tail is the last 20
+            lines of st.Stderr (one trailing "\n" trimmed first, then split on "\n", the last 20 kept, joined with "\n"; "" when stderr is
+            empty) — a crash is never invisible: the code and the stderr are readable by GET events; then, if p is still the current process,
+            the current process is cleared (nil) and d.execute(ctx, project, loop.Exited(st.Code, st.Stderr, Now(), Config.Loop)) (the loop decides
+            whether that exit is a crash: it restarts within the per-hour cap or stops with kind "crash"); else nothing more (a process
+            replaced by a newer spawn is pumped to its end and its exit is logged but changes nothing).
           steps:
-            - calls: Daemon Core
+            - uses: daemon
             - uses: session
             - uses: supervisor
             - uses: eventlog
@@ -1274,10 +1323,18 @@ System:
               ref: tests/fixtures/stream/probe.jsonl
             - given: 'd after example 1; the runner''s Script["git status --porcelain"] set to {Stdout: " M notes.md\n"} (the start check says resume); fp.Finish(4); poll until the fake Spawn was called twice (at most 2 s); d.Wait("demo")'
               when: Finish
-              then: 'the posts after example 1''s exactly [{"demo", "watchdog", "P17: session exited (code 4), resuming", "resume 1 of 3 this hour"}, {"demo", "start", "P17 resumed", "session id-1 · dirty tree (1 paths)"}]; the second Launch has SessionID "id-1", Resume true, BudgetUSD 30, MCPConfigPath tmp/state/demo/morphd-mcp.json; reg.ReadSecret("demo", "session-token") is "id-3"; the file tmp/state/demo/state.json decodes to a State whose Loop.Resumes has 1 entry and Loop.State "running"; d.Status("demo") has State "ready" (a resumed session gets no first line) and SessionID "id-1"'
+              then: 'the posts after example 1''s exactly [{"demo", "watchdog", "P17: session exited (code 4), restarting", "restart 1 of 3 this hour"}, {"demo", "start", "P17 resumed", "session id-1 · dirty tree (1 paths)"}]; the second Launch has SessionID "id-1", Resume true, BudgetUSD 30, MCPConfigPath tmp/state/demo/morphd-mcp.json; reg.ReadSecret("demo", "session-token") is "id-3"; the file tmp/state/demo/state.json decodes to a State whose Loop.Restarts has 1 entry, Loop.State "running" and *Loop.LastExit == control.Exit{Code: 4, At: not zero, Stderr: "", Restarts: 1}; the file tmp/state/demo/sessions/id-1.jsonl has 6 lines and its last decodes to an eventlog.Entry with Seq 6, Dir "exit", Msg exactly {"code":4,"stderr":""}; d.Status("demo") has State "ready" (a resumed session gets no first line), SessionID "id-1" and *LastExit == that Exit'
             - given: 'd after example 1; d.Restart("demo", true) (a second fake process fp2); then fp.Finish(0) (the old one, already killed); d.Wait("demo") (returns within 2 s)'
               when: 'Restart then Finish'
-              then: 'Restart nil; the second Launch has SessionID "id-3", Resume false; the posts after example 1''s exactly [{"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"}] (no watchdog post: the old process''s exit changes nothing); Spawn not called a third time; d.Status("demo") has SessionID "id-3" and State "busy"'
+              then: 'Restart nil; the second Launch has SessionID "id-3", Resume false; the posts after example 1''s exactly [{"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"}] (no watchdog post: the old process''s exit changes nothing); Spawn not called a third time; d.Status("demo") has SessionID "id-3", State "busy" and LastExit nil; the old process''s exit is still logged in its own file: tmp/state/demo/sessions/id-1.jsonl has 6 lines, the last decodes to an eventlog.Entry with Seq 6, Dir "exit", Msg exactly {"code":-1,"stderr":""} (the Fake''s Kill finished it with -1), while d.Events("demo", 0, 10) (the log of id-3) has exactly 1 entry, Dir "in"'
+            - given: 'the harness of example 1 but with Spawn := a func recording each claude.Launch l and returning claude.Start(ctx, script, claude.Args(l), l.Dir, nil), where script is a file written under t.TempDir() with mode 0o755 holding "#!/bin/sh\necho ''Error: Invalid session ID. Must be a valid UUID.'' >&2\necho ''second line'' >&2\nexit 1\n" (a claude that refuses its session id: no stdout, two stderr lines, exit 1 at once); d.PlanLoad("demo", plan); poll d.Status("demo") until State is "waiting" (10 ms steps, at most 5 s); d.Wait("demo")'
+              when: PlanLoad
+              then: 'the recorder got exactly 4 Launches, SessionIDs "id-1", "id-3", "id-5", "id-7", every Resume false (the runner says fresh each time; a fresh restart counts), and still exactly 4 after a further 200 ms sleep (no restart storm); the posts exactly [{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"}, {"demo", "watchdog", "P17: session exited (code 1), restarting", "restart 1 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."}, {"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"}, {"demo", "watchdog", "P17: session exited (code 1), restarting", "restart 2 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."}, {"demo", "start", "P17 started", "session id-5 · cap $30 · 3 h"}, {"demo", "watchdog", "P17: session exited (code 1), restarting", "restart 3 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."}, {"demo", "start", "P17 started", "session id-7 · cap $30 · 3 h"}, {"demo", "stop", "P17: session keeps exiting", "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."}]; d.Status("demo") has State "waiting", Phase "P17", SessionID "id-7", LimitsUnknown true, Stop.Kind "crash", Stop.Reason "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.", *LastExit == control.Exit{Code: 1, At: not zero, Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3}; d.Events("demo", 0, 10) (the log of id-7) has exactly 2 entries: Seq 1 Dir "in" (the first line), Seq 2 Dir "exit" with Msg exactly {"code":1,"stderr":"Error: Invalid session ID. Must be a valid UUID.\nsecond line"}; each of tmp/state/demo/sessions/id-1.jsonl, id-3.jsonl, id-5.jsonl has 2 lines; d.Order("demo", "x") → an error errors.Is control.ErrNoSession'
+              ref: tests/fixtures/plan/queue-3.json
+            - given: 'd after example 1 (fp the fake process, the machine ready); d.WaitOperator("demo", "id-2", "smoke", "P17 smoke: run morphd status", "") → nil; then fp.Finish(0); poll d.Events("demo", 0, 100) until Last is 6 (at most 2 s); d.Wait("demo")'
+              when: 'WaitOperator then Finish'
+              then: 'the posts after example 1''s exactly [{"demo", "stop", "P17: wait_operator smoke", "P17 smoke: run morphd status"}] (an exit while waiting is not a crash: no watchdog post); Spawn still called once; the entry with Seq 6 has Dir "exit" and Msg exactly {"code":0,"stderr":""}; d.Status("demo") has State "waiting", Stop.Kind "smoke", LastExit nil; the state file tmp/state/demo/state.json decodes to a State whose Loop.Restarts is empty; d.Order("demo", "x") → an error errors.Is control.ErrNoSession (the exited process is no longer current); then d.Continue("demo") → nil, a second Spawn with SessionID "id-3", d.Status("demo").State "busy"'
+              ref: tests/fixtures/plan/queue-3.json
             - given: 'd after example 1; fp.Emit([]byte(`{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.0,"resetsAt":1791469200},"seven_day":{"utilization":0.6,"resetsAt":1791853200}}}}`)); poll d.Status("demo") until State "paused"; then d.Tick(ctx) (the clock is past 2026-10-08T14:20:00Z)'
               when: 'Emit; Tick'
               then: 'the last post after the emit {"demo", "watchdog", "P17: usage limit, paused", "until 2026-10-08T14:20:00Z"}; after Tick the last element of fp.Written() == stream.User("Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."), d.Status("demo").State "busy", the last post {"demo", "watchdog", "P17: resumed after the limit", ""}'
@@ -1536,8 +1593,14 @@ System:
           behavior: >
             Declares in cmd/morphd/config.go: `type Config struct { Token string; Port int; StateDir string; ProjectsDir string; ClaudeBin string;
             MorphBin string; TGToken string; TGChatID string; Model string; ExtraArgs []string; Defaults queue.Caps; StretchUSD float64;
-            MaxParallel int; ResumesPerHour int; StallMinutes int; UsageAlertPercent int }`, `func ParseDotenv(text string) map[string]string`
-            and `func Load(getenv func(string) string, dotenv map[string]string) (Config, error)`.
+            MaxParallel int; ResumesPerHour int; StallMinutes int; UsageAlertPercent int }`, `func ParseDotenv(text string) map[string]string`,
+            `func Load(getenv func(string) string, dotenv map[string]string) (Config, error)` and `func UUIDv4(b [16]byte) string`.
+            UUIDv4 (pure): the RFC 4122 version 4 form of 16 bytes — byte 6 becomes 0x40 | (b[6] & 0x0f) (the version nibble), byte 8 becomes
+            0x80 | (b[8] & 0x3f) (the variant bits), every other byte as given — written as lower-case hex in the groups 8-4-4-4-12 joined by "-"
+            (36 characters). The claude CLI refuses any other session id ("Invalid session ID. Must be a valid UUID."), so every id morphd mints
+            has this form: cmd/morphd/main.go declares `func newID() string` = UUIDv4 of 16 bytes from crypto/rand.Read (a read error panics:
+            the daemon cannot run without ids) and passes it as Deps.NewID — the session id, the session token and the interrupt request id
+            ("int-" + id) all come from it.
             ParseDotenv: lines trimmed; empty lines and lines beginning "#" skipped; "export " prefix removed; the first "="
             splits key and value; the value trimmed and, when wrapped in matching single or double quotes, unquoted; a line
             without "=" skipped. Load reads each key as getenv(key), falling back to dotenv[key], then the default:
@@ -1549,8 +1612,8 @@ System:
             "config: <KEY>: not a number: <value>". cmd/morphd/main.go: main reads .env from the working directory when present
             (ParseDotenv), Load(os.Getenv, …), opens the registry at StateDir, builds daemon.Deps with runner.OS{}, a Spawn of
             claude.Start(ctx, l.Bin, claude.Args(l), l.Dir, claude.Env(l)),
-            telegram.Client{TGToken, TGChatID, http.DefaultClient.Do}.Post, http.DefaultClient.Do, time.Now, a NewID of 16 random
-            bytes in hex, MCPBaseURL "http://127.0.0.1:<port>"; `func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler`
+            telegram.Client{TGToken, TGChatID, http.DefaultClient.Do}.Post, http.DefaultClient.Do, time.Now, NewID: newID (a
+            version 4 UUID, above), MCPBaseURL "http://127.0.0.1:<port>"; `func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler`
             = api.NewRouter(api.Handlers{Control: d}, token, mcpserver.Handler(d, known, mcpserver.Tokens{API: token, Session: session}));
             a ticker calls daemon.Tick every 30 s; http.ListenAndServe("127.0.0.1:" + port, handler); a Load error prints it to
             stderr and exits 2. Nothing but the listener address and the port is printed at start ("morphd listening on
@@ -1577,6 +1640,12 @@ System:
             - given: 'f := a fake Control (a struct of the test file implementing the 17 methods of control.Control) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}, nil for "demo" and control.ErrUnknownProject otherwise; h := Build(f, func(p string) bool { return p == "demo" }, func(p string) (string, bool) { return "s", p == "demo" }, "tok-7"); requests by httptest.NewRequest (a body with Content-Type application/json and Accept "application/json, text/event-stream")'
               when: 'GET /healthz; GET /projects/demo/status with Authorization "Bearer tok-7"; POST /mcp/demo with "Bearer tok-7" and the body `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`; GET /projects/demo/status without Authorization — each served by h.ServeHTTP on httptest.NewRecorder'
               then: '200 with the body exactly `{"status":"ok"}` + "\n"; 200 with the body exactly `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}` + "\n"; 200 with result.tools (the body decoded by encoding/json) holding 10 tools, "status" among their names; 401'
+            - given: 'b := [16]byte{0x96, 0x7e, 0x8f, 0x4d, 0xa2, 0xeb, 0x0a, 0xa6, 0x16, 0x8b, 0xb9, 0x05, 0x4a, 0x1c, 0x3d, 0x7e}; then the zero [16]byte; then [16]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; then [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}'
+              when: UUIDv4
+              then: 'exactly "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e" (byte 6 0x0a → 4a, byte 8 0x16 → 96: the probe''s own session id); "00000000-0000-4000-8000-000000000000"; "ffffffff-ffff-4fff-bfff-ffffffffffff"; "00112233-4455-4677-8899-aabbccddeeff" — each 36 characters, lower-case'
+            - given: 'a := newID(); b := newID()'
+              when: newID
+              then: 'each matches ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ (regexp.MustCompile), len 36; a != b; neither contains an upper-case letter'
 Guardrail:
   - name: Injected Clock And Ids
     description: >

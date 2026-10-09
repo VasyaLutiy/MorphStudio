@@ -3,7 +3,8 @@
 // comment is not an import. Node's standard library only.
 //   node guard.mjs src <file,file,...> [mod,mod,...]      the packages of these Go files; the module paths the card's
 //                                                         Component declares (`uses`): a path or a path + "/..."
-//   node guard.mjs tests <file> <min> <max> [lits.json]   one Go test file; lits = strings it must hold
+//   node guard.mjs tests <file> <min> <max> [lits.json]   one Go test file; lits = strings it must hold; it may import
+//                                                         the module's packages and go.mod's direct requirements
 // decks/tools/layers.json: {"layers": {"<dir>": ["<dir it may import>", ...]}, "pure": ["<dir>", ...]};
 // "layers" null or the file absent → every package of the module may import every other; no package is pure.
 import { execFileSync } from "node:child_process";
@@ -76,28 +77,30 @@ function fileImports(text) {
     }
   return out;
 }
-// The direct requirements of go.mod (the record's declared dependencies, vendored): a test of a Component that uses
-// one drives it through that module's API (MorphStudio P6: the go-sdk's in-memory transports).
-function declaredModules() {
+// go.mod's direct requirements: the module paths of its `require` lines and blocks, without the
+// lines marked `// indirect`. A test file may import them (a judge needs a declared module's test doubles, e.g. an
+// in-memory transport); the scaffold vendored them, so the test builds offline.
+function directRequires() {
   const text = fs.existsSync("go.mod") ? fs.readFileSync("go.mod", "utf8") : "";
   const out = [];
-  for (const m of text.matchAll(/^require\s+(\S+)\s+\S+[ \t]*$/gm)) out.push(m[1]);
-  for (const m of text.matchAll(/^require\s*\(([\s\S]*?)^\)/gm))
-    for (const line of m[1].split("\n")) {
-      const s = /^\s*(\S+)\s+\S+\s*$/.exec(line);
-      if (s) out.push(s[1]);
-    }
+  const take = (line) => {
+    if (/\/\/\s*indirect\b/.test(line)) return;
+    const m = /^\s*([^\s/][^\s]*)\s+v\S+/.exec(line.replace(/\/\/.*$/, ""));
+    if (m && !out.includes(m[1])) out.push(m[1]);
+  };
+  for (const m of text.matchAll(/^require\s*\(([\s\S]*?)^\)/gm)) for (const line of m[1].split("\n")) take(line);
+  for (const m of text.matchAll(/^require\s+([^(\s].*)$/gm)) take(m[1]);
   return out;
 }
 function checkTest(file, min, max, lits) {
   if (!fs.existsSync(file)) { bad.push(`guard: ${file} missing`); return; }
   const text = fs.readFileSync(file, "utf8");
   const mod = modulePath();
-  const deps = declaredModules();
+  const requires = directRequires();
   for (const imp of fileImports(text))
     if (!isStd(imp) && !(imp === mod + "/internal/testhelp" || imp.startsWith(mod + "/")) &&
-        !deps.some((m) => imp === m || imp.startsWith(m + "/")))
-      bad.push(`guard: ${file} imports ${imp} (the standard library, ${mod}/internal/testhelp${deps.length ? ", " + deps.join(", ") : ""} only)`);
+        !requires.some((r) => imp === r || imp.startsWith(r + "/")))
+      bad.push(`guard: ${file} imports ${imp} (the standard library${requires.length ? ", " + mod + "/internal/testhelp, " + requires.join(", ") : " and " + mod + "/internal/testhelp"} only)`);
   const code = text.split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
   for (const m of code.matchAll(/\.(Skip|Skipf|SkipNow)\(|\btesting\.Short\(/g))
     bad.push(`guard: ${file} calls ${m[1] ?? "testing.Short"} (a test runs or fails, it is never skipped)`);

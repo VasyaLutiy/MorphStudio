@@ -72,3 +72,30 @@ tree, the later cards' files still call the old API, and the gate stops the phas
 - MorphV2's own identity checks green (go-mini, P15; the P20 smoke).
 - The PM re-runs it in a scratch copy, as for P6 (DECISIONS 09.10 · P6 re-run without Fable), and reports the
   numbers; main of MorphStudio is not touched.
+
+## 6. Amendment after P21a (09.10, operator: fix MorphV2, no workaround)
+
+P21a (MorphV2 01498f5, direction A) failed the live smoke on go-p7b (2/8): a judge retry in gen 2 ran `== full` after
+phase-loop had written the new `loop.go`, next to the old `guard.go` (gen 3) → `guard.go:20: l.Resumes undefined`
+again. `guard.go` cannot be hidden: `mcp/session.go`, outside the subset, needs the whole `supervisor` package.
+Conclusion of both sides: an intermediate tree of a rename inside one package cannot be made consistent → atomicity
+(direction B). The operator orders P21b = requirement 3.5 + B, with these points from MorphStudio's code:
+
+1. **The atomic unit is the API closure, not one package.** `Exited`'s new argument breaks callers in another package
+   of the subset: `daemon/daemon.go:109, 609–641` and `daemon/pump.go:100` (targets of daemon-core and pump, later
+   generations). `== full` builds the whole module, so a per-package group stays red until `daemon` is rewritten too.
+   The group is every subset card whose target defines or uses a changed identifier (for P7b: practically the whole
+   subset); the simple rule "the whole `--only` subset is one group" is acceptable.
+2. **Probes too.** A card's probe compiles its whole package, siblings' old files included (`supervisor`: new
+   `loop.go` + old `guard.go`). So in the group every acceptance stage of every card — build, vet, probe, own, full —
+   runs on the tree with ALL group cards written (their latest versions), not on an intermediate tree.
+3. **Retries.** A red card in the group is retried against that same full tree; after the retry, the group's shared
+   stages run again for every card (a retry can break a sibling). The case that broke P21a — "a retry after a sibling
+   has already written" — is in the gate's demo and in the smoke.
+4. **Blame.** A red shared stage names the card whose target holds the failing `file:line`; a file outside the
+   subset is named as "outside the subset" (the record breaks main → the gate stops before a paid run, req. 3.3).
+5. **Rejected:** "keep later files hidden at run time" (the run decides on the fly what to hide; `mcp/session.go`
+   still breaks).
+
+Acceptance stays §5, plus: the live smoke on go-p7b green (8/8 or red only by card content), including a forced judge
+retry after its gen-2 sibling has written.

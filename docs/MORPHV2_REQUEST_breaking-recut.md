@@ -24,9 +24,9 @@ tree, the later cards' files still call the old API, and the gate stops the phas
   - daemon-core (gen 4): the same on `pump.go`.
 - Why the existing hiding does not help: P15's overlay blanks only the SAME generation's other targets; P20 computes
   siblings over the subset, also per generation. Files of later generations of the same subset stay visible, old.
-- Workaround taken for P7b: the record keeps the old Go names (compat field and a new function). It works, but it
-  leaves a mismatch in the code (`Resumes` with json "restarts", two exit methods). Every future "repair what is
-  built" phase with a rename will hit the same wall.
+- No workaround taken: the operator chose (09.10) to fix MorphV2 first and run P7b as approved (cc46ed1). The
+  alternative, compat names in the record (`Resumes` with json "restarts", two exit methods), was dropped: it leaves
+  a mismatch in the code, and every future "repair what is built" phase with a rename would hit the same wall.
 
 ## 3. What must hold after the change
 
@@ -66,7 +66,9 @@ tree, the later cards' files still call the old API, and the gate stops the phas
   `Exited(code, stderr, …)`) with the new binary, `--only` the same 12 cards: `morph plan` exit 0, `deck check` 0,
   every generation's acceptance on stubs red only at its own probe/guard line (stubcheck), never at `== build` /
   `== vet` on another card's file; a paid run on ds green or red only by card content.
-- `morph deck check` on the cc46ed1 P7b `--only` deck with the OLD binary-equivalent behaviour reproduced (a deck whose generations break each other) exits non-zero naming `supervisor/guard.go:20` (requirement 3.5); on a deck that builds per generation it exits 0.
+- Requirement 3.5: `morph deck check` exits non-zero naming `supervisor/guard.go:20` on a deck whose generations still
+  break each other (the cc46ed1 P7b subset cut the old way, or a test fixture of that shape), and exits 0 on the
+  deck the fixed cut produces.
 - MorphV2's own identity checks green (go-mini, P15; the P20 smoke).
 - The PM re-runs it in a scratch copy, as for P6 (DECISIONS 09.10 · P6 re-run without Fable), and reports the
   numbers; main of MorphStudio is not touched.

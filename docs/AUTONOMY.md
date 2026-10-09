@@ -5,6 +5,9 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
+**Operator order 09.10 (through the PM): P7b, approved cc46ed1.** Smoke 2 was RED (DECISIONS 08.10 · smoke stop 2, D1–D3). Work PLAN row P7b: re-cut the 12 built cards with MorphV2's `morph plan --only` (P20; build the binary copy from /home/morph/MorphV2 at origin/main 179c795 or later): `--component control --component supervisor --component daemon --component pump --component cmd --judge --only control-contract,control-contract-judge,phase-loop,phase-loop-judge,runtime-guard,runtime-guard-judge,daemon-core,daemon-core-judge,pump,pump-judge,config-and-main,config-and-main-judge`. Before the cut replace `decks/tools/guard.mjs` with MorphV2 `templates/go/decks/tools/guard.mjs` and add `templates/common/decks/tools/stubcheck.mjs` (P20 upstreamed P6's hand widening; commit them). No hand filters of a deck (P20: a re-run or fix deck is cut with `--only`). The checks.json notes are in PLAN's P7b row and the architect's DECISIONS-free notes there (unfreeze control, supervisor, daemon, cmd/morphd; the pump card's import list). After the merge: post 🧪 and stop for the PM, who re-runs smoke 2 in full (PLAN "Smoke stop 2").
+
+
 **Next: smoke stop 2, final** (PLAN "Smoke stop 2, final": the PM on the VPS over HTTP and MCP, ≤ $0.50 of claude,
 of which $0.1386 is spent on smoke 1). No phase remains after it: the session posted 🧪, touched
 `~/.morph-wait-operator` and stopped; the PM runs the smoke and the operator restarts the session after a check (a

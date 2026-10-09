@@ -40,8 +40,11 @@ tree, the later cards' files still call the old API, and the gate stops the phas
    plan time, see 5).
 4. Full cuts (no `--only`) and every existing deck stay byte-identical (the P15/P20 identity checks on go-mini and
    MorphV2's own decks).
-5. Nice to have: `morph plan` reports, for an `--only` subset, which kept files outside the subset reference an
-   identifier the record changes (a warning with file:line), so the PM sees the risk at the pre-flight.
+5. **Required (operator 09.10, amended):** `morph deck check` on an `--only` deck builds the tree each generation's
+   acceptance would see — earlier generations' targets as stubs, the generation's own targets as stubs — and exits
+   with an error naming `file:line` when a file that is not that generation's own target fails `build` or `vet`.
+   The check lives in the tool, not in a skill's text: the PM's pre-flight runs `deck check`, so the risk surfaces
+   before the approval with no rule to remember.
 
 ## 4. Candidate directions (for MorphV2 to choose or reject; measured risks only)
 
@@ -63,6 +66,7 @@ tree, the later cards' files still call the old API, and the gate stops the phas
   `Exited(code, stderr, …)`) with the new binary, `--only` the same 12 cards: `morph plan` exit 0, `deck check` 0,
   every generation's acceptance on stubs red only at its own probe/guard line (stubcheck), never at `== build` /
   `== vet` on another card's file; a paid run on ds green or red only by card content.
+- `morph deck check` on the cc46ed1 P7b `--only` deck with the OLD binary-equivalent behaviour reproduced (a deck whose generations break each other) exits non-zero naming `supervisor/guard.go:20` (requirement 3.5); on a deck that builds per generation it exits 0.
 - MorphV2's own identity checks green (go-mini, P15; the P20 smoke).
 - The PM re-runs it in a scratch copy, as for P6 (DECISIONS 09.10 · P6 re-run without Fable), and reports the
   numbers; main of MorphStudio is not touched.

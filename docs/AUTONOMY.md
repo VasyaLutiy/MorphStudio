@@ -1,5 +1,7 @@
 # Autonomous mode
 
+> Under morphd (a session started by the daemon) the regulation is docs/AUTONOMY_MORPHD.md; this file is the laptop/tmux scheme.
+
 The regulation that replaces the operator at every point where a human would answer during a phase. The operator
 confirms it before the first autonomous phase and can change any line; the session reads it at the start of every phase.
 

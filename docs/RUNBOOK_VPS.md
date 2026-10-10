@@ -1,6 +1,6 @@
 # VPS runbook (PM data, not cards)
 
-Host 188.245.28.11 (Ubuntu 24.04), DNS `morph.root.sx` and `morph.themorph.stream` (Cloudflare, A record, DNS only) → that address.
+Host 188.245.28.11 (Ubuntu 24.04), DNS `themorph.stream` (Cloudflare, apex A record, proxy OFF / DNS only) and `morph.root.sx` → that address. Use `themorph.stream`: `morph.root.sx` is filtered on the operator's laptop network.
 
 ## morphd
 - systemd unit `/etc/systemd/system/morphd.service`: User=morph, WorkingDirectory `/home/morph/morphd` (`.env` and `api-token`, mode 600), `ExecStart=/home/morph/morphd/morphd`, `Restart=always`, log `/home/morph/morph-logs/morphd.log`.
@@ -11,11 +11,13 @@ Host 188.245.28.11 (Ubuntu 24.04), DNS `morph.root.sx` and `morph.themorph.strea
 ## Caddy (TLS in front of morphd)
 - Ubuntu package `caddy` 2.6.2, `/etc/caddy/Caddyfile` (the distro default kept as `Caddyfile.dist`):
 ```
-morph.root.sx, morph.themorph.stream {
+morph.root.sx, themorph.stream {
 	@session path_regexp session ^/mcp/[^/]+/session$
 	respond @session 404
 	reverse_proxy 127.0.0.1:7180 {
 		flush_interval -1
+		# the MCP SDK rejects non-local Host headers (DNS-rebinding guard): "Forbidden: invalid Host header"
+		header_up Host {upstream_hostport}
 	}
 	log {
 		output file /var/log/caddy/morph.root.sx.log
@@ -24,7 +26,7 @@ morph.root.sx, morph.themorph.stream {
 ```
 - The per-session MCP endpoint `/mcp/<project>/session` is for claude sessions on the host only: 404 from outside.
 - Certificate from Let's Encrypt, obtained 10.10.
-- Endpoints for the PM: `https://morph.root.sx/mcp` (projects_list, project_create), `https://morph.root.sx/mcp/<project>` (status, plan_load, order, …), HTTP API under `https://morph.root.sx/projects/…`; all need `Authorization: Bearer <MORPHD_TOKEN>`.
+- Endpoints for the PM: `https://themorph.stream/mcp` (projects_list, project_create), `https://themorph.stream/mcp/<project>` (status, plan_load, order, …), HTTP API under `https://themorph.stream/projects/…`; all need `Authorization: Bearer <MORPHD_TOKEN>`.
 
 ## Known: the operator's laptop network drops this host name
 10.10: from the laptop, any request carrying the name `morph.root.sx` (TLS SNI or HTTP Host) hangs after the TCP connect, while the same IP with another Host answers and the name works from the VPS and from other networks — filtering on the path, not the server. Until a different name or a VPN: `ssh -i <key> -N -L 7180:127.0.0.1:7180 root@188.245.28.11` and `http://127.0.0.1:7180/mcp`.

@@ -11,7 +11,7 @@
 | # | decision |
 |---|---|
 | D1 | Beta: **3 users, ONE VPS, ONE morphd**. A VPS per user is deferred (§8). |
-| D2 | The only remote is **one Telegram bot**: onboarding, approve, status, usage, continue, order, interrupt, restart; session questions answered by **inline buttons**. No PM, no laptop MCP needed by a tester. |
+| D2 | **Two surfaces** (operator 11.10, replaces "the bot is the only remote"): each tester works from **their own laptop with the claude CLI connected to morphd over MCP** (`/mcp`, `/mcp/<p>` through the Cloudflare Tunnel, a per-user token); the **Telegram bot** carries onboarding, alerts (milestones, stops, questions) and possibly a chat with the orchestrator. Cloudflare Access service tokens (one per laptop) — later, not in E7. |
 | D3 | **Secrets never in chat.** The bot sends a one-time link (TTL 10 min, one use) to one HTTPS form served by morphd behind Caddy (`themorph.stream`). |
 | D4 | **Isolation = one Linux user per tenant** (`mu-<name>`, home 0700). Every claude session runs under that uid via `systemd-run` with `PrivateTmp`, `MemoryMax`, `CPUQuota`, `ProtectSystem=strict`, `ReadWritePaths=<home>`. morphd's own state stays 0700 under `morph`. Containers later. |
 | D5 | **Credentials per tenant**: `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`, plus `CLAUDE_CONFIG_DIR` / `HOME` of the tenant; read from 0600 files; never in argv, a log, a reply, a milestone or an error. GitHub: a fine-grained PAT per tenant over the existing `PUT github-token` path, now per user; the tester creates the empty repo. |
@@ -138,6 +138,12 @@ control plane over many morphd.
 4. Anthropic's terms for a subscription token used by a server on the user's behalf — check before smoke T3
    (SKETCH §7.2); the API-key path (D5) is the fallback.
 5. Who creates Linux users — **default:** the operator with `tools/add-tenant.sh`; morphd stays unprivileged.
+6. After D2's change (11.10): where does a tester plan a new project — **default:** in their own Claude Code on the
+   laptop in native plan mode, then the plan is committed and loaded with `plan_load` over MCP; P12 (a plan session
+   relayed through the bot, probe B) shrinks to optional. How does the per-user MCP token reach the laptop — **default:**
+   the onboarding form shows the `claude mcp add --transport http morph https://themorph.stream/mcp/<p> --header …`
+   line once. Which bot commands stay in P10a — **default:** `/start <code>`, `/status`, `/help` and answering a
+   session question by a button; orders, continue and approve go over MCP.
 
 ## 10. Out of scope
 

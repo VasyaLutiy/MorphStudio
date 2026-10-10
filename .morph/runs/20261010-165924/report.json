@@ -1,0 +1,100 @@
+{
+  "runId": "20261010-165924",
+  "completedAt": 1791651838310,
+  "branch": "morph/20261010-165924",
+  "processor": "ds",
+  "generations": 2,
+  "outcomes": [
+    {
+      "customId": "phase-loop",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "phase-loop.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\ngofmt -l lists: supervisor/loop.go\ndiff supervisor/loop.go.orig supervisor/loop.go\n--- supervisor/loop.go.orig\n+++ supervisor/loop.go\n@@ -27,21 +27,21 @@\n \n // Loop is the phase loop of one project.\n type Loop struct {\n-\tProject        string         `json:\"project\"`\n-\tQueue          queue.Queue    `json:\"queue\"`\n-\tState          string         `json:\"state\"`\n-\tPhase          string         `json:\"phase\"`\n-\tSessionID      string         `json:\"session_id\"`\n-\tPhaseStartedAt time.Time      `json:\"phase_started_at\"`\n-\tRestarts       []time.Time    `json:\"restarts\"`\n-\tStop           *control.Stop  `json:\"stop,omitempty\"`\n-\tPausedUntil    time.Time      `json:\"paused_until\"`\n-\tStretchUSD     float64        `json:\"stretch_usd\"`\n-\tSessionUSD     float64        `json:\"session_usd\"`\n-\tLastEventAt    time.Time      `json:\"last_event_at\"`\n-\tNudged         bool           `json:\"nudged\"`\n-\tAlerted        bool           `json:\"alerted\"`\n-\tLastExit       *control.Exit  `json:\"last_exit,omitempty\"`\n+\tProject        string        `json:\"project\"`\n+\tQueue          queue.Queue   `json:\"queue\"`\n+\tState          string        `json:\"state\"`\n+\tPhase          string        `json:\"phase\"`\n+\tSessionID      string        `json:\"session_id\"`\n+\tPhaseStartedAt time.Time     `json:\"phase_started_at\"`\n+\tRestarts       []time.Time   `json:\"restarts\"`\n+\tStop           *control.Stop `json:\"stop,omitempty\"`\n+\tPausedUntil    time.Time     `json:\"paused_until\"`\n+\tStretchUSD     float64       `json:\"stretch_usd\"`\n+\tSessionUSD     float64       `json:\"session_usd\"`\n+\tLastEventAt    time.Time     `json:\"last_event_at\"`\n+\tNudged         bool          `json:\"nudged\"`\n+\tAlerted        bool          `json:\"alerted\"`\n+\tLastExit       *control.Exit `json:\"last_exit,omitempty\"`\n }\n \n // Config bounds a loop's resilience.\n== guard\n== probe\n== vet or gofmt failed (see above); every step between it and here passed\n"
+      ],
+      "commit": "70e68db57b7a53fc81349d46ae8c44826ffbfda5",
+      "diffstat": {
+        "files": 1,
+        "insertions": 136,
+        "deletions": 97
+      }
+    },
+    {
+      "customId": "phase-loop-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-loop-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== names supervisor/loop_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "b1ebb4723aaee952d1cba64f13f8ad798995b25c",
+      "diffstat": {
+        "files": 1,
+        "insertions": 264,
+        "deletions": 180
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 48653,
+    "outputTokens": 45879,
+    "cost": 0.03282087,
+    "requests": 3
+  },
+  "requests": [
+    {
+      "customId": "phase-loop.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791651564-72lV2RgbXFR8fEPyo9o7",
+      "inputTokens": 11064,
+      "outputTokens": 8344,
+      "cost": 0.006666,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791651613-rtKcYM8Y896BeINmGWMV",
+      "inputTokens": 12149,
+      "outputTokens": 23228,
+      "cost": 0.01520619,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791651746-V4wAgUIOjdhRqwWRxyB0",
+      "inputTokens": 25440,
+      "outputTokens": 14307,
+      "cost": 0.01094868,
+      "finishReason": "stop",
+      "error": null
+    }
+  ],
+  "rounds": [
+    {
+      "round": 0,
+      "reds": [
+        {
+          "customId": "phase-loop",
+          "blamed": [
+            "phase-loop"
+          ],
+          "log": "== build\n== vet\n== gofmt\ngofmt -l lists: supervisor/loop.go\ndiff supervisor/loop.go.orig supervisor/loop.go\n--- supervisor/loop.go.orig\n+++ supervisor/loop.go\n@@ -27,21 +27,21 @@\n \n // Loop is the phase loop of one project.\n type Loop struct {\n-\tProject        string         `json:\"project\"`\n-\tQueue          queue.Queue    `json:\"queue\"`\n-\tState          string         `json:\"state\"`\n-\tPhase          string         `json:\"phase\"`\n-\tSessionID      string         `json:\"session_id\"`\n-\tPhaseStartedAt time.Time      `json:\"phase_started_at\"`\n-\tRestarts       []time.Time    `json:\"restarts\"`\n-\tStop           *control.Stop  `json:\"stop,omitempty\"`\n-\tPausedUntil    time.Time      `json:\"paused_until\"`\n-\tStretchUSD     float64        `json:\"stretch_usd\"`\n-\tSessionUSD     float64        `json:\"session_usd\"`\n-\tLastEventAt    time.Time      `json:\"last_event_at\"`\n-\tNudged         bool           `json:\"nudged\"`\n-\tAlerted        bool           `json:\"alerted\"`\n-\tLastExit       *control.Exit  `json:\"last_exit,omitempty\"`\n+\tProject        string        `json:\"project\"`\n+\tQueue          queue.Queue   `json:\"queue\"`\n+\tState          string        `json:\"state\"`\n+\tPhase          string        `json:\"phase\"`\n+\tSessionID      string        `json:\"session_id\"`\n+\tPhaseStartedAt time.Time     `json:\"phase_started_at\"`\n+\tRestarts       []time.Time   `json:\"restarts\"`\n+\tStop           *control.Stop `json:\"stop,omitempty\"`\n+\tPausedUntil    time.Time     `json:\"paused_until\"`\n+\tStretchUSD     float64       `json:\"stretch_usd\"`\n+\tSessionUSD     float64       `json:\"session_usd\"`\n+\tLastEventAt    time.Time     `json:\"last_event_at\"`\n+\tNudged         bool          `json:\"nudged\"`\n+\tAlerted        bool          `json:\"alerted\"`\n+\tLastExit       *control.Exit `json:\"last_exit,omitempty\"`\n }\n \n // Config bounds a loop's resilience.\n== guard\n== probe\n== vet or gofmt failed (see above); every step between it and here passed\n"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "reds": []
+    }
+  ]
+}

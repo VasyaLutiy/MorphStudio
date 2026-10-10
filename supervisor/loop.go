@@ -31,7 +31,7 @@ type Loop struct {
 	Phase          string        `json:"phase"`
 	SessionID      string        `json:"session_id"`
 	PhaseStartedAt time.Time     `json:"phase_started_at"`
-	Resumes        []time.Time   `json:"resumes"`
+	Restarts       []time.Time   `json:"restarts"`
 	Stop           *control.Stop `json:"stop,omitempty"`
 	PausedUntil    time.Time     `json:"paused_until"`
 	StretchUSD     float64       `json:"stretch_usd"`
@@ -39,9 +39,10 @@ type Loop struct {
 	LastEventAt    time.Time     `json:"last_event_at"`
 	Nudged         bool          `json:"nudged"`
 	Alerted        bool          `json:"alerted"`
+	LastExit       *control.Exit `json:"last_exit,omitempty"`
 }
 
-// Config bounds the loop's automatic pivots.
+// Config bounds a loop's behaviour.
 type Config struct {
 	MaxResumesPerHour int
 	StallMinutes      int
@@ -49,24 +50,15 @@ type Config struct {
 	UsageAlertPercent int
 }
 
+// ErrPhaseMismatch reports a phase_done for a phase the loop is not running.
 var ErrPhaseMismatch = errors.New("phase mismatch")
 
-// New builds an idle loop around a walkable queue.
+// New builds an idle loop over q for project.
 func New(project string, q queue.Queue) *Loop {
 	return &Loop{Project: project, Queue: q, State: "idle"}
 }
 
-func fmtFloat(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
-func (l *Loop) currentCaps() queue.Caps {
-	cur, _ := l.Queue.Current()
-	return cur.Caps
-}
-
-// Begin starts the walk: it points the loop at the queue's first phase and
-// asks for a start_check.
+// Begin starts the queue's current phase.
 func (l *Loop) Begin(now time.Time) ([]Action, error) {
 	ph, err := l.Queue.Start()
 	if err != nil {
@@ -78,57 +70,69 @@ func (l *Loop) Begin(now time.Time) ([]Action, error) {
 	l.Nudged = false
 	l.Alerted = false
 	l.SessionUSD = 0
+	l.Restarts = nil
+	l.LastExit = nil
 	return []Action{{Kind: "start_check", Phase: l.Phase}}, nil
 }
 
-// StartChecked turns a start phase check into the spawn, write or stop plan.
+// currentCaps returns the caps of the phase the queue is pointing at.
+func (l *Loop) currentCaps() queue.Caps {
+	if ph, ok := l.Queue.Current(); ok {
+		return ph.Caps
+	}
+	return queue.Caps{}
+}
+
+// StartChecked turns a git start check into the first actions of a phase.
 func (l *Loop) StartChecked(s gitrules.Start, newID func() string, now time.Time) []Action {
 	if l.State != "starting" {
 		return nil
 	}
 	switch s.Mode {
 	case "fresh":
-		l.SessionID = newID()
-		l.Resumes = nil
+		id := newID()
+		l.SessionID = id
 		l.PhaseStartedAt = now
 		l.LastEventAt = now
 		l.State = "running"
-		caps := l.currentCaps()
-		numbers := "session " + l.SessionID + " · cap $" + fmtFloat(caps.ClaudeUSD) + " · " + fmtFloat(caps.Hours) + " h"
-		if strings.HasPrefix(s.Reason, "pulled to ") {
+		c := l.currentCaps()
+		numbers := fmt.Sprintf("session %s · cap $%s · %s h", id, fnum(c.ClaudeUSD), fnum(c.Hours))
+		if s.Reason != "" {
 			numbers += " · " + s.Reason
 		}
 		return []Action{
-			{Kind: "spawn", Phase: l.Phase, SessionID: l.SessionID, Resume: false, BudgetUSD: caps.ClaudeUSD},
+			{Kind: "spawn", Phase: l.Phase, SessionID: id, Resume: false, BudgetUSD: c.ClaudeUSD},
 			{Kind: "first_line", Line: "/morph-orchestrator " + l.Phase},
 			{Kind: "post", Milestone: control.Milestone{Kind: "start", Headline: l.Phase + " started", Numbers: numbers}},
 		}
 	case "resume":
-		if l.SessionID == "" {
-			l.SessionID = newID()
+		id := l.SessionID
+		if id == "" {
+			id = newID()
 		}
+		l.SessionID = id
 		l.PhaseStartedAt = now
 		l.LastEventAt = now
 		l.State = "running"
-		caps := l.currentCaps()
-		numbers := "session " + l.SessionID + " · " + s.Reason
+		c := l.currentCaps()
+		numbers := fmt.Sprintf("session %s · %s", id, s.Reason)
 		return []Action{
-			{Kind: "spawn", Phase: l.Phase, SessionID: l.SessionID, Resume: true, BudgetUSD: caps.ClaudeUSD},
+			{Kind: "spawn", Phase: l.Phase, SessionID: id, Resume: true, BudgetUSD: c.ClaudeUSD},
 			{Kind: "post", Milestone: control.Milestone{Kind: "start", Headline: l.Phase + " resumed", Numbers: numbers}},
 		}
 	case "diverged", "error":
-		reason := s.Reason
 		l.State = "waiting"
-		l.Stop = &control.Stop{Kind: "git", Phase: l.Phase, Reason: reason, At: now}
-		l.Queue.Stop(reason)
+		l.Stop = &control.Stop{Kind: "git", Phase: l.Phase, Reason: s.Reason, At: now}
+		l.Queue.Stop(s.Reason)
 		return []Action{
-			{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + " not started: git", Numbers: reason}},
+			{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + " not started: git", Numbers: s.Reason}},
 		}
 	}
 	return nil
 }
 
-// PhaseDone validates a session's phase_done report and asks for an end_check.
+// PhaseDone records that the session finished phase; next is the phase the
+// session reports as following.
 func (l *Loop) PhaseDone(phase, next string) ([]Action, error) {
 	if (l.State == "running" || l.State == "paused") && phase == l.Phase {
 		return []Action{{Kind: "end_check", Phase: l.Phase}}, nil
@@ -136,32 +140,30 @@ func (l *Loop) PhaseDone(phase, next string) ([]Action, error) {
 	return nil, fmt.Errorf("%w: phase_done %q while %s %q", ErrPhaseMismatch, phase, l.State, l.Phase)
 }
 
-// EndChecked turns an end phase check into the kill, begin-next or stop plan.
+// EndChecked turns a git end check into the actions after a phase.
 func (l *Loop) EndChecked(e gitrules.End, now time.Time) []Action {
 	if l.State != "running" && l.State != "paused" {
 		return nil
 	}
+	finished := l.Phase
 	if !e.OK {
 		reason := strings.Join(e.Problems, "; ")
 		l.State = "waiting"
-		l.Stop = &control.Stop{Kind: "not_pushed", Phase: l.Phase, Reason: reason, At: now}
+		l.Stop = &control.Stop{Kind: "not_pushed", Phase: finished, Reason: reason, At: now}
 		l.Queue.Stop(reason)
 		return []Action{
-			{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + " not pushed", Numbers: reason}},
+			{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: finished + " not pushed", Numbers: reason}},
 		}
 	}
-
 	l.StretchUSD += l.SessionUSD
-	finished := l.Phase
 	next := ""
 	if l.Queue.Index+1 < len(l.Queue.Phases) {
 		next = l.Queue.Phases[l.Queue.Index+1].ID
 	}
-	out, _ := l.Queue.Done(finished, next)
-
+	out, _ := l.Queue.Done(l.Phase, next)
 	actions := []Action{{Kind: "kill"}}
-	switch out.Stop {
-	case "":
+	switch {
+	case out.Stop == "":
 		l.Stop = nil
 		l.Nudged = false
 		l.Alerted = false
@@ -169,18 +171,17 @@ func (l *Loop) EndChecked(e gitrules.End, now time.Time) []Action {
 		l.Phase = out.Next
 		l.State = "starting"
 		l.SessionID = ""
-		_, _ = l.Queue.Start()
-		actions = append(actions, Action{Kind: "start_check", Phase: l.Phase})
-	case "smoke", "operator":
-		reason := "stop after " + out.Stop
+		l.Queue.Start()
+		actions = append(actions, Action{Kind: "start_check", Phase: out.Next})
+	case out.Stop == "smoke" || out.Stop == "operator":
 		l.State = "waiting"
-		l.Stop = &control.Stop{Kind: out.Stop, Phase: finished, Reason: reason, At: now}
+		l.Stop = &control.Stop{Kind: out.Stop, Phase: finished, Reason: "stop after " + out.Stop, At: now}
 		actions = append(actions, Action{Kind: "post", Milestone: control.Milestone{
 			Kind:     "stop",
 			Headline: finished + " done: stop after " + out.Stop,
 			Numbers:  "next " + out.Next + " · waiting for continue",
 		}})
-	case "end":
+	case out.Stop == "end":
 		l.State = "waiting"
 		l.Stop = &control.Stop{Kind: "end", Phase: finished, Reason: "plan complete", At: now}
 		actions = append(actions, Action{Kind: "post", Milestone: control.Milestone{
@@ -192,7 +193,7 @@ func (l *Loop) EndChecked(e gitrules.End, now time.Time) []Action {
 	return actions
 }
 
-// WaitOperator records a session's wait_operator request and parks the loop.
+// WaitOperator records that the session is waiting for the operator.
 func (l *Loop) WaitOperator(kind, reason, issueURL string, now time.Time) []Action {
 	if l.State != "running" && l.State != "paused" {
 		return nil
@@ -205,15 +206,11 @@ func (l *Loop) WaitOperator(kind, reason, issueURL string, now time.Time) []Acti
 		numbers += " · " + issueURL
 	}
 	return []Action{
-		{Kind: "post", Milestone: control.Milestone{
-			Kind:     "stop",
-			Headline: l.Phase + ": wait_operator " + kind,
-			Numbers:  numbers,
-		}},
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + ": wait_operator " + kind, Numbers: numbers}},
 	}
 }
 
-// Continue clears a stop and asks the loop to resume or begin the next phase.
+// Continue clears a stop and returns the phase to run next.
 func (l *Loop) Continue(now time.Time) ([]Action, error) {
 	if l.State != "waiting" {
 		return nil, control.ErrNotWaiting
@@ -242,20 +239,27 @@ func (l *Loop) Continue(now time.Time) ([]Action, error) {
 	l.Nudged = false
 	l.Alerted = false
 	l.SessionUSD = 0
-	l.SessionID = ""
+	l.Restarts = nil
+	l.LastExit = nil
 	return []Action{{Kind: "start_check", Phase: l.Phase}}, nil
 }
 
-// Restart kills the current session and asks for a fresh start_check.
+// Restart kills the running session and starts its phase again.
 func (l *Loop) Restart(now time.Time) ([]Action, error) {
-	if l.State != "running" && l.State != "paused" {
-		return nil, control.ErrNoSession
+	switch l.State {
+	case "running", "paused":
+		l.State = "starting"
+		l.SessionID = ""
+		l.Restarts = nil
+		return []Action{
+			{Kind: "kill"},
+			{Kind: "start_check", Phase: l.Phase},
+		}, nil
 	}
-	l.State = "starting"
-	l.SessionID = ""
-	l.Resumes = nil
-	return []Action{
-		{Kind: "kill"},
-		{Kind: "start_check", Phase: l.Phase},
-	}, nil
+	return nil, control.ErrNoSession
+}
+
+// fnum formats a float at its shortest representation.
+func fnum(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
 }

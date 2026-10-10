@@ -8,25 +8,34 @@ Host 188.245.28.11 (Ubuntu 24.04), DNS `themorph.stream` (Cloudflare, apex A rec
 - `MORPHD_MORPH_BIN=/home/morph/morphd/morph` → `node /home/morph/morph-bin/dist/cli.js` (a copy of MorphV2 `dist/`, refreshed by hand when MorphV2 moves).
 - Update after a merge: `git -C ~/MorphStudio pull --ff-only && go -C ~/MorphStudio build -o ~/morphd/morphd.new ./cmd/morphd && mv ~/morphd/morphd.new ~/morphd/morphd`, then (root) `systemctl restart morphd`.
 
-## Caddy (TLS in front of morphd)
-- Ubuntu package `caddy` 2.6.2, `/etc/caddy/Caddyfile` (the distro default kept as `Caddyfile.dist`):
+## Cloudflare Tunnel (since 11.10) — the only way in
+
+- `themorph.stream` is a proxied CNAME to the Cloudflare Tunnel `morphd` (id 00e75ae9-2a6f-4f47-ad40-81b0a81f2d2d,
+  remotely managed: the route lives in the Zero Trust dashboard — hostname `themorph.stream` → `http://127.0.0.1:7190`,
+  catch-all `http_status:404`).
+- `cloudflared` 2026.10.0 from the Cloudflare apt repo; own unit `/etc/systemd/system/cloudflared.service`:
+  `cloudflared --no-autoupdate tunnel run --token-file /etc/cloudflared/token` (token file root 0600, never in argv).
+- Caddy is now only the local origin of the tunnel, `/etc/caddy/Caddyfile`:
 ```
-morph.root.sx, themorph.stream {
+http://:7190 {
+	bind 127.0.0.1
 	@session path_regexp session ^/mcp/[^/]+/session$
 	respond @session 404
 	reverse_proxy 127.0.0.1:7180 {
 		flush_interval -1
-		# the MCP SDK rejects non-local Host headers (DNS-rebinding guard): "Forbidden: invalid Host header"
 		header_up Host {upstream_hostport}
 	}
 	log {
-		output file /var/log/caddy/morph.root.sx.log
+		output file /var/log/caddy/morph-tunnel.log
 	}
 }
 ```
-- The per-session MCP endpoint `/mcp/<project>/session` is for claude sessions on the host only: 404 from outside.
-- Certificate from Let's Encrypt, obtained 10.10.
-- Endpoints for the PM: `https://themorph.stream/mcp` (projects_list, project_create), `https://themorph.stream/mcp/<project>` (status, plan_load, order, …), HTTP API under `https://themorph.stream/projects/…`; all need `Authorization: Bearer <MORPHD_TOKEN>`.
+  `http://:7190` (any Host) matters: cloudflared forwards `Host: themorph.stream`, and a site named `http://127.0.0.1:7190`
+  matches no request (Caddy answers an empty 200). Port 8080 is the ETHSC dashboard — never use it.
+- Nothing listens publicly but ssh (22); no Let's Encrypt any more. The old TLS Caddyfile is `Caddyfile.bak-20261011`
+  (rollback: restore it, restart caddy, put back the A record 188.245.28.11 with proxy off).
+- Checked 11.10 from the laptop: `/healthz` 200; `/projects` and `/mcp` without a token 401; `/mcp/<p>/session` 404;
+  `projects_list` over the laptop's MCP `morph` answers; the direct IP on 80/443 refuses.
 
 ## Known: the operator's laptop network drops this host name
 10.10: from the laptop, any request carrying the name `morph.root.sx` (TLS SNI or HTTP Host) hangs after the TCP connect, while the same IP with another Host answers and the name works from the VPS and from other networks — filtering on the path, not the server. Until a different name or a VPN: `ssh -i <key> -N -L 7180:127.0.0.1:7180 root@188.245.28.11` and `http://127.0.0.1:7180/mcp`.

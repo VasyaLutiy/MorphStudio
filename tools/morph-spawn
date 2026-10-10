@@ -1,0 +1,52 @@
+#!/bin/bash
+# morph-spawn — start one claude session of a tenant in its sandbox (Gate 0 probe D, 11.10; hand data, not a card).
+# Installed root-owned 0755 as /usr/local/sbin/morph-spawn; morphd (User=morph) may run only this via sudoers:
+#   morph ALL=(root) NOPASSWD: /usr/local/sbin/morph-spawn
+# usage: morph-spawn <tenant> <workdir> <env-file> [--mcp-config <file>] -- <claude args…>
+#   tenant    [a-z0-9][a-z0-9-]{0,30}; the Linux user is mu-<tenant>, uid ≥ 1000
+#   workdir   a directory inside /home/mu-<tenant>
+#   env-file  CLAUDE_CODE_OAUTH_TOKEN=… or ANTHROPIC_API_KEY=…, a regular file under /home/morph/morphd/state/,
+#             owned by morph, mode 0600 (read by systemd as root; the tenant never sees the file)
+#   --mcp-config  a file under /home/morph/morphd/state/ handed to the session as a systemd credential
+# Every systemd property is fixed here; morphd chooses only the tenant, the paths above and claude's own argv.
+set -euo pipefail
+die() { echo "morph-spawn: $*" >&2; exit 64; }
+STATE=/home/morph/morphd/state
+CLAUDE=/opt/claude/claude
+
+[ $# -ge 4 ] || die "usage: morph-spawn <tenant> <workdir> <env-file> [--mcp-config <file>] -- <claude args…>"
+T=$1; DIR=$2; ENVF=$3; shift 3
+[[ $T =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] || die "bad tenant: $T"
+U=mu-$T
+UID_T=$(id -u "$U" 2>/dev/null) || die "no user $U"
+[ "$UID_T" -ge 1000 ] || die "user $U is a system user"
+HOME_T=/home/$U
+
+safe_file() {   # a regular file under $STATE, no symlink, owned by morph, mode 600
+  local f; f=$(realpath -e -- "$1" 2>/dev/null) || die "missing file: $1"
+  [[ $f == "$STATE"/* ]] || die "file outside $STATE: $1"
+  [ -f "$f" ] && [ ! -L "$1" ] || die "not a regular file: $1"
+  [ "$(stat -c '%U %a' "$f")" = "morph 600" ] || die "file must be morph 0600: $1"
+  printf '%s' "$f"
+}
+DIR=$(realpath -e -- "$DIR" 2>/dev/null) || die "missing workdir"
+[[ $DIR == "$HOME_T" || $DIR == "$HOME_T"/* ]] || die "workdir outside $HOME_T"
+ENVF=$(safe_file "$ENVF")
+
+UNIT=morph-$T-$(date +%s%N | tail -c 10)
+EXTRA=()
+if [ "${1:-}" = "--mcp-config" ]; then
+  MCP=$(safe_file "${2:-}"); shift 2
+  EXTRA=(-p "LoadCredential=mcp:$MCP")
+  MCPARG=(--mcp-config "/run/credentials/$UNIT.service/mcp")
+else
+  MCPARG=()
+fi
+[ "${1:-}" = "--" ] || die "expected -- before the claude args"; shift
+
+exec /usr/bin/systemd-run --unit="$UNIT" --uid="$U" --gid="$U" --pipe --quiet --collect --wait \
+  -p PrivateTmp=yes -p MemoryMax=3G -p CPUQuota=150% -p TasksMax=512 \
+  -p ProtectSystem=strict -p ProtectHome=tmpfs -p BindPaths="$HOME_T" -p ReadWritePaths="$HOME_T" \
+  -p NoNewPrivileges=yes -p WorkingDirectory="$DIR" -p EnvironmentFile="$ENVF" "${EXTRA[@]}" \
+  --setenv=HOME="$HOME_T" --setenv=CLAUDE_CONFIG_DIR="$HOME_T/.claude" --setenv=CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 \
+  "$CLAUDE" "$@" "${MCPARG[@]}"

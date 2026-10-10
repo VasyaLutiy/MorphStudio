@@ -42,3 +42,18 @@ http://:7190 {
 
 ## Cron
 The morph user's crontab is empty since the cutover (10.10); the old one is in `~/crontab.bak-20261010`.
+
+## Tenant sessions (Gate 0 probe D, 11.10)
+
+- Beta tenants are Linux users `mu-<name>` (home 0700); today `mu-a`, `mu-b` (probe users).
+- The claude binary for tenants: `/opt/claude/claude` → `/opt/claude/claude-<version>` (root 0755; the morph user's
+  `~/.local` copy is unreadable to tenants). Refresh by hand when claude moves.
+- morphd (User=morph) starts a tenant session only through the root wrapper `/usr/local/sbin/morph-spawn` (repo
+  `tools/morph-spawn`, install `install -o root -g root -m 755`), allowed by `/etc/sudoers.d/morph-spawn` (0440):
+  `morph ALL=(root) NOPASSWD: /usr/local/sbin/morph-spawn`. The wrapper fixes every systemd property (uid/gid,
+  PrivateTmp, MemoryMax 3G, CPUQuota 150%, TasksMax 512, ProtectSystem=strict, ProtectHome=tmpfs + BindPaths of the
+  tenant home, NoNewPrivileges) and validates the tenant, the workdir (inside the tenant home) and the files (under
+  `/home/morph/morphd/state/`, owned by morph, 0600). The token file becomes the unit's `EnvironmentFile`, the MCP
+  config a systemd credential (`LoadCredential=mcp:` → `--mcp-config /run/credentials/<unit>.service/mcp`).
+- Why not capabilities: `AmbientCapabilities=CAP_SETUID CAP_SETGID` let morph `setpriv` to a tenant but not run
+  `systemd-run` (polkit: "Interactive authentication required"), so no cgroup limits or sandbox — rejected.

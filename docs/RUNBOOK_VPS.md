@@ -1,6 +1,6 @@
 # VPS runbook (PM data, not cards)
 
-Host 188.245.28.11 (Ubuntu 24.04), DNS `morph.root.sx` → that address.
+Host 188.245.28.11 (Ubuntu 24.04), DNS `morph.root.sx` and `morph.themorph.stream` (Cloudflare, A record, DNS only) → that address.
 
 ## morphd
 - systemd unit `/etc/systemd/system/morphd.service`: User=morph, WorkingDirectory `/home/morph/morphd` (`.env` and `api-token`, mode 600), `ExecStart=/home/morph/morphd/morphd`, `Restart=always`, log `/home/morph/morph-logs/morphd.log`.
@@ -11,7 +11,7 @@ Host 188.245.28.11 (Ubuntu 24.04), DNS `morph.root.sx` → that address.
 ## Caddy (TLS in front of morphd)
 - Ubuntu package `caddy` 2.6.2, `/etc/caddy/Caddyfile` (the distro default kept as `Caddyfile.dist`):
 ```
-morph.root.sx {
+morph.root.sx, morph.themorph.stream {
 	@session path_regexp session ^/mcp/[^/]+/session$
 	respond @session 404
 	reverse_proxy 127.0.0.1:7180 {

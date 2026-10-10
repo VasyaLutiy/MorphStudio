@@ -1,0 +1,341 @@
+```
+package supervisor
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/gitrules"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/stream"
+)
+
+// gdDate returns a UTC time on the fixed example month.
+func gdDate(day, h, m, s int) time.Time {
+	return time.Date(2026, 10, day, h, m, s, 0, time.UTC)
+}
+
+// gdAt returns a UTC time on 2026-10-08.
+func gdAt(h, m, s int) time.Time { return gdDate(8, h, m, s) }
+
+// gdConfig is the configuration the runtime guard examples share.
+func gdConfig() Config {
+	return Config{MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}
+}
+
+// gdPlan loads the three-phase fixture with the example caps.
+func gdPlan(t testing.TB) queue.Queue {
+	t.Helper()
+	data, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan queue.Plan
+	if err := json.Unmarshal(data, &plan); err != nil {
+		t.Fatal(err)
+	}
+	q, err := queue.Load(plan, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+// gdID is the session id source the examples use.
+func gdID() string { return "id-1" }
+
+// gdRunning builds the running loop of example 1.
+func gdRunning(t testing.TB) *Loop {
+	t.Helper()
+	l := New("demo", gdPlan(t))
+	if _, err := l.Begin(gdAt(15, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	l.StartChecked(gitrules.Start{Mode: "fresh"}, gdID, gdAt(15, 0, 1))
+	return l
+}
+
+func TestRuntimeGuardExample1(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	testhelp.Equal(t, "initial State", l.State, "running")
+	testhelp.Equal(t, "initial Phase", l.Phase, "P17")
+	testhelp.Equal(t, "initial SessionID", l.SessionID, "id-1")
+	testhelp.Equal(t, "initial PhaseStartedAt", l.PhaseStartedAt, gdAt(15, 0, 1))
+	testhelp.Equal(t, "initial LastEventAt", l.LastEventAt, gdAt(15, 0, 1))
+
+	acts := l.Exited(4, "", gdAt(15, 20, 0), cfg)
+	want := []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 4), restarting", Numbers: "restart 1 of 3 this hour"}},
+		{Kind: "start_check", Phase: "P17"},
+	}
+	testhelp.Equal(t, "Exited actions", acts, want)
+	testhelp.Equal(t, "State after", l.State, "starting")
+	testhelp.Equal(t, "Restarts after", l.Restarts, []time.Time{gdAt(15, 20, 0)})
+	testhelp.Equal(t, "SessionID after", l.SessionID, "id-1")
+	if l.LastExit == nil {
+		t.Fatal("LastExit is nil")
+	}
+	testhelp.Equal(t, "LastExit", *l.LastExit, control.Exit{Code: 4, At: gdAt(15, 20, 0), Stderr: "", Restarts: 1})
+}
+
+func TestRuntimeGuardExample2(t *testing.T) {
+	cfg := gdConfig()
+
+	l := gdRunning(t)
+	l.Exited(4, "", gdAt(15, 20, 0), cfg)
+	l.StartChecked(gitrules.Start{Mode: "fresh"}, gdID, gdAt(15, 20, 5))
+	testhelp.Equal(t, "Restarts after revive", l.Restarts, []time.Time{gdAt(15, 20, 0)})
+
+	acts := l.Exited(1, "Error: Invalid session ID. Must be a valid UUID.\n", gdAt(15, 30, 0), cfg)
+	want := []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 1), restarting", Numbers: "restart 2 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."}},
+		{Kind: "start_check", Phase: "P17"},
+	}
+	testhelp.Equal(t, "second exit actions", acts, want)
+
+	l.StartChecked(gitrules.Start{Mode: "resume", Reason: "dirty tree (1 paths)"}, gdID, gdAt(15, 30, 5))
+	acts = l.Exited(137, "", gdAt(15, 40, 0), cfg)
+	want = []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 137), restarting", Numbers: "restart 3 of 3 this hour"}},
+		{Kind: "start_check", Phase: "P17"},
+	}
+	testhelp.Equal(t, "third exit actions", acts, want)
+
+	l.StartChecked(gitrules.Start{Mode: "fresh"}, gdID, gdAt(15, 40, 5))
+	acts = l.Exited(1, "Error: Invalid session ID. Must be a valid UUID.\n", gdAt(15, 50, 0), cfg)
+	want = []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: session keeps exiting", Numbers: "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."}},
+	}
+	testhelp.Equal(t, "crash actions", acts, want)
+	testhelp.Equal(t, "crash State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "crash Stop", *l.Stop, control.Stop{Kind: "crash", Phase: "P17", Reason: "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.", At: gdAt(15, 50, 0)})
+	testhelp.Equal(t, "crash Queue.State", l.Queue.State, "stopped")
+	testhelp.Equal(t, "crash Restarts", l.Restarts, []time.Time{gdAt(15, 20, 0), gdAt(15, 30, 0), gdAt(15, 40, 0)})
+	if l.LastExit == nil {
+		t.Fatal("LastExit is nil")
+	}
+	testhelp.Equal(t, "crash LastExit", *l.LastExit, control.Exit{Code: 1, At: gdAt(15, 50, 0), Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3})
+
+	l2 := gdRunning(t)
+	l2.Exited(4, "", gdAt(15, 20, 0), cfg)
+	l2.StartChecked(gitrules.Start{Mode: "fresh"}, gdID, gdAt(15, 20, 5))
+	l2.Exited(1, "Error: Invalid session ID. Must be a valid UUID.\n", gdAt(15, 30, 0), cfg)
+	l2.StartChecked(gitrules.Start{Mode: "resume", Reason: "dirty tree (1 paths)"}, gdID, gdAt(15, 30, 5))
+	l2.Exited(137, "", gdAt(15, 40, 0), cfg)
+	l2.StartChecked(gitrules.Start{Mode: "fresh"}, gdID, gdAt(15, 40, 5))
+	acts = l2.Exited(1, "Error: Invalid session ID. Must be a valid UUID.\n", gdAt(16, 25, 0), cfg)
+	want = []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 1), restarting", Numbers: "restart 3 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."}},
+		{Kind: "start_check", Phase: "P17"},
+	}
+	testhelp.Equal(t, "old-drop actions", acts, want)
+	testhelp.Equal(t, "old-drop Restarts", l2.Restarts, []time.Time{gdAt(15, 30, 0), gdAt(15, 40, 0), gdAt(16, 25, 0)})
+	testhelp.Equal(t, "old-drop State", l2.State, "starting")
+}
+
+func TestRuntimeGuardExample3(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	l.StretchUSD = 28
+	l.SessionUSD = 0
+
+	acts := l.Turn(stream.Result{TotalCostUSD: 1.5}, gdAt(15, 50, 0), cfg)
+	testhelp.Equal(t, "first Turn", acts, []Action(nil))
+	testhelp.Equal(t, "SessionUSD after first", l.SessionUSD, 1.5)
+
+	acts = l.Turn(stream.Result{TotalCostUSD: 2.25}, gdAt(16, 0, 0), cfg)
+	want := []Action{
+		{Kind: "kill"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: stretch cap", Numbers: "stretch cap $30.00 reached ($30.2500)"}},
+	}
+	testhelp.Equal(t, "second Turn actions", acts, want)
+	testhelp.Equal(t, "cap State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "cap Stop.Kind", l.Stop.Kind, "cap")
+
+	cfg2 := gdConfig()
+	cfg2.StretchUSD = 0
+	l2 := gdRunning(t)
+	l2.StretchUSD = 28
+	l2.Turn(stream.Result{TotalCostUSD: 1.5}, gdAt(15, 50, 0), cfg2)
+	testhelp.Equal(t, "no-cap second Turn", l2.Turn(stream.Result{TotalCostUSD: 2.25}, gdAt(16, 0, 0), cfg2), []Action(nil))
+}
+
+func TestRuntimeGuardExample4(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	lim := stream.Limits{
+		FiveHour: stream.Window{Utilization: 0.22, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}
+	acts := l.Limits(lim, gdAt(15, 0, 0), cfg)
+	want := []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "info", Headline: "P17: weekly usage 60%", Numbers: "resets 2026-10-13T01:00:00Z"}},
+	}
+	testhelp.Equal(t, "Limits actions", acts, want)
+	testhelp.Equal(t, "Alerted", l.Alerted, true)
+	testhelp.Equal(t, "second Limits", l.Limits(lim, gdAt(15, 1, 0), cfg), []Action(nil))
+
+	cfg2 := gdConfig()
+	cfg2.UsageAlertPercent = 0
+	l2 := gdRunning(t)
+	testhelp.Equal(t, "no-alert Limits", l2.Limits(lim, gdAt(15, 0, 0), cfg2), []Action(nil))
+	testhelp.Equal(t, "no-alert Alerted", l2.Alerted, false)
+}
+
+func TestRuntimeGuardExample5(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	lim := stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}
+	acts := l.Limits(lim, gdAt(13, 9, 3), cfg)
+	want := []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: usage limit, paused", Numbers: "until 2026-10-08T14:20:00Z"}},
+	}
+	testhelp.Equal(t, "Limits actions", acts, want)
+	testhelp.Equal(t, "paused State", l.State, "paused")
+	testhelp.Equal(t, "PausedUntil", l.PausedUntil, time.Date(2026, 10, 8, 14, 20, 0, 0, time.UTC))
+
+	l2 := gdRunning(t)
+	lim2 := stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 1, ResetsAt: 1791853200},
+	}
+	l2.Limits(lim2, gdAt(13, 9, 3), cfg)
+	testhelp.Equal(t, "both-at-1 PausedUntil", l2.PausedUntil, time.Date(2026, 10, 13, 1, 0, 0, 0, time.UTC))
+}
+
+func TestRuntimeGuardExample6(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	l.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+		SevenDay: stream.Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}, gdAt(13, 9, 3), cfg)
+	testhelp.Equal(t, "pre State", l.State, "paused")
+
+	testhelp.Equal(t, "Tick before reset", l.Tick(gdAt(14, 19, 59), cfg), []Action(nil))
+	acts := l.Tick(gdAt(14, 20, 0), cfg)
+	want := []Action{
+		{Kind: "write", Line: "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."},
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: resumed after the limit", Numbers: ""}},
+	}
+	testhelp.Equal(t, "resume actions", acts, want)
+	testhelp.Equal(t, "resumed State", l.State, "running")
+	testhelp.Equal(t, "resumed LastEventAt", l.LastEventAt, gdAt(14, 20, 0))
+}
+
+func TestRuntimeGuardExample7(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	l.PhaseStartedAt = gdAt(15, 0, 1)
+	l.LastEventAt = gdAt(15, 0, 1)
+
+	testhelp.Equal(t, "tick 29min", l.Tick(gdAt(15, 29, 0), cfg), []Action(nil))
+
+	acts := l.Tick(gdAt(15, 31, 0), cfg)
+	want := []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: no events for 30 min", Numbers: "one nudge sent"}},
+		{Kind: "write", Line: "Nothing has happened for 30 minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first."},
+	}
+	testhelp.Equal(t, "nudge actions", acts, want)
+	testhelp.Equal(t, "Nudged", l.Nudged, true)
+
+	testhelp.Equal(t, "tick 16:10", l.Tick(gdAt(16, 10, 0), cfg), []Action(nil))
+
+	l.Event(gdAt(16, 20, 0))
+	testhelp.Equal(t, "LastEventAt after Event", l.LastEventAt, gdAt(16, 20, 0))
+
+	acts = l.Tick(gdAt(18, 0, 1), cfg)
+	want = []Action{
+		{Kind: "kill"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: wall clock cap", Numbers: "wall clock cap 3 h reached"}},
+	}
+	testhelp.Equal(t, "cap actions", acts, want)
+	testhelp.Equal(t, "cap State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "cap Stop.Kind", l.Stop.Kind, "cap")
+}
+
+func TestRuntimeGuardExample8(t *testing.T) {
+	cfg := gdConfig()
+	l := gdRunning(t)
+	l.State = "waiting"
+	l.Restarts = nil
+	l.LastExit = nil
+	now := gdAt(15, 30, 0)
+
+	testhelp.Equal(t, "Exited while waiting", l.Exited(0, "bye\n", now, cfg), []Action(nil))
+	testhelp.Equal(t, "Tick while waiting", l.Tick(now, cfg), []Action(nil))
+	testhelp.Equal(t, "Turn while waiting", l.Turn(stream.Result{TotalCostUSD: 99}, now, cfg), []Action(nil))
+
+	idle := New("demo", gdPlan(t))
+	testhelp.Equal(t, "idle Limits", idle.Limits(stream.Limits{
+		FiveHour: stream.Window{Utilization: 1, ResetsAt: 1791469200},
+	}, now, cfg), []Action(nil))
+
+	testhelp.Equal(t, "waiting State", l.State, "waiting")
+	testhelp.Equal(t, "waiting Restarts", l.Restarts, []time.Time(nil))
+	testhelp.Equal(t, "waiting LastExit", l.LastExit, (*control.Exit)(nil))
+	testhelp.Equal(t, "idle State", idle.State, "idle")
+}
+
+func TestRuntimeGuardExample9(t *testing.T) {
+	cfg := gdConfig()
+
+	l := gdRunning(t)
+	at := gdAt(15, 5, 0)
+	acts := l.Exited(2, "\n\n node: bad option --foo \n(use node --help for usage)\n", at, cfg)
+	want := []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 2), restarting", Numbers: "restart 1 of 3 this hour · node: bad option --foo"}},
+		{Kind: "start_check", Phase: "P17"},
+	}
+	testhelp.Equal(t, "first actions", acts, want)
+	if l.LastExit == nil {
+		t.Fatal("LastExit is nil")
+	}
+	testhelp.Equal(t, "first LastExit.Stderr", l.LastExit.Stderr, "node: bad option --foo")
+
+	l2 := gdRunning(t)
+	at2 := gdAt(15, 6, 0)
+	acts = l2.Exited(3, strings.Repeat("x", 250)+"\nsecond\n", at2, cfg)
+	want = []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: "P17: session exited (code 3), restarting", Numbers: "restart 1 of 3 this hour · " + strings.Repeat("x", 200)}},
+		{Kind: "start_check", Phase: "P17"},
+	}
+	testhelp.Equal(t, "second actions", acts, want)
+
+	l3 := gdRunning(t)
+	at3 := gdAt(15, 7, 0)
+	acts = l3.Exited(-3, "claude: start fork/exec /opt/claude/bin/claude: no such file or directory", at3, Config{MaxResumesPerHour: 0, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50})
+	want = []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: session keeps exiting", Numbers: "exited 1 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}},
+	}
+	testhelp.Equal(t, "third actions", acts, want)
+	testhelp.Equal(t, "third State", l3.State, "waiting")
+	if l3.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "third Stop.Kind", l3.Stop.Kind, "crash")
+	testhelp.Equal(t, "third Restarts", l3.Restarts, []time.Time(nil))
+	if l3.LastExit == nil {
+		t.Fatal("LastExit is nil")
+	}
+	testhelp.Equal(t, "third LastExit", *l3.LastExit, control.Exit{Code: -3, At: at3, Stderr: "claude: start fork/exec /opt/claude/bin/claude: no such file or directory", Restarts: 0})
+}
+```

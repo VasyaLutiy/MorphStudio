@@ -1,0 +1,130 @@
+```go
+// Package supervisor drives one project's phase loop: it decides what the
+// daemon does after each loop input and records the loop's state.
+package supervisor
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/gitrules"
+	"morphstudio/queue"
+)
+
+// Action is what the daemon must do after a loop input. Kind is one of
+// start_check, spawn, first_line, end_check, kill, post, write.
+type Action struct {
+	Kind      string
+	Phase     string
+	SessionID string
+	Resume    bool
+	BudgetUSD float64
+	Line      string
+	Milestone control.Milestone
+}
+
+// Loop is the state of one project's phase loop.
+type Loop struct {
+	Project        string        `json:"project"`
+	Queue          queue.Queue   `json:"queue"`
+	State          string        `json:"state"`
+	Phase          string        `json:"phase"`
+	SessionID      string        `json:"session_id"`
+	PhaseStartedAt time.Time     `json:"phase_started_at"`
+	Restarts       []time.Time   `json:"restarts"`
+	Stop           *control.Stop `json:"stop,omitempty"`
+	PausedUntil    time.Time     `json:"paused_until"`
+	StretchUSD     float64       `json:"stretch_usd"`
+	SessionUSD     float64       `json:"session_usd"`
+	LastEventAt    time.Time     `json:"last_event_at"`
+	Nudged         bool          `json:"nudged"`
+	Alerted        bool          `json:"alerted"`
+	LastExit       *control.Exit `json:"last_exit,omitempty"`
+}
+
+// Config tunes the loop's guard.
+type Config struct {
+	MaxResumesPerHour int
+	StallMinutes      int
+	StretchUSD        float64
+	UsageAlertPercent int
+}
+
+// ErrPhaseMismatch is reported when a phase_done names a phase the loop is
+// not running.
+var ErrPhaseMismatch = errors.New("phase mismatch")
+
+// New returns a loop for project in state idle.
+func New(project string, q queue.Queue) *Loop {
+	return &Loop{Project: project, Queue: q, State: "idle"}
+}
+
+// Begin starts the queue and asks for a start_check of its first phase.
+func (l *Loop) Begin(now time.Time) ([]Action, error) {
+	cur, err := l.Queue.Start()
+	if err != nil {
+		return nil, err
+	}
+	return l.beginTransition(cur), nil
+}
+
+// beginTransition points the loop at cur and asks for a fresh start_check.
+// It drops the per-phase counters so a plan_load, a continue or the next
+// phase after a phase_done starts the restart count afresh.
+func (l *Loop) beginTransition(cur queue.Phase) []Action {
+	l.Phase = cur.ID
+	l.State = "starting"
+	l.SessionID = ""
+	l.Stop = nil
+	l.Nudged = false
+	l.Alerted = false
+	l.SessionUSD = 0
+	l.Restarts = nil
+	l.LastExit = nil
+	return []Action{{Kind: "start_check", Phase: cur.ID}}
+}
+
+// StartChecked turns a start phase check into the loop's actions.
+func (l *Loop) StartChecked(s gitrules.Start, newID func() string, now time.Time) []Action {
+	if l.State != "starting" {
+		return nil
+	}
+	phase := l.Phase
+	var caps queue.Caps
+	if cur, ok := l.Queue.Current(); ok {
+		caps = cur.Caps
+	}
+	switch s.Mode {
+	case "fresh":
+		l.SessionID = newID()
+		l.PhaseStartedAt = now
+		l.LastEventAt = now
+		l.State = "running"
+		numbers := "session " + l.SessionID +
+			" · cap $" + strconv.FormatFloat(caps.ClaudeUSD, 'f', -1, 64) +
+			" · " + strconv.FormatFloat(caps.Hours, 'f', -1, 64) + " h"
+		if s.Reason != "" {
+			numbers += " · " + s.Reason
+		}
+		return []Action{
+			{Kind: "spawn", Phase: phase, SessionID: l.SessionID, Resume: false, BudgetUSD: caps.ClaudeUSD},
+			{Kind: "first_line", Line: "/morph-orchestrator " + phase},
+			{Kind: "post", Milestone: control.Milestone{Kind: "start", Headline: phase + " started", Numbers: numbers}},
+		}
+	case "resume":
+		if l.SessionID == "" {
+			l.SessionID = newID()
+		}
+		l.PhaseStartedAt = now
+		l.LastEventAt = now
+		l.State = "running"
+		return []Action{
+			{Kind: "spawn", Phase: phase, SessionID: l.SessionID, Resume: true, BudgetUSD: caps.ClaudeUSD},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "start",
+				Headline: phase + " resumed",
+				Numbers

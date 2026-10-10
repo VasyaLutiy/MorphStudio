@@ -1,0 +1,50 @@
+#!/bin/bash
+# morph-run — run one git / morph command for a tester's project under the tester's uid (Gate 0 probe E, 11.10;
+# hand data, not a card). Installed root-owned 0755 as /usr/local/sbin/morph-run; sudoers allows morphd only this and
+# morph-spawn:  morph ALL=(root) NOPASSWD: /usr/local/sbin/morph-spawn, /usr/local/sbin/morph-run
+# usage: morph-run <tester> <dir> -- <git|morph> <args…>
+#        morph-run <tester> --git-credentials <file>
+#   tester  [a-z0-9][a-z0-9-]{0,30}; the Linux user is mu-<tester>, uid ≥ 1000
+#   dir     a directory inside /home/mu-<tester> (for `git clone` / `morph init` the parent of the target)
+#   --git-credentials  copies a git-credentials file (under /home/morph/morphd/state/, owned by morph, 0600) to
+#           /home/mu-<tester>/.git-credentials (the tester's, 0600) and sets the tester's credential.helper to store
+# The sandbox is the one of morph-spawn without claude: no EnvironmentFile, nothing of morphd's state is visible.
+set -euo pipefail
+die() { echo "morph-run: $*" >&2; exit 64; }
+STATE=/home/morph/morphd/state
+
+[ $# -ge 3 ] || die "usage: morph-run <tester> <dir> -- <git|morph> <args…> | morph-run <tester> --git-credentials <file>"
+T=$1; shift
+[[ $T =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]] || die "bad tester: $T"
+U=mu-$T
+UID_T=$(id -u "$U" 2>/dev/null) || die "no user $U"
+[ "$UID_T" -ge 1000 ] || die "user $U is a system user"
+HOME_T=/home/$U
+
+if [ "$1" = "--git-credentials" ]; then
+  F=$(realpath -e -- "${2:-}" 2>/dev/null) || die "missing file"
+  [[ $F == "$STATE"/* ]] || die "file outside $STATE"
+  [ -f "$F" ] && [ ! -L "${2}" ] || die "not a regular file"
+  [ "$(stat -c '%U %a' "$F")" = "morph 600" ] || die "file must be morph 0600"
+  install -o "$U" -g "$U" -m 600 "$F" "$HOME_T/.git-credentials"
+  runuser -u "$U" -- git config --global credential.helper store
+  echo "ok"
+  exit 0
+fi
+
+DIR=$(realpath -e -- "$1" 2>/dev/null) || die "missing dir"; shift
+[[ $DIR == "$HOME_T" || $DIR == "$HOME_T"/* ]] || die "dir outside $HOME_T"
+[ "${1:-}" = "--" ] || die "expected -- before the command"; shift
+case "${1:-}" in
+  git)   CMD=/usr/bin/git ;;
+  morph) CMD=/opt/morph/morph ;;
+  *)     die "command not allowed: ${1:-}" ;;
+esac
+shift
+
+exec /usr/bin/systemd-run --uid="$U" --gid="$U" --pipe --quiet --collect --wait \
+  -p PrivateTmp=yes -p MemoryMax=1G -p CPUQuota=100% -p TasksMax=128 -p RuntimeMaxSec=600 \
+  -p ProtectSystem=strict -p ProtectHome=tmpfs -p BindPaths="$HOME_T" -p ReadWritePaths="$HOME_T" \
+  -p NoNewPrivileges=yes -p WorkingDirectory="$DIR" \
+  --setenv=HOME="$HOME_T" --setenv=GIT_TERMINAL_PROMPT=0 \
+  "$CMD" "$@"

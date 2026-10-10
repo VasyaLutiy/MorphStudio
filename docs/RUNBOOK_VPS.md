@@ -50,10 +50,15 @@ The morph user's crontab is empty since the cutover (10.10); the old one is in `
   `~/.local` copy is unreadable to tenants). Refresh by hand when claude moves.
 - morphd (User=morph) starts a tenant session only through the root wrapper `/usr/local/sbin/morph-spawn` (repo
   `tools/morph-spawn`, install `install -o root -g root -m 755`), allowed by `/etc/sudoers.d/morph-spawn` (0440):
-  `morph ALL=(root) NOPASSWD: /usr/local/sbin/morph-spawn`. The wrapper fixes every systemd property (uid/gid,
+  `morph ALL=(root) NOPASSWD: /usr/local/sbin/morph-spawn, /usr/local/sbin/morph-run`. The morph-spawn wrapper fixes every systemd property (uid/gid,
   PrivateTmp, MemoryMax 3G, CPUQuota 150%, TasksMax 512, ProtectSystem=strict, ProtectHome=tmpfs + BindPaths of the
   tenant home, NoNewPrivileges) and validates the tenant, the workdir (inside the tenant home) and the files (under
   `/home/morph/morphd/state/`, owned by morph, 0600). The token file becomes the unit's `EnvironmentFile`, the MCP
   config a systemd credential (`LoadCredential=mcp:` → `--mcp-config /run/credentials/<unit>.service/mcp`).
 - Why not capabilities: `AmbientCapabilities=CAP_SETUID CAP_SETGID` let morph `setpriv` to a tenant but not run
   `systemd-run` (polkit: "Interactive authentication required"), so no cgroup limits or sandbox — rejected.
+- `/usr/local/sbin/morph-run` (repo `tools/morph-run`, probe E): one `git` or `morph` command for a tester's project under
+  the tester's uid in the same sandbox (no token, `RuntimeMaxSec=600`); `--git-credentials <file under state, morph 0600>`
+  installs the tester's `~/.git-credentials` (0600) and sets `credential.helper store` for the tester.
+- The morph binary for testers: `/opt/morph` (copy of `~/morph-bin` with `node_modules` and `templates` dereferenced,
+  root, read-only) and `/opt/morph/morph` (`exec node /opt/morph/dist/cli.js "$@"`). Refresh by hand when MorphV2 moves.

@@ -1,7 +1,7 @@
 # PLAN_ONBOARDING_VPS.md — beta onboarding on one multi-user VPS (epic E7; E8 deferred)
 
 > **Status: DRAFT 11.10, not approved.** Designed by Claude Code in plan mode with the operator (no PM flow, no Fable
-> architect). Gate 0 (probes A–D) is done and green. `PLAN.md` stays frozen until this draft is approved by commit
+> architect). Gate 0 (probes A–E) is done and green; probe F waits for P12. `PLAN.md` stays frozen until this draft is approved by commit
 > hash; then the record (`contour.yaml`, `morph-map.json`) gains the Components below phase by phase and `PLAN.md` is
 > rewritten whole with epic E7 (a plan change rewrites, never appends). Decisions: `docs/DECISIONS.md` 10.10–11.10.
 > Base: morphd P0–P8b built, Smoke stop 3 green (51f9686), 237 example tests, morphd behind the Cloudflare Tunnel.
@@ -45,7 +45,7 @@ tester's phone                                             │     └ sudo -n t
 | **B. headless plan mode** | without skip-permissions `--permission-mode plan` works: the plan file in `$CLAUDE_CONFIG_DIR/plans/`, `ExitPlanMode` as `can_use_tool {plan, planFilePath}`, deny = revise with the message, allow = approve; with skip-permissions plan mode is overridden | kept for P12 (optional); `docs/probe/probe-planmode.jsonl` |
 | **C. Bot API** | @MorphX00_bot: getUpdates with offset, inline keyboard, callback_query, answerCallbackQuery, edit, delete, 401 | fixtures `tests/fixtures/tg/*.json` (scrubbed); a second press must be refused by the bot; answer every callback at once (a late answer → 400 "query is too old") |
 | **D. privilege** | polkit refuses morph's `systemd-run`; ambient capabilities do not help; a root wrapper + one sudoers line works; SIGTERM to the process group ends the unit | `tools/morph-spawn` (installed, `docs/RUNBOOK_VPS.md`): every systemd property is hand data; a card builds only the wrapper's argv |
-| **E. tester runner** — *to do before P9b* | `tools/morph-run <tester> <dir> -- <git\|morph> …`: the same sandbox without claude, for git (fetch, status, rev-parse, config, clone, init, commit, push) and `morph init`; checked as morph: `git -C /home/mu-a/projects/x fetch` works, a command outside the allow-list and a dir outside the home are refused | the wrapper text and its allow-list; `runner.Runner` for a tester's project = `sudo -n morph-run <t> <dir> -- <cmd>` |
+| **E. tester runner** | `tools/morph-run` (installed; sudoers now allows morph-spawn and morph-run): as morph, `git clone` / `rev-parse` / `fetch` / `config` in `/home/mu-a/projects` run as mu-a (files owned by mu-a); `--git-credentials <file>` installs the tester's `~/.git-credentials` (mu-a 0600, unreadable to morph) and a private repo clones; `morph init` runs from the shared copy `/opt/morph` (100 MB, root, read-only); refusals: a command outside {git, morph}, a dir outside the home, a bad tester, a direct `sudo git` | `runner.Runner` for a tester's project = `sudo -n /usr/local/sbin/morph-run <t> <dir> -- <git\|morph> …` (no stdin needed: the PAT goes by `--git-credentials`); git's own `-c` options run as the tester only — no more than morph-spawn already allows |
 | **F. chat relay extras** — *to do before P12* | @MorphX00_bot: `sendChatAction typing` while a turn runs; a long reply split at 4096 chars with HTML escaping; a photo from the chat (`getFile` → bytes) passed to claude as an image content block in a stream-json `user` line; `--include-partial-messages` + `editMessageText` throttled to ≤ 1 edit/s | the Bot API calls 200; claude answers about the image; the edit rate stays under Telegram's limit; $0 Bot API + cents of claude | fixtures `tests/fixtures/tg/chat-*.json`, `tests/fixtures/stream/probe-image.jsonl` |
 
 ## 4. Hand data and ops (never cards)
@@ -156,7 +156,7 @@ client, H2 lifecycle policy, H3 the bot as the control plane over many morphd.
 2. The VPS — **default:** rescale 188.245.28.11 to ≥ 4 vCPU / 16 GB before smoke T1.
 3. Which claude credential testers use — **default:** an API key with an expiry (revocable, §8.1) for the beta; a
    `setup-token` only for the operator's own accounts.
-4. Approve before P9a: probe E and this draft by hash.
+4. Approve this draft by hash before P9a.
 
 ## 11. Out of scope
 

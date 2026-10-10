@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"morphstudio/control"
 	"morphstudio/internal/testhelp"
@@ -13,31 +14,36 @@ import (
 	"morphstudio/session"
 )
 
-type rtCall struct {
+// rtRecord is one recorded Control call: the method name, the project it
+// named, and any further string arguments.
+type rtRecord struct {
 	Method  string
 	Project string
+	Args    []string
 }
 
+// rtFake implements control.Control and records every call. It is the fake of
+// the Router examples.
 type rtFake struct {
-	calls []rtCall
+	records []rtRecord
 }
 
-func (f *rtFake) record(method, project string) {
-	f.calls = append(f.calls, rtCall{Method: method, Project: project})
+func (f *rtFake) rec(method, project string, args ...string) {
+	f.records = append(f.records, rtRecord{Method: method, Project: project, Args: args})
 }
 
 func (f *rtFake) Projects() []control.ProjectView {
-	f.record("Projects", "")
+	f.rec("Projects", "")
 	return nil
 }
 
 func (f *rtFake) CreateProject(ctx context.Context, name, language, repoURL string) (control.ProjectView, error) {
-	f.record("CreateProject", name)
+	f.rec("CreateProject", name, language, repoURL)
 	return control.ProjectView{}, nil
 }
 
 func (f *rtFake) Status(project string) (control.Status, error) {
-	f.record("Status", project)
+	f.rec("Status", project)
 	if project != "demo" {
 		return control.Status{}, control.ErrUnknownProject
 	}
@@ -45,201 +51,200 @@ func (f *rtFake) Status(project string) (control.Status, error) {
 }
 
 func (f *rtFake) Events(project string, since int64, max int) (control.Events, error) {
-	f.record("Events", project)
+	f.rec("Events", project)
 	return control.Events{}, nil
 }
 
 func (f *rtFake) Order(project, text string) (session.OrderResult, error) {
-	f.record("Order", project)
+	f.rec("Order", project, text)
 	return session.OrderResult{}, nil
 }
 
 func (f *rtFake) Pending(project string) (*control.Question, error) {
-	f.record("Pending", project)
+	f.rec("Pending", project)
 	return nil, nil
 }
 
 func (f *rtFake) Answer(project string, option int) error {
-	f.record("Answer", project)
+	f.rec("Answer", project)
 	return nil
 }
 
 func (f *rtFake) Interrupt(project string) error {
-	f.record("Interrupt", project)
+	f.rec("Interrupt", project)
 	return nil
 }
 
 func (f *rtFake) Usage(project string) (control.Usage, error) {
-	f.record("Usage", project)
+	f.rec("Usage", project)
 	return control.Usage{}, nil
 }
 
 func (f *rtFake) Restart(project string, force bool) error {
-	f.record("Restart", project)
+	f.rec("Restart", project)
 	return nil
 }
 
 func (f *rtFake) PlanLoad(project string, plan queue.Plan) (control.QueueView, error) {
-	f.record("PlanLoad", project)
+	f.rec("PlanLoad", project)
 	return control.QueueView{}, nil
 }
 
 func (f *rtFake) Continue(project string) error {
-	f.record("Continue", project)
+	f.rec("Continue", project)
 	return nil
 }
 
 func (f *rtFake) StopCheck(project string) (*control.Stop, error) {
-	f.record("StopCheck", project)
+	f.rec("StopCheck", project)
 	return nil, nil
 }
 
 func (f *rtFake) PutGithubToken(ctx context.Context, project, token string) (control.TokenResult, error) {
-	f.record("PutGithubToken", project)
+	f.rec("PutGithubToken", project, token)
 	return control.TokenResult{}, nil
 }
 
 func (f *rtFake) PhaseDone(project, sessionToken, phase, next string) error {
-	f.record("PhaseDone", project)
+	f.rec("PhaseDone", project)
 	return nil
 }
 
 func (f *rtFake) WaitOperator(project, sessionToken, kind, reason, issueURL string) error {
-	f.record("WaitOperator", project)
+	f.rec("WaitOperator", project)
 	return nil
 }
 
 func (f *rtFake) Milestone(project, sessionToken string, m control.Milestone) error {
-	f.record("Milestone", project)
+	f.rec("Milestone", project)
 	return nil
 }
 
+// rtAdopter embeds *rtFake and adds AdoptProject, the extra method control.Adopt
+// looks for.
+type rtAdopter struct {
+	*rtFake
+}
+
+func (a rtAdopter) AdoptProject(ctx context.Context, name, dir, repoURL, language string) (control.ProjectView, error) {
+	a.rec("AdoptProject", name, dir, repoURL, language)
+	return control.ProjectView{
+		Name:      "studio",
+		Language:  "go",
+		RepoURL:   "https://github.com/VasyaLutiy/MorphStudio",
+		State:     "idle",
+		CreatedAt: time.Date(2026, 10, 10, 18, 0, 0, 0, time.UTC),
+	}, nil
+}
+
+// rtUnauthorized is the body of a Bearer refusal.
+const rtUnauthorized = `{"error":{"code":"unauthorized","message":"bearer token required"}}` + "\n"
+
+// rtServe drives h with one request. An empty body sends none; a body is sent
+// as application/json.
+func rtServe(t *testing.T, h http.Handler, method, path, auth, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var req *http.Request
+	if body == "" {
+		req = httptest.NewRequest(method, path, nil)
+	} else {
+		req = httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// TestRouterExample1: /healthz is open and answers {"status":"ok"}.
 func TestRouterExample1(t *testing.T) {
 	f := &rtFake{}
 	r := NewRouter(Handlers{Control: f}, "tok-1", nil)
-
-	req := httptest.NewRequest("GET", "/healthz", nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := rtServe(t, r, "GET", "/healthz", "", "")
 	testhelp.Equal(t, "status", rec.Code, 200)
-	testhelp.Equal(t, "Content-Type", rec.Header().Get("Content-Type"), "application/json")
-	testhelp.Equal(t, "body", rec.Body.String(),
-		`{"status":"ok"}`+"\n")
+	testhelp.Equal(t, "content-type", rec.Header().Get("Content-Type"), "application/json")
+	testhelp.Equal(t, "body", rec.Body.String(), `{"status":"ok"}`+"\n")
 }
 
+// TestRouterExample2: a bad or missing scheme/token is refused the same way.
 func TestRouterExample2(t *testing.T) {
 	f := &rtFake{}
 	r := NewRouter(Handlers{Control: f}, "tok-1", nil)
-
-	headers := []string{"", "Bearer wrong", "Basic dG9rLTE=", "Bearer tok-1 "}
-	for _, h := range headers {
-		req := httptest.NewRequest("GET", "/projects/demo/status", nil)
-		if h != "" {
-			req.Header.Set("Authorization", h)
-		}
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		testhelp.Equal(t, "status "+h, rec.Code, 401)
-		testhelp.Equal(t, "body "+h, rec.Body.String(),
-			`{"error":{"code":"unauthorized","message":"bearer token required"}}`+"\n")
+	for _, auth := range []string{"", "Bearer wrong", "Basic dG9rLTE=", "Bearer tok-1 "} {
+		rec := rtServe(t, r, "GET", "/projects/demo/status", auth, "")
+		testhelp.Equal(t, "status "+auth, rec.Code, 401)
+		testhelp.Equal(t, "body "+auth, rec.Body.String(), rtUnauthorized)
 	}
 }
 
+// TestRouterExample3: the bearer scheme is case-insensitive and the project
+// path value is filled.
 func TestRouterExample3(t *testing.T) {
 	f := &rtFake{}
 	r := NewRouter(Handlers{Control: f}, "tok-1", nil)
-
-	body := `{"state":"busy","phase":"P18","minutes":37,"cost_usd":0,"five_hour":0,"seven_day":0,"session_id":"s-1","queue":{"state":"","approved":"","index":0,"phases":0,"current":"","reason":""},"repo":{"checked":false,"reachable":false,"push":false,"reason":"","checked_at":"0001-01-01T00:00:00Z"}}` + "\n"
-
-	for _, h := range []string{"Bearer tok-1", "bearer tok-1"} {
-		req := httptest.NewRequest("GET", "/projects/demo/status", nil)
-		req.Header.Set("Authorization", h)
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		testhelp.Equal(t, "status "+h, rec.Code, 200)
-		testhelp.Equal(t, "body "+h, rec.Body.String(), body)
+	const body = `{"state":"busy","phase":"P18","minutes":37,"cost_usd":0,"five_hour":0,"seven_day":0,"session_id":"s-1","queue":{"state":"","approved":"","index":0,"phases":0,"current":"","reason":""},"repo":{"checked":false,"reachable":false,"push":false,"reason":"","checked_at":"0001-01-01T00:00:00Z"}}` + "\n"
+	for _, auth := range []string{"Bearer tok-1", "bearer tok-1"} {
+		rec := rtServe(t, r, "GET", "/projects/demo/status", auth, "")
+		testhelp.Equal(t, "status "+auth, rec.Code, 200)
+		testhelp.Equal(t, "body "+auth, rec.Body.String(), body)
 	}
-
-	req := httptest.NewRequest("GET", "/projects/nope/status", nil)
-	req.Header.Set("Authorization", "Bearer tok-1")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	testhelp.Equal(t, "status nope", rec.Code, 404)
+	rec := rtServe(t, r, "GET", "/projects/nope/status", "Bearer tok-1", "")
+	testhelp.Equal(t, "unknown project", rec.Code, 404)
 }
 
+// TestRouterExample4: an empty configured token refuses every request.
 func TestRouterExample4(t *testing.T) {
 	f := &rtFake{}
 	r := NewRouter(Handlers{Control: f}, "", nil)
-
-	req := httptest.NewRequest("GET", "/projects", nil)
-	req.Header.Set("Authorization", "Bearer ")
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-
+	rec := rtServe(t, r, "GET", "/projects", "Bearer ", "")
 	testhelp.Equal(t, "status", rec.Code, 401)
-	testhelp.Equal(t, "body", rec.Body.String(),
-		`{"error":{"code":"unauthorized","message":"bearer token required"}}`+"\n")
+	testhelp.Equal(t, "body", rec.Body.String(), rtUnauthorized)
 }
 
+// TestRouterExample5: the per-project routes reach their Control methods in
+// order.
 func TestRouterExample5(t *testing.T) {
 	f := &rtFake{}
 	r := NewRouter(Handlers{Control: f}, "tok-1", nil)
-
-	post := func(target, body string) int {
-		req := httptest.NewRequest("POST", target, strings.NewReader(body))
-		req.Header.Set("Authorization", "Bearer tok-1")
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		return rec.Code
+	cases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{"POST", "/projects/demo/messages", `{"text":"hi"}`},
+		{"GET", "/projects/demo/pending", ""},
+		{"POST", "/projects/demo/interrupt", ""},
+		{"GET", "/projects/demo/usage", ""},
+		{"POST", "/projects/demo/continue", ""},
+		{"GET", "/projects/demo/stop", ""},
+		{"PUT", "/projects/demo/github-token", `{"token":"t"}`},
 	}
-	get := func(target string) int {
-		req := httptest.NewRequest("GET", target, nil)
-		req.Header.Set("Authorization", "Bearer tok-1")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		return rec.Code
+	for _, c := range cases {
+		rec := rtServe(t, r, c.method, c.path, "Bearer tok-1", c.body)
+		testhelp.Equal(t, "status "+c.path, rec.Code, 200)
 	}
-	put := func(target, body string) int {
-		req := httptest.NewRequest("PUT", target, strings.NewReader(body))
-		req.Header.Set("Authorization", "Bearer tok-1")
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		return rec.Code
-	}
-
-	got := []int{
-		post("/projects/demo/messages", `{"text":"hi"}`),
-		get("/projects/demo/pending"),
-		post("/projects/demo/interrupt", ""),
-		get("/projects/demo/usage"),
-		post("/projects/demo/continue", ""),
-		get("/projects/demo/stop"),
-		put("/projects/demo/github-token", `{"token":"t"}`),
-	}
-	testhelp.Equal(t, "statuses", got, []int{200, 200, 200, 200, 200, 200, 200})
-
-	want := []rtCall{
-		{Method: "Order", Project: "demo"},
+	want := []rtRecord{
+		{Method: "Order", Project: "demo", Args: []string{"hi"}},
 		{Method: "Pending", Project: "demo"},
 		{Method: "Interrupt", Project: "demo"},
 		{Method: "Usage", Project: "demo"},
 		{Method: "Continue", Project: "demo"},
 		{Method: "StopCheck", Project: "demo"},
-		{Method: "PutGithubToken", Project: "demo"},
+		{Method: "PutGithubToken", Project: "demo", Args: []string{"t"}},
 	}
-	testhelp.Equal(t, "calls", f.calls, want)
+	testhelp.Equal(t, "calls", f.records, want)
 }
 
+// TestRouterExample6: a method mismatch is 405, an unknown path is 404.
 func TestRouterExample6(t *testing.T) {
 	f := &rtFake{}
 	r := NewRouter(Handlers{Control: f}, "tok-1", nil)
-
 	cases := []struct {
 		method string
-		target string
+		path   string
 		want   int
 	}{
 		{"DELETE", "/projects/demo/status", 405},
@@ -249,14 +254,12 @@ func TestRouterExample6(t *testing.T) {
 		{"POST", "/healthz", 405},
 	}
 	for _, c := range cases {
-		req := httptest.NewRequest(c.method, c.target, nil)
-		req.Header.Set("Authorization", "Bearer tok-1")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		testhelp.Equal(t, c.method+" "+c.target, rec.Code, c.want)
+		rec := rtServe(t, r, c.method, c.path, "Bearer tok-1", "")
+		testhelp.Equal(t, c.method+" "+c.path, rec.Code, c.want)
 	}
 }
 
+// TestRouterExample7: the MCP mount is not behind Bearer.
 func TestRouterExample7(t *testing.T) {
 	f := &rtFake{}
 	mcp := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -264,29 +267,52 @@ func TestRouterExample7(t *testing.T) {
 		_, _ = w.Write([]byte("mcp " + r.URL.Path))
 	})
 	r := NewRouter(Handlers{Control: f}, "tok-1", mcp)
-
 	cases := []struct {
 		method string
-		target string
-		want   string
+		path   string
+		body   string
 	}{
 		{"GET", "/mcp", "mcp /mcp"},
 		{"POST", "/mcp/demo", "mcp /mcp/demo"},
 		{"POST", "/mcp/demo/session", "mcp /mcp/demo/session"},
 	}
 	for _, c := range cases {
-		req := httptest.NewRequest(c.method, c.target, nil)
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-		testhelp.Equal(t, "status "+c.target, rec.Code, 299)
-		testhelp.Equal(t, "body "+c.target, rec.Body.String(), c.want)
+		rec := rtServe(t, r, c.method, c.path, "", "")
+		testhelp.Equal(t, c.path+" status", rec.Code, 299)
+		testhelp.Equal(t, c.path+" body", rec.Body.String(), c.body)
 	}
-
-	r2 := NewRouter(Handlers{Control: f}, "tok-1", nil)
+	f2 := &rtFake{}
+	r2 := NewRouter(Handlers{Control: f2}, "tok-1", nil)
 	for _, c := range cases {
-		req := httptest.NewRequest(c.method, c.target, nil)
-		rec := httptest.NewRecorder()
-		r2.ServeHTTP(rec, req)
-		testhelp.Equal(t, "status "+c.target, rec.Code, 404)
+		rec := rtServe(t, r2, c.method, c.path, "", "")
+		testhelp.Equal(t, c.path+" nil mount status", rec.Code, 404)
 	}
+}
+
+// TestRouterExample8: /projects/adopt reaches AdoptProject, not CreateProject.
+func TestRouterExample8(t *testing.T) {
+	f := &rtFake{}
+	r := NewRouter(Handlers{Control: rtAdopter{rtFake: f}}, "tok-1", nil)
+	const reqBody = `{"name":"studio","dir":"/home/morph/MorphStudio","repo_url":"https://github.com/VasyaLutiy/MorphStudio","language":"go"}`
+
+	rec := rtServe(t, r, "POST", "/projects/adopt", "Bearer tok-1", reqBody)
+	testhelp.Equal(t, "adopt status", rec.Code, 201)
+	testhelp.Equal(t, "adopt body", rec.Body.String(),
+		`{"name":"studio","language":"go","repo_url":"https://github.com/VasyaLutiy/MorphStudio","state":"idle","created_at":"2026-10-10T18:00:00Z"}`+"\n")
+
+	rec = rtServe(t, r, "POST", "/projects/adopt", "", reqBody)
+	testhelp.Equal(t, "adopt unauthorized status", rec.Code, 401)
+	testhelp.Equal(t, "adopt unauthorized body", rec.Body.String(), rtUnauthorized)
+
+	rec = rtServe(t, r, "GET", "/projects/adopt", "Bearer tok-1", "")
+	testhelp.Equal(t, "adopt wrong method status", rec.Code, 405)
+
+	want := []rtRecord{
+		{Method: "AdoptProject", Project: "studio", Args: []string{
+			"/home/morph/MorphStudio",
+			"https://github.com/VasyaLutiy/MorphStudio",
+			"go",
+		}},
+	}
+	testhelp.Equal(t, "adopt calls", f.records, want)
 }

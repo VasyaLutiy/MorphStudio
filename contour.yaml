@@ -633,8 +633,9 @@ System:
     - name: bootstrap
       description: >
         Package bootstrap in bootstrap/: project_create — a new project folder from `morph init`, its git repository,
-        the first push to the user's empty GitHub repository. Every command goes through runner.Runner. Imports
-        morphstudio/runner, morphstudio/github, context, fmt, os, path/filepath, regexp, strings.
+        the first push to the user's empty GitHub repository — and project_adopt — a repository that already exists,
+        checked and registered without init, commit or push. Every command goes through runner.Runner. Imports
+        morphstudio/runner, morphstudio/github, context, errors, fmt, os, path/filepath, regexp, strings.
       language: go
       functions:
         - name: Project Create
@@ -694,6 +695,58 @@ System:
             - given: 'Name "a-1-b" with Language "typescript" and the runner of example 1'
               when: Create
               then: 'nil; Steps[0] == "morph init --root <dir> --name a-1-b --language typescript" (no --module outside go); Steps[7] == "git commit -q -m morph init: a-1-b (typescript)"; every Run call had env exactly []string{"GIT_TERMINAL_PROMPT=0"}'
+        - name: Project Adopt
+          description: Check that an existing directory is the named GitHub repository on main with a record, and wire only the credential helper into it.
+          behavior: >
+            Declares in bootstrap/adopt.go, over the Report of bootstrap/create.go: `type AdoptSpec struct { Name string; Language string;
+            RepoURL string; Dir string; CredentialsFile string }`, `var ErrRefused = errors.New("bootstrap: refused")` and
+            `func Adopt(ctx context.Context, r runner.Runner, s AdoptSpec) (Report, error)`. Adopt never runs morph init, never
+            commits, never pushes and never sets a git identity: the repository stays as it is. A refusal is
+            fmt.Errorf("%w: <detail>", ErrRefused) (errors.Is ErrRefused; text "bootstrap: refused: <detail>").
+            Checks before any command, in this order, each a refusal with the Report empty (Steps nil): Name matches
+            ^[a-z0-9][a-z0-9-]{0,39}$ else detail `bad project name "<name>"`; Language is "typescript", "python" or "go" else
+            `unknown language "<l>"`; github.Parse(RepoURL) ok else the detail is that error's text; filepath.IsAbs(Dir) else
+            "dir must be absolute: <dir>"; os.Stat(Dir) is a directory else "not a directory: <dir>"; os.Stat(filepath.Join(Dir, "contour.yaml"))
+            exists else "no contour.yaml in <dir>". Then the commands, each through r.Run in Dir with env []string{"GIT_TERMINAL_PROMPT=0"},
+            in this order and with exactly these arguments; Report.Steps gets runner.Key(name, args...) of every command run, on
+            failure too; a Run error of any command → (the report so far, "bootstrap: step <n>: " + err.Error()), never a refusal:
+            1. git rev-parse --is-inside-work-tree: Code != 0 → refusal "not a git repository: <dir>"
+            2. git rev-parse --abbrev-ref HEAD: Code != 0 → "bootstrap: step 2 failed (exit <code>): " + strings.TrimSpace(Stderr);
+               strings.TrimSpace(Stdout) != "main" → refusal "on branch <b>, not main"
+            3. git remote get-url origin: Code != 0 → refusal "no origin remote"; else github.Parse(strings.TrimSpace(Stdout)) must
+               give the same (owner, repo) as github.Parse(RepoURL) (so the ssh form, a ".git" suffix and a trailing "/" match) else
+               refusal "origin <trimmed stdout> is not <RepoURL>" (an origin Parse cannot read gives the same refusal)
+            4. git config credential.helper "store --file=<CredentialsFile>" (one argument holding the space; git keeps the user's own
+               helpers and adds this one): Code != 0 → "bootstrap: step 4 failed (exit <code>): " + strings.TrimSpace(Stderr)
+            Success → (Report{Dir: s.Dir, Steps: the four keys}, nil). The token is never an argument: the credentials file carries it,
+            and FirstPush of bootstrap/create.go finds origin/main present on an adopted repository and pushes nothing.
+          steps:
+            - calls: Project Create
+            - uses: runner
+            - uses: github
+            - produces: Report
+          examples:
+            - given: 'dir := t.TempDir() holding the file contour.yaml with the text "version: 1\n"; f := &runner.Fake{Script: {"git rev-parse --is-inside-work-tree": {Stdout: "true\n"}, "git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git remote get-url origin": {Stdout: "https://github.com/o/demo.git\n"}}}; Adopt(ctx, f, AdoptSpec{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", Dir: dir, CredentialsFile: "/st/demo/git-credentials"})'
+              when: Adopt
+              then: 'error nil; exactly Report{Dir: dir, Steps: []string{"git rev-parse --is-inside-work-tree", "git rev-parse --abbrev-ref HEAD", "git remote get-url origin", "git config credential.helper store --file=/st/demo/git-credentials"}}; every one of the 4 Calls has Dir == dir and env exactly []string{"GIT_TERMINAL_PROMPT=0"}; f.Calls[3].Args == ["config", "credential.helper", "store --file=/st/demo/git-credentials"]; no morph, init, commit, push or user.name call'
+            - given: 'the runner of example 1 and the dir of example 1; in turn AdoptSpec{Name: "Demo", Language: "go", RepoURL: "https://github.com/o/demo", Dir: dir}; Name "demo" with Language "rust"; Language "go" with RepoURL "https://gitlab.com/o/r"; RepoURL ok with Dir "relative/demo"; Dir filepath.Join(t.TempDir(), "missing"); Dir a fresh t.TempDir() without contour.yaml'
+              when: Adopt
+              then: 'each an error errors.Is ErrRefused with the texts, in turn, exactly "bootstrap: refused: bad project name \"Demo\""; "bootstrap: refused: unknown language \"rust\""; "bootstrap: refused: github: not a github repository url: https://gitlab.com/o/r"; "bootstrap: refused: dir must be absolute: relative/demo"; "bootstrap: refused: not a directory: " + that path; "bootstrap: refused: no contour.yaml in " + that dir; every Report has Steps nil; the fake runner has no Calls'
+            - given: 'the dir of example 1; f := &runner.Fake{Script: {"git rev-parse --is-inside-work-tree": {Code: 128, Stderr: "fatal: not a git repository (or any of the parent directories): .git\n"}}}; the spec of example 1'
+              when: Adopt
+              then: 'an error errors.Is ErrRefused with the text "bootstrap: refused: not a git repository: " + dir; Report.Steps exactly ["git rev-parse --is-inside-work-tree"]; 1 call'
+            - given: 'the dir of example 1; the runner of example 1 but "git rev-parse --abbrev-ref HEAD": {Stdout: "morph/20261010-084526\n"}; then instead {Code: 128, Stderr: "fatal: ambiguous argument\n"}'
+              when: Adopt
+              then: 'errors.Is ErrRefused, text "bootstrap: refused: on branch morph/20261010-084526, not main", Report.Steps has 2 entries; then an error NOT errors.Is ErrRefused with the text "bootstrap: step 2 failed (exit 128): fatal: ambiguous argument", Steps 2 entries'
+            - given: 'the dir of example 1; the runner of example 1 but "git remote get-url origin" in turn: {Code: 2, Stderr: "error: No such remote ''origin''\n"}; {Stdout: "git@github.com:o/other.git\n"}; {Stdout: "git@github.com:o/demo.git\n"}; {Stdout: "https://github.com/o/demo/\n"}; {Stdout: "https://example.com/x\n"}; the spec of example 1 (RepoURL "https://github.com/o/demo")'
+              when: Adopt
+              then: 'errors.Is ErrRefused "bootstrap: refused: no origin remote" with Steps 3 entries; errors.Is ErrRefused "bootstrap: refused: origin git@github.com:o/other.git is not https://github.com/o/demo"; nil (the ssh form of the same repository) with Steps 4 entries; nil (a trailing slash); errors.Is ErrRefused "bootstrap: refused: origin https://example.com/x is not https://github.com/o/demo"'
+            - given: 'the dir of example 1; f := &runner.Fake{Errors: {"git rev-parse --is-inside-work-tree": "runner: exec: \"git\": executable file not found"}}; then the runner of example 1 with "git config credential.helper store --file=/st/demo/git-credentials": {Code: 1, Stderr: "error: could not lock config file .git/config\n"}'
+              when: Adopt
+              then: 'an error NOT errors.Is ErrRefused with the text exactly "bootstrap: step 1: runner: exec: \"git\": executable file not found", Steps has 1 entry; then NOT errors.Is ErrRefused, text exactly "bootstrap: step 4 failed (exit 1): error: could not lock config file .git/config", Steps has 4 entries, Report.Dir == dir'
+            - given: 'a dir := t.TempDir() with contour.yaml; the runner of example 1 but "git remote get-url origin": {Stdout: "https://github.com/o/a-1-b/\n"}; AdoptSpec{Name: "a-1-b", Language: "typescript", RepoURL: "git@github.com:o/a-1-b.git", Dir: dir, CredentialsFile: "/var/morphd/a-1-b/git-credentials"}'
+              when: Adopt
+              then: 'nil; Steps[3] == "git config credential.helper store --file=/var/morphd/a-1-b/git-credentials"; Report.Dir == dir; 4 calls, every env exactly []string{"GIT_TERMINAL_PROMPT=0"}'
     - name: registry
       description: >
         Package registry in registry/: the project registry file, the per-project state file and the secret files
@@ -877,8 +930,9 @@ System:
     - name: control
       description: >
         Package control in control/: the one control surface the HTTP API and the MCP server both call — the views
-        the PM sees, the Control interface and its error codes. Pure. Imports morphstudio/queue, morphstudio/github,
-        morphstudio/eventlog, morphstudio/session, context, encoding/json, errors, net/http, time.
+        the PM sees, the Control interface and its error codes, the optional Adopter and the compact event view. Pure.
+        Imports morphstudio/queue, morphstudio/github, morphstudio/eventlog, morphstudio/session, morphstudio/stream,
+        context, encoding/json, errors, fmt, net/http, time, unicode/utf8.
       language: go
       dataObjects:
         - name: Status
@@ -959,6 +1013,79 @@ System:
             - given: 'Exit{Code: 1, At: 2026-10-09T08:14:02Z, Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3}; then Status{State: "waiting", Phase: "S1", LimitsUnknown: true, Stop: &Stop{Kind: "crash", Phase: "S1", Reason: "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.", At: 2026-10-09T08:14:02Z}, LastExit: &Exit{Code: 1, At: 2026-10-09T08:14:02Z, Stderr: "Error: Invalid session ID. Must be a valid UUID.", Restarts: 3}}'
               when: json.Marshal
               then: 'exactly {"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}; then the output ends with ,"stop":{"kind":"crash","phase":"S1","reason":"exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.","at":"2026-10-09T08:14:02Z"},"last_exit":{"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}} and holds "five_hour":null'
+        - name: Adopt Contract
+          description: The optional Adopter a Control may implement, and the one call the HTTP API and the MCP server make to it.
+          behavior: >
+            Declares in control/adopt.go, over the types of control/control.go (the Control interface itself is unchanged: 17 methods):
+            `type Adopter interface { AdoptProject(ctx context.Context, name, dir, repoURL, language string) (ProjectView, error) }`
+            (register a repository that already exists at dir — no init, no commit, no push), `var ErrUnsupported = errors.New("adopt not supported")`
+            and `func Adopt(ctx context.Context, c Control, name, dir, repoURL, language string) (ProjectView, error)`: when c implements
+            Adopter (a type assertion) → c.AdoptProject(ctx, name, dir, repoURL, language) returned as is (values and error); else
+            (ProjectView{}, ErrUnsupported). ErrUnsupported is none of Code's sentinels, so Code(ErrUnsupported) is (500, "internal").
+          steps:
+            - calls: Control Contract
+            - produces: ProjectView
+          examples:
+            - given: 'c := a fake of the test file implementing the 17 methods of Control and `AdoptProject` (recording every AdoptProject call with its four string arguments; returning ProjectView{Name: "studio", Language: "go", RepoURL: "https://github.com/VasyaLutiy/MorphStudio", State: "idle", CreatedAt: 2026-10-10T18:00:00Z}, nil); Adopt(ctx, c, "studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go")'
+              when: Adopt
+              then: 'exactly that ProjectView, nil; the fake saw exactly one call AdoptProject("studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go"); `var _ Adopter = c` compiles'
+            - given: 'p := a second fake type of the test file implementing only the 17 methods of Control (no AdoptProject); Adopt(ctx, p, "studio", "/x", "https://github.com/o/r", "go")'
+              when: Adopt
+              then: '(ProjectView{}, ErrUnsupported) — errors.Is ErrUnsupported, err.Error() exactly "adopt not supported"; Code(ErrUnsupported) == (500, "internal")'
+            - given: 'the fake of example 1 returning (ProjectView{}, fmt.Errorf("%w: bootstrap: refused: not a git repository: /home/morph/nowhere", ErrBadInput)); Adopt(ctx, c, "gamma", "/home/morph/nowhere", "https://github.com/o/gamma", "go"); then the fake returning (ProjectView{}, ErrExists) for Adopt(ctx, c, "demo", "/home/morph/demo", "https://github.com/o/demo", "python")'
+              when: Adopt
+              then: 'an error errors.Is ErrBadInput with the text exactly "bad input: bootstrap: refused: not a git repository: /home/morph/nowhere" and Code → (400, "bad_input"); then errors.Is ErrExists and Code → (409, "exists"); the fake saw, in order, AdoptProject("gamma", "/home/morph/nowhere", "https://github.com/o/gamma", "go") then AdoptProject("demo", "/home/morph/demo", "https://github.com/o/demo", "python")'
+        - name: Event View
+          description: The compact, bounded view of session log entries a PM reads over MCP — type, short text, tool names, cost, exit.
+          behavior: >
+            Declares in control/events.go, exactly, one field per line:
+            `type EventExit struct { Code int `json:"code"`; Stderr string `json:"stderr"` }`;
+            `type EventView struct { Seq int64 `json:"seq"`; Dir string `json:"dir"`; Type string `json:"type"`; Subtype string `json:"subtype,omitempty"`;
+            Text string `json:"text,omitempty"`; Tools []string `json:"tools,omitempty"`; CostUSD float64 `json:"cost_usd,omitempty"`;
+            TerminalReason string `json:"terminal_reason,omitempty"`; Exit *EventExit `json:"exit,omitempty"` }`;
+            `type EventsView struct { Events []EventView `json:"events"`; Last int64 `json:"last"` }`;
+            `func Cut(s string, max int) string` (max <= 0 means 200; a string of at most max runes is returned as is, else its first max runes
+            followed by one "…" (U+2026) — runes by unicode/utf8, never bytes);
+            `func View(e eventlog.Entry, max int) EventView` and `func Views(e Events, max int) EventsView` (one View per entry in order, an
+            empty non-nil slice when there is none; Last = e.Last). View: Seq and Dir are the entry's. Dir "exit" → Type "exit" and the Msg
+            decoded (json.Unmarshal) into {"code": int, "stderr": string} → Exit = &EventExit{Code, Cut(stderr, max)}; a Msg that does not
+            decode so → Exit nil. Any other Dir: ev, err := stream.Parse(e.Msg); err != nil → Type "raw", Text = Cut(the Msg decoded as a JSON
+            string when it is one, else string(e.Msg), max); else Type = ev.Type, Subtype = ev.Subtype and, by ev.Type: "assistant" → Text =
+            Cut(ev.Text, max), Tools = the "name" of every element of message.content with "type" "tool_use", in order (nil when none; the
+            view decodes message.content itself — stream.Parse keeps no tool names); "user" → message.content a JSON string → Text = Cut(it, max);
+            an array → Subtype = the "type" of its first element and, when that type is "text", Text = Cut(its "text", max) (a tool_result
+            gives Text ""); "result" → Text = Cut(ev.Text, max), CostUSD = ev.Result.TotalCostUSD, TerminalReason = ev.Result.TerminalReason;
+            "rate_limit_event" → Text = fmt.Sprintf("five_hour %d%% · seven_day %d%%", Percent(FiveHour.Utilization), Percent(SevenDay.Utilization));
+            "control_request" with Subtype "can_use_tool" → Tools = []string{ev.Tool} and, when ev.Question != nil, Text = Cut(ev.Question.Text,
+            max); every other type and subtype → nothing more (Type and Subtype only). Unknown keys are ignored everywhere.
+          steps:
+            - calls: Control Contract
+            - uses: eventlog
+            - uses: stream
+            - produces: EventsView
+          examples:
+            - given: 'ent(n) := eventlog.Entry{Seq: n, Dir: the dir of line n of tests/fixtures/stream/probe.jsonl, Msg: its msg bytes} (testhelp.ProbeLine); Views(Events{Entries: []eventlog.Entry{ent(3), ent(4), ent(5), ent(6), ent(7)}, Last: 7}, 200)'
+              when: json.Marshal of Views
+              then: 'exactly {"events":[{"seq":3,"dir":"in","type":"user","text":"Reply with exactly one word: PONG"},{"seq":4,"dir":"out","type":"system","subtype":"init"},{"seq":5,"dir":"out","type":"assistant","text":"PONG"},{"seq":6,"dir":"out","type":"rate_limit_event","text":"five_hour 22% · seven_day 60%"},{"seq":7,"dir":"out","type":"result","subtype":"success","text":"PONG","cost_usd":0.0021784900000000004,"terminal_reason":"completed"}],"last":7}'
+              ref: tests/fixtures/stream/probe.jsonl
+            - given: 'View(ent(13), 200) (an assistant message with one tool_use part, Bash); View(ent(14), 200) (a user message whose content is a tool_result array); View(ent(12), 200) (an assistant message with one thinking part); View(ent(34), 200)'
+              when: json.Marshal of each View
+              then: 'exactly {"seq":13,"dir":"out","type":"assistant","tools":["Bash"]}; {"seq":14,"dir":"out","type":"user","subtype":"tool_result"}; {"seq":12,"dir":"out","type":"assistant"}; {"seq":34,"dir":"out","type":"assistant","tools":["Bash"]}'
+              ref: tests/fixtures/stream/probe.jsonl
+            - given: 't := the Text of View(ent(17), 400) (an assistant text of 327 runes, the numbers 1..70 one per line, written before the interrupt); View(ent(17), 20); View(ent(17), 0)'
+              when: View
+              then: 'utf8.RuneCountInString(t) == 327 and t begins "1\n2\n3\n"; the Text of View(ent(17), 20) is exactly "1\n2\n3\n4\n5\n6\n7\n8\n9\n10…" (20 runes then U+2026); the Text of View(ent(17), 0) has 201 runes, begins with the first 200 runes of t and ends with "…" (0 means 200)'
+              ref: tests/fixtures/stream/probe.jsonl
+            - given: 'View of ent(27) (the AskUserQuestion control_request); ent(28) (dir in: the answer); ent(15) (dir in: the interrupt); ent(16); ent(19) (the aborted result); ent(18) (a user message whose content is a text array), each with max 200'
+              when: json.Marshal of each View
+              then: 'exactly {"seq":27,"dir":"out","type":"control_request","subtype":"can_use_tool","text":"Which option do you want: A or B?","tools":["AskUserQuestion"]}; {"seq":28,"dir":"in","type":"control_response","subtype":"success"}; {"seq":15,"dir":"in","type":"control_request","subtype":"interrupt"}; {"seq":16,"dir":"out","type":"control_response","subtype":"success"}; {"seq":19,"dir":"out","type":"result","subtype":"error_during_execution","cost_usd":0.0028906000000000005,"terminal_reason":"aborted_streaming"}; {"seq":18,"dir":"out","type":"user","subtype":"text","text":"[Request interrupted by user]"}'
+              ref: tests/fixtures/stream/probe.jsonl
+            - given: 'View(eventlog.Entry{Seq: 9, Dir: "exit", Msg: []byte(`{"code":1,"stderr":"Error: Invalid session ID. Must be a valid UUID.\nsecond line"}`)}, 200); the same entry with max 10; View(eventlog.Entry{Seq: 6, Dir: "out", Msg: []byte(`"not json"`)}, 200); View(eventlog.Entry{Seq: 7, Dir: "out", Msg: []byte(`[1,2]`)}, 200); View(eventlog.Entry{Seq: 8, Dir: "out", Msg: []byte(`{"a":1}`)}, 200); View(eventlog.Entry{Seq: 2, Dir: "exit", Msg: []byte(`"x"`)}, 200)'
+              when: json.Marshal of each View
+              then: 'exactly {"seq":9,"dir":"exit","type":"exit","exit":{"code":1,"stderr":"Error: Invalid session ID. Must be a valid UUID.\nsecond line"}}; then its exit.stderr is exactly "Error: Inv…"; {"seq":6,"dir":"out","type":"raw","text":"not json"}; {"seq":7,"dir":"out","type":"raw","text":"[1,2]"}; {"seq":8,"dir":"out","type":"raw","text":"{\"a\":1}"}; {"seq":2,"dir":"exit","type":"exit"} (no "exit" key)'
+            - given: 'Views(Events{Entries: []eventlog.Entry{}, Last: 3}, 200); Views(Events{}, 50); Cut("", 5); Cut("héllo wörld", 5); Cut("abc", 0); Cut("abcde", 5)'
+              when: Views; Cut
+              then: 'EventsView{Events: []EventView{} (non-nil, empty), Last: 3} whose json.Marshal is exactly {"events":[],"last":3}; json exactly {"events":[],"last":0}; ""; "héllo…" (5 runes, not 5 bytes, then U+2026); "abc" (0 means 200); "abcde" (at most max runes is returned whole)'
     - name: supervisor
       description: >
         Package supervisor in supervisor/: the phase loop of one project as a pure machine — begin a phase, react to
@@ -1157,13 +1284,19 @@ System:
             Post func(ctx context.Context, project, kind, headline, numbers string) (telegram.Status, error); GitHubDo func(*http.Request) (*http.Response, error);
             Now func() time.Time; NewID func() string; Config Config }`;
             `type Config struct { ClaudeBin string; MorphBin string; ProjectsDir string; MCPBaseURL string; Model string; ExtraArgs []string; Defaults queue.Caps;
-            MaxParallel int; Loop supervisor.Config }`; `type State struct { Loop supervisor.Loop `json:"loop"`; Repo github.Access `json:"repo"` }`;
-            the unexported `type proj struct { reg registry.Project; state State; machine *session.Machine; proc claude.Process; log *eventlog.Log;
-            queuedAt time.Time; pumps map[claude.Process]chan struct{} }` and `type Daemon struct { deps Deps; ctx context.Context; mu sync.Mutex;
+            MaxParallel int; DoneWait time.Duration; Loop supervisor.Config }` (DoneWait: how long the daemon waits, after a phase_done, for the
+            `result` of the turn that called it before it ends the session anyway; 0 → the end batch runs at once);
+            `type State struct { Loop supervisor.Loop `json:"loop"`; Repo github.Access `json:"repo"` }`;
+            the unexported `type pendingDone struct { proc claude.Process; acts []supervisor.Action; deadline time.Time }` (the end batch a phase_done
+            left for the turn's result), `type proj struct { reg registry.Project; state State; machine *session.Machine; proc claude.Process; log *eventlog.Log;
+            queuedAt time.Time; pumps map[claude.Process]chan struct{}; done *pendingDone }` and `type Daemon struct { deps Deps; ctx context.Context; mu sync.Mutex;
             projects map[string]*proj }` (pump.go reads these fields; every proj gets a non-nil pumps map);
             `var startPump func(d *Daemon, ctx context.Context, project string, p claude.Process, l *eventlog.Log)` (nil in daemon.go: pump.go sets it
             in an init func; daemon.go declares no pump and no Wait); `func Open(ctx context.Context, d Deps) (*Daemon, error)`; *Daemon implements
-            control.Control (`var _ control.Control = (*Daemon)(nil)`); `func (d *Daemon) Execute(ctx context.Context, project string, acts []supervisor.Action)`
+            control.Control and control.Adopter (`var _ control.Control = (*Daemon)(nil)`, `var _ control.Adopter = (*Daemon)(nil)`);
+            `func (d *Daemon) finishDone(ctx context.Context, project string, p claude.Process)` (unexported, d.mu held, no lock: when the project
+            holds a pending done whose proc == p → clears it and execute(ctx, project, its acts); otherwise nothing — a pending done of another
+            process is left for Tick to drop); `func (d *Daemon) Execute(ctx context.Context, project string, acts []supervisor.Action)`
             (takes d.mu, then execute) and `func (d *Daemon) Tick(ctx context.Context)`; and the two unexported helpers pump.go calls with d.mu held,
             neither of which locks: `func (d *Daemon) execute(ctx context.Context, project string, acts []supervisor.Action)` and
             `func (d *Daemon) writeLine(project string, line []byte)` (the line to the current process by Write, then the current log's
@@ -1177,7 +1310,13 @@ System:
             the Report has no Steps (the spec refused before any command), → fmt.Errorf("%w: %v", control.ErrBadInput, err), else returned as is; then
             Registry.Add(Project{name, language, repoURL, Dir: the Report's Dir, Caps: Config.Defaults, CreatedAt: Now()}) (registry.ErrExists →
             control.ErrExists; registry.ErrBadName → wrapped as ErrBadInput; any other error as is); the project gets an idle loop; → ProjectView{Name,
-            Language, RepoURL, State "idle", CreatedAt}. Every other method: a project the daemon does not hold → control.ErrUnknownProject.
+            Language, RepoURL, State "idle", CreatedAt}. AdoptProject(ctx, name, dir, repoURL, language): a registered name → control.ErrExists (no
+            command run); rep, err := bootstrap.Adopt(ctx, Runner, AdoptSpec{Name: name, Language: language, RepoURL: repoURL, Dir: dir, CredentialsFile:
+            Registry.SecretPath(name, "git-credentials")}) — errors.Is(err, bootstrap.ErrRefused) → fmt.Errorf("%w: %v", control.ErrBadInput, err), any
+            other error as is; then Registry.Add(Project{name, language, repoURL, Dir: dir, Caps: Config.Defaults, CreatedAt: Now()}) with the errors mapped
+            as in CreateProject; an idle loop; → ProjectView{Name, Language, RepoURL, State "idle", CreatedAt} (no init, no commit, no push, no session
+            token: the token and the MCP config are minted by the first spawn as for any project). Every other method: a project the daemon does not
+            hold → control.ErrUnknownProject.
             Status: {State: the loop's State, replaced by the machine's State ("busy", "ready", "question") when the loop is "running" and a process is
             current; Phase: the loop's; Minutes: int(Now() - PhaseStartedAt in minutes) when the loop is running or paused, else 0; CostUSD: the machine's;
             FiveHour/SevenDay: control.Percent of the machine's Limits windows and LimitsUnknown false; without a machine or with Limits nil (no
@@ -1201,7 +1340,12 @@ System:
             "git-credentials" github.CredentialLine(token) (errors as is); Repo = github.Check(ctx, GitHubDo, token, RepoURL, Now()), kept in the State
             and saved; only when Repo.Push: pushed, err := bootstrap.FirstPush(ctx, Runner, Dir) → TokenResult{Access: Repo, Pushed: pushed, PushError:
             err.Error() when err}; else TokenResult{Access: Repo}; the error is nil. PhaseDone / WaitOperator / Milestone: Registry.ReadSecret(project,
-            "session-token") failing or differing from sessionToken → ErrBadToken; then loop.PhaseDone(phase, next) (its error as is) and execute /
+            "session-token") failing or differing from sessionToken → ErrBadToken; then acts, err := loop.PhaseDone(phase, next) (its error as is) and:
+            when Config.DoneWait > 0, a process is current and the machine's State is not "ready" (the turn that called phase_done is in flight: its
+            `result` with the turn's total_cost_usd has not arrived) → the project's done = &pendingDone{proc: the current process, acts, deadline: Now()
+            + DoneWait} (one held already is replaced), nothing executed, nil returned (the tool call answers at once; the end check, the kill and the
+            next phase follow when the pump sees that `result`, when the process exits, or at the deadline by Tick — so the last turn's cost reaches
+            Turn before EndChecked adds SessionUSD to the stretch); otherwise execute at once /
             loop.WaitOperator(kind, reason, issueURL, Now()) and execute / Post(ctx, project, m.Kind, m.Headline, m.Numbers) (its error ignored).
             execute, per action in order: "start_check" → gitrules.StartCheck(ctx, Runner, Dir), then execute(loop.StartChecked(start, NewID, Now()));
             "spawn" → a current process still held is killed and cleared (nil) first, so no later failure leaves it current; token := NewID(), PutSecret(project, "session-token", token); path :=
@@ -1216,9 +1360,11 @@ System:
             its writes → writeLine (nothing without a machine); "end_check" → gitrules.EndCheck(ctx, Runner, Dir, the loop's Phase), then
             execute(loop.EndChecked(end, Now())); "kill" → the current process's Kill() (nothing when none; the process stays current until its pump
             sees the exit); "post" → Post(ctx, project, Kind, Headline, Numbers) of the Milestone, its error ignored. After every batch:
-            Registry.SaveState(project, the State). Tick: for every project in registry name order, loop.Tick(Now(), Config.Loop), executed when it
-            returns actions; then, while fewer than MaxParallel projects have a loop "running", "starting" or "paused", the project whose loop is "idle"
-            with Queue.State "queued" and the oldest queuedAt (name order on equal) is begun (loop.Begin and execute); none → done.
+            Registry.SaveState(project, the State). Tick: for every project in registry name order: first a pending done whose proc is no longer the
+            current process is dropped (cleared, nothing run), and one whose deadline is reached (!Now().Before(deadline)) → finishDone(ctx, project,
+            its proc); then loop.Tick(Now(), Config.Loop),
+            executed when it returns actions; then, while fewer than MaxParallel projects have a loop "running", "starting" or "paused", the project
+            whose loop is "idle" with Queue.State "queued" and the oldest queuedAt (name order on equal) is begun (loop.Begin and execute); none → done.
           steps:
             - uses: supervisor
             - uses: session
@@ -1237,7 +1383,7 @@ System:
             - "Phase End Check · docs/MEASURE.md must exist in the project dir with the phase row · else not OK"
             - "Launch Args · the spawn argv is Args(l) · tests compare l, not the argv"
           examples:
-            - given: 'tmp := t.TempDir(); reg := registry.Open(tmp/state) with project registry.Project{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", Dir: tmp/projects/demo, Caps: {30, 3, 5}, CreatedAt: 2026-10-08T14:00:00Z}, and tmp/projects/demo/docs/MEASURE.md written with the bytes of tests/fixtures/git/measure.md (rows "| P16 primer-go |" and "| P17 debt |"); deps := Deps{Registry: reg, Runner: &runner.Fake{Script: {"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git rev-parse HEAD": {Stdout: "aaa111\n"}, "git rev-parse origin/main": {Stdout: "aaa111\n"}, "git status --porcelain": {Stdout: ""}}}, Spawn: a fake recording each claude.Launch and returning a new claude.NewFake() kept in order, Post: a recorder of [4]string{project, kind, headline, numbers} returning telegram.Status{}, nil, GitHubDo: a fake answering literal *http.Response values, Now: a clock from 2026-10-08T15:00:00Z advancing 1 s per call, NewID: "id-1", "id-2", … (the three guarded by one mutex), Config: Config{ClaudeBin: "/opt/claude/bin/claude", MorphBin: "/usr/local/bin/morph", ProjectsDir: tmp/projects, MCPBaseURL: "http://127.0.0.1:7181", Defaults: {25, 2, 4}, MaxParallel: 1, Loop: {MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}}}; d, err := Open(context.Background(), deps)'
+            - given: 'tmp := t.TempDir(); reg := registry.Open(tmp/state) with project registry.Project{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", Dir: tmp/projects/demo, Caps: {30, 3, 5}, CreatedAt: 2026-10-08T14:00:00Z}, and tmp/projects/demo/docs/MEASURE.md written with the bytes of tests/fixtures/git/measure.md (rows "| P16 primer-go |" and "| P17 debt |"); deps := Deps{Registry: reg, Runner: &runner.Fake{Script: {"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"}, "git rev-parse HEAD": {Stdout: "aaa111\n"}, "git rev-parse origin/main": {Stdout: "aaa111\n"}, "git status --porcelain": {Stdout: ""}}}, Spawn: a fake recording each claude.Launch and returning a new claude.NewFake() kept in order, Post: a recorder of [4]string{project, kind, headline, numbers} returning telegram.Status{}, nil, GitHubDo: a fake answering literal *http.Response values, Now: a clock from 2026-10-08T15:00:00Z advancing 1 s per call, NewID: "id-1", "id-2", … (the three guarded by one mutex), Config: Config{ClaudeBin: "/opt/claude/bin/claude", MorphBin: "/usr/local/bin/morph", ProjectsDir: tmp/projects, MCPBaseURL: "http://127.0.0.1:7181", Defaults: {25, 2, 4}, MaxParallel: 1, Loop: {MaxResumesPerHour: 3, StallMinutes: 30, StretchUSD: 30, UsageAlertPercent: 50}} (DoneWait left 0: a phase_done ends the session at once in examples 1–11)}; d, err := Open(context.Background(), deps)'
               when: 'd.Projects(); d.Status("demo"); d.Status("nope"); d.StopCheck("demo"); d.Usage("demo")'
               then: 'err nil; exactly []control.ProjectView{{Name: "demo", Language: "go", RepoURL: "https://github.com/acme/demo", State: "idle", CreatedAt: 2026-10-08T14:00:00Z}}; exactly control.Status{State: "idle", LimitsUnknown: true} (every other field zero), nil, and its json.Marshal holds "five_hour":null,"seven_day":null; (control.Status{}, an error errors.Is control.ErrUnknownProject); (nil, nil); exactly control.Usage{} (every field zero), nil, whose json.Marshal is exactly {"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0,"stretch_cost_usd":0,"limits_at":null}; no Spawn call'
             - given: 'd of example 1; plan := the queue.Plan json.Unmarshal-ed from tests/fixtures/plan/queue-3.json'
@@ -1274,6 +1420,17 @@ System:
               when: 'd.PlanLoad("demo", plan); d.Status("demo"); d.StopCheck("demo"); d.Events("demo", 0, 10); then d.Continue("demo")'
               then: 'PlanLoad → control.QueueView{State: "stopped", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17", Reason: "crash"}, nil (no error: the stop is a state, not a failure); the recorder got exactly 4 Launches, SessionIDs "id-1", "id-3", "id-5", "id-7", every Resume false; reg.ReadSecret("demo", "session-token") is "id-8"; the posts exactly [{"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 1 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}, {"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 2 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}, {"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 3 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}, {"demo", "stop", "P17: session keeps exiting", "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory"}] (no "P17 started" post at all); Status has State "waiting", Phase "P17", SessionID "id-7", LimitsUnknown true, Stop.Kind "crash", Stop.Reason "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory", *LastExit == control.Exit{Code: -3, At: not zero, Stderr: "claude: start fork/exec /opt/claude/bin/claude: no such file or directory", Restarts: 3}; StopCheck → the same Stop, nil; Events → control.Events{Entries: []eventlog.Entry{}, Last: 0} (no log became current); the file tmp/state/demo/state.json decodes to a State whose Loop.State is "waiting" and Loop.Restarts has 3 entries; then Continue → nil and the recorder has 8 Launches (continue resets the count: 4 new attempts, SessionIDs "id-9", "id-11", "id-13", "id-15"), Status again "waiting" with Stop.Kind "crash", 8 posts in total'
               ref: tests/fixtures/plan/queue-3.json
+            - given: 'the deps of example 1 with Config.DoneWait 30 * time.Second and a clock the test can move: Now returns base + 1 s per call, and the test may add 60 s to base under the same mutex; d := Open; d.PlanLoad("demo", plan) (P17 running, fp the fake process, the machine "busy" after the first line); d.PhaseDone("demo", "id-2", "P17", "P18"); d.Tick(ctx); then the test adds 60 s and d.Tick(ctx) again'
+              when: PhaseDone; Tick; Tick
+              then: 'PhaseDone → nil and nothing runs: fp.Killed() false, Spawn called once, no post after the start post, d.Status("demo") still Phase "P17" State "busy", no "git branch --list morph/* --no-merged main" call yet; the first Tick (inside the 30 s) changes nothing; the second Tick runs the held end batch: fp.Killed() true, a second Spawn with SessionID "id-3", Resume false, BudgetUSD 12, reg.ReadSecret("demo", "session-token") "id-4", the last post {"demo", "start", "P18 started", "session id-3 · cap $12 · 3 h"}, d.Status("demo") Phase "P18", Queue.Index 1'
+              ref: tests/fixtures/plan/queue-3.json
+            - given: 'd as example 12 after its PhaseDone (the done pending, fp current); d.Restart("demo", true) (fp2 the second fake process); then the test adds 60 s and d.Tick(ctx)'
+              when: Restart; Tick
+              then: 'Restart → nil: fp.Killed() true, the second Launch has SessionID "id-3" for P17 (the loop''s Restart, not the end batch); the Tick changes nothing: Spawn called exactly twice, fp2.Killed() false, d.Status("demo") Phase "P17", Queue.Index 0 (a pending done of a process no longer current is dropped, never run)'
+              ref: tests/fixtures/plan/queue-3.json
+            - given: 'd of example 1 built with the runner''s Script also holding "git rev-parse --is-inside-work-tree": {Stdout: "true\n"} and "git remote get-url origin": {Stdout: "git@github.com:acme/studio.git\n"} (abbrev-ref HEAD "main\n" is scripted; unscripted calls answer Code 0); dir := filepath.Join(tmp, "repos", "studio") created with the file contour.yaml "version: 1\n"; d.AdoptProject(ctx, "studio", dir, "https://github.com/acme/studio", "go"); then ("demo", dir, "https://github.com/acme/demo", "go"); then ("gamma", dir, "https://github.com/acme/other", "go"); then ("gamma", filepath.Join(tmp, "nowhere"), "https://github.com/acme/gamma", "go")'
+              when: AdoptProject; Projects
+              then: 'control.ProjectView{Name: "studio", Language: "go", RepoURL: "https://github.com/acme/studio", State: "idle", CreatedAt: not zero}, nil; reg.Get("studio") has Dir == dir and Caps {25, 2, 4}; the runner''s Calls exactly [{Dir: dir, Name: "git", Args: ["rev-parse", "--is-inside-work-tree"]}, {dir, "git", ["rev-parse", "--abbrev-ref", "HEAD"]}, {dir, "git", ["remote", "get-url", "origin"]}, {dir, "git", ["config", "credential.helper", "store --file=" + reg.SecretPath("studio", "git-credentials")]}] (no morph init, commit or push); no Spawn; d.Projects() names and states "demo" "idle", "studio" "idle"; d.Status("studio") exactly control.Status{State: "idle", LimitsUnknown: true}; then errors.Is control.ErrExists, still 4 runner calls; then errors.Is control.ErrBadInput with the text exactly `bad input: bootstrap: refused: origin git@github.com:acme/studio.git is not https://github.com/acme/other` (7 calls); then errors.Is control.ErrBadInput, text exactly "bad input: bootstrap: refused: not a directory: " + filepath.Join(tmp, "nowhere"), still 7 calls; reg.Get("gamma") → registry.ErrNotFound'
     - name: pump
       description: >
         Package daemon in daemon/, file daemon/pump.go (the second Component of the package; it reads the unexported
@@ -1300,13 +1457,17 @@ System:
             Limits → lacts := loop.Limits(*ev.Limits, now, Config.Loop); then each machine action in order: "write" → d.writeLine(project, Line); "ask"
             → Post(ctx, project, "ask", Headline, Numbers); "turn" → Post(ctx, project, "idle", the loop's Phase + " turn ended: " + the first 200
             runes of Headline (or "(no text)" when Headline is empty), Numbers); "limit" → nothing; then d.execute(ctx, project, lacts) (which saves
-            the State; never d.Execute, which locks). When Lines() closes: st := <-p.Exit(); under d.mu: first the exit goes into the process's
+            the State; never d.Execute, which locks); then, for a "result" event only, d.finishDone(ctx, project, p) (a phase_done left pending for
+            this process runs now, after Turn has put the turn's total_cost_usd into SessionUSD: the end check, the kill, the next phase or the stop
+            with the stretch that counts this turn). When Lines() closes: st := <-p.Exit(); under d.mu: first the exit goes into the process's
             own log l as its own entry, l.Append("exit", json.Marshal of {"code": st.Code, "stderr": tail}, Now()) where tail is the last 20
             lines of st.Stderr (one trailing "\n" trimmed first, then split on "\n", the last 20 kept, joined with "\n"; "" when stderr is
-            empty) — a crash is never invisible: the code and the stderr are readable by GET events; then, if p is still the current process,
-            the current process is cleared (nil) and d.execute(ctx, project, loop.Exited(st.Code, st.Stderr, Now(), Config.Loop)) (the loop decides
-            whether that exit is a crash: it restarts within the per-hour cap or stops with kind "crash"); else nothing more (a process
-            replaced by a newer spawn is pumped to its end and its exit is logged but changes nothing).
+            empty) — a crash is never invisible: the code and the stderr are readable by GET events; then, if p is still the current process:
+            when a pending done is held for p → the current process is cleared (nil) and d.finishDone(ctx, project, p) (the session ended itself
+            after phase_done: the end batch runs, its kill finds no process, Exited is not called — not a crash); else the current process is
+            cleared (nil) and d.execute(ctx, project, loop.Exited(st.Code, st.Stderr, Now(), Config.Loop)) (the loop decides whether that exit is
+            a crash: it restarts within the per-hour cap or stops with kind "crash"); else nothing more (a process replaced by a newer spawn is
+            pumped to its end and its exit is logged but changes nothing).
           steps:
             - uses: daemon
             - uses: session
@@ -1350,6 +1511,14 @@ System:
             - given: 'd after example 1; fp.Emit([]byte(`{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.0,"resetsAt":1791469200},"seven_day":{"utilization":0.6,"resetsAt":1791853200}}}}`)); poll d.Status("demo") until State "paused"; then d.Tick(ctx) (the clock is past 2026-10-08T14:20:00Z)'
               when: 'Emit; Tick'
               then: 'the last post after the emit {"demo", "watchdog", "P17: usage limit, paused", "until 2026-10-08T14:20:00Z"}; after Tick the last element of fp.Written() == stream.User("Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."), d.Status("demo").State "busy", the last post {"demo", "watchdog", "P17: resumed after the limit", ""}'
+            - given: 'the harness of example 1 but with Config.DoneWait 45 * time.Second, brought to the state after example 1 (the machine ready, CostUSD 0.0021784900000000004); d.Order("demo", "finish the phase") → {Sent: true} (the machine busy again); d.PhaseDone("demo", "id-2", "P17", "P18"); then fp.Emit(the msg bytes of line 31 of tests/fixtures/stream/probe.jsonl — the result with total_cost_usd 0.005775230000000001 and text "PICKED=Option B"); poll until the fake Spawn was called twice (10 ms steps, at most 2 s); d.Wait("demo")'
+              when: PhaseDone then Emit
+              then: 'PhaseDone → nil and, before the emit, fp.Killed() false, Spawn called once, no post after the "turn ended" post of example 1 and the order; after the emit: fp.Killed() true, the second Launch has SessionID "id-3", Resume false, BudgetUSD 12; the posts after example 1''s exactly [{"demo", "idle", "P17 turn ended: PICKED=Option B", "success · turns 2 · $0.0058"}, {"demo", "start", "P18 started", "session id-3 · cap $12 · 3 h"}] (the turn''s result was processed before the end batch); the file tmp/state/demo/state.json decodes to a State whose Loop.Phase is "P18", Loop.StretchUSD 0.005775230000000001 and Loop.SessionUSD 0 (the last turn''s cost counted into the stretch); d.Usage("demo").StretchCostUSD 0.005775230000000001; d.Status("demo") has Phase "P18", State "busy", SessionID "id-3"'
+              ref: tests/fixtures/stream/probe.jsonl
+            - given: 'the harness of example 1 with Config.DoneWait 45 * time.Second, after example 1; d.Order("demo", "finish the phase"); d.PhaseDone("demo", "id-2", "P17", "P18") → nil (pending); then fp.Finish(0) (the session exits before its result); poll until the fake Spawn was called twice (at most 2 s); d.Wait("demo")'
+              when: PhaseDone then Finish
+              then: 'the posts after example 1''s exactly [{"demo", "start", "P18 started", "session id-3 · cap $12 · 3 h"}] (no watchdog post: an exit after phase_done is not a crash); the second Launch has SessionID "id-3", Resume false, BudgetUSD 12; the state file decodes to a State with Loop.Phase "P18", Loop.Restarts empty and Loop.LastExit nil, Loop.StretchUSD 0.0021784900000000004 (the cost known at the exit); the file tmp/state/demo/sessions/id-1.jsonl ends with an entry Dir "exit", Msg exactly {"code":0,"stderr":""}; d.Status("demo") has Phase "P18", SessionID "id-3", LastExit nil'
+              ref: tests/fixtures/stream/probe.jsonl
     - name: api
       description: >
         Package api in api/: the HTTP API of morphd over control.Control — JSON in and out, the bearer token, the
@@ -1361,18 +1530,20 @@ System:
           description: The handlers of every route, with the JSON reading rules and the error body.
           behavior: >
             Declares in api/handlers.go: `type Handlers struct { Control control.Control }` and methods with the signature
-            `func (h Handlers) X(w http.ResponseWriter, r *http.Request)`: Projects, CreateProject, Status, Events, Messages,
+            `func (h Handlers) X(w http.ResponseWriter, r *http.Request)`: Projects, CreateProject, AdoptProject, Status, Events, Messages,
             Pending, Answer, Interrupt, Usage, Restart, Plan, Continue, StopCheck, GithubToken; plus
             `func WriteJSON(w http.ResponseWriter, status int, v any)` (Content-Type application/json, then the status, then
             json.NewEncoder(w).Encode(v) — every body ends with "\n") and `func WriteError(w http.ResponseWriter, err error)`
             (status, code := control.Code(err); body {"error":{"code":<code>,"message":<err.Error()>}}; a 500 writes message
-            "internal" instead of the error text). The project is r.PathValue("project"). Reading a body (CreateProject,
+            "internal" instead of the error text). The project is r.PathValue("project"). Reading a body (CreateProject, AdoptProject,
             Messages, Answer, Restart, Plan, GithubToken): Content-Type parsed with mime.ParseMediaType must be application/json
             else 415 {"error":{"code":"unsupported_media_type","message":"Content-Type must be application/json"}}; the body through
             http.MaxBytesReader(w, r.Body, 1<<20), a json.Decoder with DisallowUnknownFields into the request struct and a second
             Decode returning io.EOF, else 400 {"error":{"code":"bad_json","message":"bad json"}}.
             Projects: GET → 200 {"projects":[…]} (empty as []). CreateProject: {"name","language","repo_url"} → Control.CreateProject
-            → 201 the view. Status → 200 the Status. Events: query since (int64, default 0) and max (int, default 0); a non-integer
+            → 201 the view. AdoptProject: {"name","dir","repo_url","language"} → control.Adopt(r.Context(), h.Control, name, dir, repo_url,
+            language) → 201 the view (a Control without an Adopter → WriteError of control.ErrUnsupported: 500 "internal").
+            Status → 200 the Status. Events: query since (int64, default 0) and max (int, default 0); a non-integer
             → 400 bad_input with message "since must be an integer" / "max must be an integer"; → 200 the Events. Messages: {"text"}
             → Control.Order → 200 the OrderResult. Pending → 200 {"question":<Question or null>}. Answer: {"option"} → 200 {"ok":true}.
             Interrupt → 200 {"ok":true}. Usage → 200 the Usage. Restart: {"force"} (an empty body allowed: force false — the
@@ -1408,6 +1579,9 @@ System:
             - given: 'PUT /projects/demo/github-token, application/json, body {"token":"ghp_abc"}; the fake returns control.TokenResult{Access: github.Access{Checked: true, Reachable: false, Push: false, Reason: "401 bad credentials", CheckedAt: 2026-10-08T15:00:00Z}}; then POST /projects/demo/restart with no body and Content-Length 0; then with body {"force":true}; then GET /projects with the fake returning no projects; then a fake whose Status returns errors.New("disk full")'
               when: 'h.GithubToken; h.Restart; h.Projects; h.Status'
               then: '200 {"access":{"checked":true,"reachable":false,"push":false,"reason":"401 bad credentials","checked_at":"2026-10-08T15:00:00Z"},"pushed":false} + "\n" and "ghp_abc" appears nowhere in the body, the fake saw PutGithubToken("demo", "ghp_abc"); 200 {"ok":true} with the fake seeing Restart("demo", false); then Restart("demo", true); 200 {"projects":[]} + "\n"; 500 {"error":{"code":"internal","message":"internal"}} + "\n"'
+            - given: 'a := Handlers{Control: a fake of the test file implementing the 17 methods of control.Control and AdoptProject (recording its four string arguments; returning control.ProjectView{Name: "studio", Language: "go", RepoURL: "https://github.com/VasyaLutiy/MorphStudio", State: "idle", CreatedAt: 2026-10-10T18:00:00Z})}; POST /projects/adopt, Content-Type application/json, body {"name":"studio","dir":"/home/morph/MorphStudio","repo_url":"https://github.com/VasyaLutiy/MorphStudio","language":"go"}; then the same with the fake returning fmt.Errorf("%w: bootstrap: refused: not a git repository: /home/morph/nowhere", control.ErrBadInput); then returning control.ErrExists; then the body {"name":"studio","dir":"/x"} (fields missing are ""; the fake returning ErrBadInput wrapped as "bad input: bootstrap: refused: github: not a github repository url: "); then a body {"name":"studio","extra":1}; then h of example 1 (a Control without AdoptProject) with the first body'
+              when: a.AdoptProject; h.AdoptProject
+              then: 'status 201, body exactly {"name":"studio","language":"go","repo_url":"https://github.com/VasyaLutiy/MorphStudio","state":"idle","created_at":"2026-10-10T18:00:00Z"} + "\n" and the fake saw AdoptProject("studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go"); then 400 {"error":{"code":"bad_input","message":"bad input: bootstrap: refused: not a git repository: /home/morph/nowhere"}} + "\n"; then 409 {"error":{"code":"exists","message":"project exists"}} + "\n"; then 400 with code "bad_input" and the fake saw AdoptProject("studio", "/x", "", ""); then 400 {"error":{"code":"bad_json","message":"bad json"}} + "\n" (an unknown field) and no further call; then 500 {"error":{"code":"internal","message":"internal"}} + "\n" and h''s fake saw nothing'
         - name: Router
           description: The routes on http.ServeMux, the bearer token in front of everything but /healthz, and the MCP mount.
           behavior: >
@@ -1417,7 +1591,8 @@ System:
             crypto/subtle.ConstantTimeCompare) else status 401, Content-Type application/json, body exactly
             {"error":{"code":"unauthorized","message":"bearer token required"}} + "\n"; an empty configured token refuses every
             request the same way. NewRouter: a new http.ServeMux with "GET /healthz" → 200 {"status":"ok"} + "\n" (no token);
-            "GET /projects" → Projects; "POST /projects" → CreateProject; "GET /projects/{project}/status"; "GET /projects/{project}/events";
+            "GET /projects" → Projects; "POST /projects" → CreateProject; "POST /projects/adopt" → AdoptProject (a literal segment:
+            the mux prefers it to any "/projects/{project}/…" pattern); "GET /projects/{project}/status"; "GET /projects/{project}/events";
             "POST /projects/{project}/messages"; "GET /projects/{project}/pending"; "POST /projects/{project}/answer";
             "POST /projects/{project}/interrupt"; "GET /projects/{project}/usage"; "POST /projects/{project}/restart";
             "POST /projects/{project}/plan"; "POST /projects/{project}/continue"; "GET /projects/{project}/stop";
@@ -1449,6 +1624,9 @@ System:
             - given: 'r := NewRouter(h, "tok-1", an http.Handler answering 299 with body "mcp " + r.URL.Path); GET /mcp; POST /mcp/demo; POST /mcp/demo/session, each with no Authorization'
               when: served
               then: 'each status 299 with bodies "mcp /mcp", "mcp /mcp/demo", "mcp /mcp/demo/session" — the MCP mount is not behind Bearer; with mcp nil the same requests give 404'
+            - given: 'r := NewRouter(Handlers{Control: a fake of the test file implementing the 17 methods of control.Control and AdoptProject (recording the call with its arguments, returning control.ProjectView{Name: "studio", Language: "go", RepoURL: "https://github.com/VasyaLutiy/MorphStudio", State: "idle", CreatedAt: 2026-10-10T18:00:00Z})}, "tok-1", nil); POST /projects/adopt (application/json, body {"name":"studio","dir":"/home/morph/MorphStudio","repo_url":"https://github.com/VasyaLutiy/MorphStudio","language":"go"}) with Authorization "Bearer tok-1"; then the same without Authorization; then GET /projects/adopt with "Bearer tok-1"'
+              when: served
+              then: 'status 201 with body exactly {"name":"studio","language":"go","repo_url":"https://github.com/VasyaLutiy/MorphStudio","state":"idle","created_at":"2026-10-10T18:00:00Z"} + "\n" and the fake saw AdoptProject("studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go") (not CreateProject); then 401 with the unauthorized body; then 405'
     - name: mcpserver
       description: >
         Package mcpserver in mcpserver/: the remote MCP server of morphd on the official Go SDK — the user-level
@@ -1473,22 +1651,27 @@ System:
             with IsError true and one TextContent "<code>: <err.Error()>" where code is the second value of control.Code
             (never a protocol error, so the model sees it). UserServer tools: projects_list (no input) → {"projects":[…]}
             (a nil list as []); project_create {name, language, repo_url} → Control.CreateProject(ctx, …) → the
-            ProjectView. PMServer tools, none with a project argument (the project is PMServer's): status → Status; order
+            ProjectView; project_adopt {name, dir, repo_url, language} → control.Adopt(ctx, c, name, dir, repo_url, language)
+            → the ProjectView (a Control without an Adopter → IsError true "internal: adopt not supported").
+            PMServer tools, none with a project argument (the project is PMServer's): status → Status; order
             {text} → OrderResult; pending → {"question": Question or null}; answer {option int} → {"ok":true}; interrupt →
             {"ok":true}; usage → Usage; restart {force bool} → {"ok":true}; plan_load {approved string, phases []{id,
             stop_after, caps{claude_usd, hours, executor_usd}}} → Control.PlanLoad(project, the queue.Plan of exactly the
-            values given, no default filled) → QueueView; continue → {"ok":true}; stop_check → {"stop": Stop or null}.
-            Required input fields (json tag without omitempty): name, language, repo_url, text, option, approved, phases and
-            a phase's id; optional (omitempty): force (absent = false), a phase's stop_after and caps, and each of
-            claude_usd, hours, executor_usd (absent = 0). Tool names are exactly these, tool descriptions one sentence
-            each. `func ToolNames(s *mcp.Server) []string` is not needed: tests list tools through a client session.
+            values given, no default filled) → QueueView; continue → {"ok":true}; stop_check → {"stop": Stop or null};
+            events {since int64, limit int} → ev, err := Control.Events(project, since, limit) with limit 0 replaced by 50
+            before the call → control.Views(ev, 200) → the EventsView ({"events":[…],"last":N}: the compact view, never the
+            raw entries).
+            Required input fields (json tag without omitempty): name, language, repo_url, dir, text, option, approved, phases and
+            a phase's id; optional (omitempty): force (absent = false), since and limit (absent = 0), a phase's stop_after and
+            caps, and each of claude_usd, hours, executor_usd (absent = 0). Tool names are exactly these, tool descriptions one
+            sentence each. `func ToolNames(s *mcp.Server) []string` is not needed: tests list tools through a client session.
           steps:
             - uses: control
             - produces: mcp.Server
           examples:
             - given: 'c := a fake Control (a struct of the test file implementing the 17 methods of control.Control with their exact signatures, every type of package control written qualified, e.g. m control.Milestone, with configurable results and a recorded call list); s := PMServer(c, "demo"); ct, st := mcp.NewInMemoryTransports(); s.Connect(ctx, st, nil); cs := mcp.NewClient(&mcp.Implementation{Name: "t", Version: "0"}, nil).Connect(ctx, ct, nil)'
               when: 'cs.ListTools(ctx, nil)'
-              then: 'the tool names, sorted, exactly ["answer", "continue", "interrupt", "order", "pending", "plan_load", "restart", "status", "stop_check", "usage"]'
+              then: 'the tool names, sorted, exactly ["answer", "continue", "events", "interrupt", "order", "pending", "plan_load", "restart", "status", "stop_check", "usage"]'
             - given: 'the session of example 1, the fake''s Status returning control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}; cs.CallTool(ctx, &mcp.CallToolParams{Name: "status"})'
               when: CallTool
               then: 'IsError false; StructuredContent nil; Content has one *mcp.TextContent whose Text is exactly {"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}; the fake saw Status("demo")'
@@ -1504,10 +1687,17 @@ System:
               then: 'Texts exactly {"question":null}; {"stop":null}; {"ok":true}; {"ok":true}; {"ok":true}; {"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}; the fake saw, in order, Pending("demo"), StopCheck("demo"), Interrupt("demo"), Continue("demo"), Restart("demo", true), Usage("demo")'
             - given: 'u := UserServer(c) connected the same way, the fake''s Projects returning []control.ProjectView{{Name: "alpha", Language: "ts", RepoURL: "https://github.com/o/alpha", State: "idle", CreatedAt: 2026-10-07T09:00:00Z}} and its CreateProject returning ProjectView{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", State: "idle", CreatedAt: 2026-10-08T15:00:00Z}; ListTools; CallTool "projects_list"; CallTool "project_create" {"name": "demo", "language": "go", "repo_url": "https://github.com/o/demo"}'
               when: 'ListTools; CallTool'
-              then: 'names exactly ["project_create", "projects_list"]; Text exactly {"projects":[{"name":"alpha","language":"ts","repo_url":"https://github.com/o/alpha","state":"idle","created_at":"2026-10-07T09:00:00Z"}]}; Text exactly {"name":"demo","language":"go","repo_url":"https://github.com/o/demo","state":"idle","created_at":"2026-10-08T15:00:00Z"} and the whole recorded call list is, in order, Projects() then CreateProject("demo", "go", "https://github.com/o/demo") (projects_list was called first)'
+              then: 'names exactly ["project_adopt", "project_create", "projects_list"]; Text exactly {"projects":[{"name":"alpha","language":"ts","repo_url":"https://github.com/o/alpha","state":"idle","created_at":"2026-10-07T09:00:00Z"}]}; Text exactly {"name":"demo","language":"go","repo_url":"https://github.com/o/demo","state":"idle","created_at":"2026-10-08T15:00:00Z"} and the whole recorded call list is, in order, Projects() then CreateProject("demo", "go", "https://github.com/o/demo") (projects_list was called first)'
             - given: 'the session of example 1; CallTool "answer" with Arguments {"option": "one"} (a string); then "answer" with {"option": 2}'
               when: CallTool
               then: 'an error from CallTool or a result with IsError true — the SDK validates the input against the schema — and the fake saw no Answer; then IsError false, Text exactly {"ok":true} and the fake saw only Answer("demo", 2)'
+            - given: 'the session of example 1; ent(n) := eventlog.Entry{Seq: n, Dir: the dir of line n of tests/fixtures/stream/probe.jsonl, Msg: its msg bytes} (testhelp.ProbeLine); the fake''s Events returning control.Events{Entries: []eventlog.Entry{ent(3), ent(5), ent(7)}, Last: 7} and recording its arguments; CallTool "events" with Arguments {} ; then "events" with {"since": 7, "limit": 10} on the fake returning control.Events{Entries: []eventlog.Entry{}, Last: 7}; then "events" with {"since": 2} on the fake returning errors.New("disk full")'
+              when: CallTool
+              then: 'IsError false, StructuredContent nil, Text exactly {"events":[{"seq":3,"dir":"in","type":"user","text":"Reply with exactly one word: PONG"},{"seq":5,"dir":"out","type":"assistant","text":"PONG"},{"seq":7,"dir":"out","type":"result","subtype":"success","text":"PONG","cost_usd":0.0021784900000000004,"terminal_reason":"completed"}],"last":7} and the fake saw Events("demo", 0, 50) (limit absent → 50); then Text exactly {"events":[],"last":7} and Events("demo", 7, 10); then IsError true "internal: disk full" and Events("demo", 2, 50)'
+              ref: tests/fixtures/stream/probe.jsonl
+            - given: 'u := UserServer(c) connected as in example 6, the fake also implementing AdoptProject (recording its four string arguments; returning control.ProjectView{Name: "studio", Language: "go", RepoURL: "https://github.com/VasyaLutiy/MorphStudio", State: "idle", CreatedAt: 2026-10-10T18:00:00Z}); CallTool "project_adopt" {"name": "studio", "dir": "/home/morph/MorphStudio", "repo_url": "https://github.com/VasyaLutiy/MorphStudio", "language": "go"}; then the same on the fake returning fmt.Errorf("%w: bootstrap: refused: not a git repository: /home/morph/nowhere", control.ErrBadInput); then returning control.ErrExists; then "project_adopt" with {"name": "studio"} (dir, repo_url, language missing); then on u2 := UserServer(p) with p a second fake type of the test file implementing only the 17 methods of control.Control, the first Arguments'
+              when: CallTool
+              then: 'Text exactly {"name":"studio","language":"go","repo_url":"https://github.com/VasyaLutiy/MorphStudio","state":"idle","created_at":"2026-10-10T18:00:00Z"} and the fake saw AdoptProject("studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go") (no CreateProject); then IsError true "bad_input: bad input: bootstrap: refused: not a git repository: /home/morph/nowhere"; then IsError true "exists: project exists"; then an error from CallTool or a result with IsError true (the schema requires the four fields) and the fake saw no further AdoptProject; then IsError true "internal: adopt not supported" and p saw nothing'
         - name: Session Tools
           description: The per-session MCP server the VPS session reports through — phase_done, wait_operator, milestone.
           behavior: >
@@ -1574,7 +1764,7 @@ System:
           examples:
             - given: 'fake := a fake Control (a struct of the test file implementing the 17 methods of control.Control, recording calls) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}; h := Handler(fake, known = func(p string) bool { return p == "demo" }, Tokens{API: "tok-1", Session: a func returning ("id-2", true) for "demo" and ("", false) otherwise}); POST /mcp/demo with Authorization "Bearer tok-1", Content-Type application/json, Accept "application/json, text/event-stream", body {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
               when: served on httptest.NewRecorder
-              then: 'status 200, Content-Type begins application/json; the body decodes to a JSON-RPC response with id 1 whose result.tools names, sorted, are ["answer", "continue", "interrupt", "order", "pending", "plan_load", "restart", "status", "stop_check", "usage"]'
+              then: 'status 200, Content-Type begins application/json; the body decodes to a JSON-RPC response with id 1 whose result.tools names, sorted, are ["answer", "continue", "events", "interrupt", "order", "pending", "plan_load", "restart", "status", "stop_check", "usage"]'
             - given: 'h of example 1; POST /mcp/demo with the same headers and body {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"status","arguments":{}}}'
               when: served
               then: 'status 200; result.content[0].type "text" and its text exactly {"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}; result.isError absent or false; the fake saw Status("demo")'
@@ -1589,7 +1779,7 @@ System:
               then: 'status 404, Content-Type application/json, body exactly {"error":{"code":"unknown_project","message":"unknown project"}} + "\n"; then status 401 with the unauthorized body (the token is checked first)'
             - given: 'h of example 1; POST /mcp with "Bearer tok-1" and the tools/list body'
               when: served
-              then: 'status 200; result.tools names sorted ["project_create", "projects_list"]'
+              then: 'status 200; result.tools names sorted ["project_adopt", "project_create", "projects_list"]'
             - given: 'h of example 1; GET /mcp/demo with "Bearer tok-1"; DELETE /mcp'
               when: served
               then: 'statuses 405, 405'
@@ -1605,7 +1795,7 @@ System:
           behavior: >
             Declares in cmd/morphd/config.go: `type Config struct { Token string; Port int; StateDir string; ProjectsDir string; ClaudeBin string;
             MorphBin string; TGToken string; TGChatID string; Model string; ExtraArgs []string; Defaults queue.Caps; StretchUSD float64;
-            MaxParallel int; ResumesPerHour int; StallMinutes int; UsageAlertPercent int }`, `func ParseDotenv(text string) map[string]string`,
+            MaxParallel int; ResumesPerHour int; StallMinutes int; UsageAlertPercent int; DoneWait int }`, `func ParseDotenv(text string) map[string]string`,
             `func Load(getenv func(string) string, dotenv map[string]string) (Config, error)` and `func UUIDv4(b [16]byte) string`.
             UUIDv4 (pure): the RFC 4122 version 4 form of 16 bytes — byte 6 becomes 0x40 | (b[6] & 0x0f) (the version nibble), byte 8 becomes
             0x80 | (b[8] & 0x3f) (the variant bits), every other byte as given — written as lower-case hex in the groups 8-4-4-4-12 joined by "-"
@@ -1620,12 +1810,14 @@ System:
             getenv("HOME") + "/.local/state/morphd"; MORPHD_PROJECTS_DIR getenv("HOME") + "/projects"; MORPHD_CLAUDE_BIN "claude";
             MORPHD_MORPH_BIN "morph"; TG_BOT_TOKEN ""; TG_CHAT_ID ""; MORPHD_MODEL ""; MORPHD_CLAUDE_EXTRA_ARGS "" split on spaces
             (strings.Fields; no field → nil); MORPHD_CLAUDE_USD 30; MORPHD_HOURS 3; MORPHD_EXECUTOR_USD 5; MORPHD_STRETCH_USD 30; MORPHD_MAX_PARALLEL 1;
-            MORPHD_RESUMES_PER_HOUR 3; MORPHD_STALL_MINUTES 30; MORPHD_USAGE_ALERT 50. A number that does not parse → error
+            MORPHD_RESUMES_PER_HOUR 3; MORPHD_STALL_MINUTES 30; MORPHD_USAGE_ALERT 50; MORPHD_DONE_WAIT 30 (seconds the daemon waits
+            after a phase_done for the turn's result before it ends the session anyway; 0 → at once). A number that does not parse → error
             "config: <KEY>: not a number: <value>". cmd/morphd/main.go: main reads .env from the working directory when present
             (ParseDotenv), Load(os.Getenv, …), opens the registry at StateDir, builds daemon.Deps with runner.OS{}, a Spawn of
             claude.Start(ctx, l.Bin, claude.Args(l), l.Dir, claude.Env(l)),
             telegram.Client{TGToken, TGChatID, http.DefaultClient.Do}.Post, http.DefaultClient.Do, time.Now, NewID: newID (a
-            version 4 UUID, above), MCPBaseURL "http://127.0.0.1:<port>"; `func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler`
+            version 4 UUID, above), MCPBaseURL "http://127.0.0.1:<port>", daemon.Config.DoneWait = time.Duration(DoneWait) * time.Second;
+            `func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler`
             = api.NewRouter(api.Handlers{Control: d}, token, mcpserver.Handler(d, known, mcpserver.Tokens{API: token, Session: session}));
             a ticker calls daemon.Tick every 30 s; http.ListenAndServe("127.0.0.1:" + port, handler); a Load error prints it to
             stderr and exits 2. Nothing but the listener address and the port is printed at start ("morphd listening on
@@ -1642,16 +1834,16 @@ System:
               then: 'exactly map[string]string{"MORPHD_TOKEN": "abc", "TG_BOT_TOKEN": "123:ABC", "TG_CHAT_ID": "-100", "MORPHD_PORT": "7181"}'
             - given: 'getenv := a func over map{"HOME": "/home/morph"} (everything else ""); dotenv := map{"MORPHD_TOKEN": "abc"}'
               when: Load
-              then: 'Config{Token: "abc", Port: 7080, StateDir: "/home/morph/.local/state/morphd", ProjectsDir: "/home/morph/projects", ClaudeBin: "claude", MorphBin: "morph", TGToken: "", TGChatID: "", Model: "", ExtraArgs: nil, Defaults: {30, 3, 5}, StretchUSD: 30, MaxParallel: 1, ResumesPerHour: 3, StallMinutes: 30, UsageAlertPercent: 50}, nil'
-            - given: 'getenv over map{"HOME": "/h", "MORPHD_TOKEN": "env-tok", "MORPHD_PORT": "7181", "MORPHD_CLAUDE_EXTRA_ARGS": "--effort high", "MORPHD_CLAUDE_USD": "12.5", "MORPHD_MAX_PARALLEL": "2"}; dotenv map{"MORPHD_TOKEN": "file-tok", "MORPHD_HOURS": "1"}'
+              then: 'Config{Token: "abc", Port: 7080, StateDir: "/home/morph/.local/state/morphd", ProjectsDir: "/home/morph/projects", ClaudeBin: "claude", MorphBin: "morph", TGToken: "", TGChatID: "", Model: "", ExtraArgs: nil, Defaults: {30, 3, 5}, StretchUSD: 30, MaxParallel: 1, ResumesPerHour: 3, StallMinutes: 30, UsageAlertPercent: 50, DoneWait: 30}, nil'
+            - given: 'getenv over map{"HOME": "/h", "MORPHD_TOKEN": "env-tok", "MORPHD_PORT": "7181", "MORPHD_CLAUDE_EXTRA_ARGS": "--effort high", "MORPHD_CLAUDE_USD": "12.5", "MORPHD_MAX_PARALLEL": "2", "MORPHD_DONE_WAIT": "45"}; dotenv map{"MORPHD_TOKEN": "file-tok", "MORPHD_HOURS": "1", "MORPHD_DONE_WAIT": "0"}'
               when: Load
-              then: 'Token "env-tok" (the environment wins), Port 7181, ExtraArgs ["--effort", "high"], Defaults {12.5, 1, 5}, MaxParallel 2'
-            - given: 'getenv with no MORPHD_TOKEN and an empty dotenv; then MORPHD_TOKEN "x" and MORPHD_PORT "80a"; then MORPHD_STALL_MINUTES "soon"'
+              then: 'Token "env-tok" (the environment wins), Port 7181, ExtraArgs ["--effort", "high"], Defaults {12.5, 1, 5}, MaxParallel 2, DoneWait 45; with MORPHD_DONE_WAIT absent from getenv the dotenv''s "0" gives DoneWait 0 (an explicit 0 is kept, not the default)'
+            - given: 'getenv with no MORPHD_TOKEN and an empty dotenv; then MORPHD_TOKEN "x" and MORPHD_PORT "80a"; then MORPHD_STALL_MINUTES "soon"; then MORPHD_DONE_WAIT "1m"'
               when: Load
-              then: 'errors "config: MORPHD_TOKEN is required"; "config: MORPHD_PORT: not a number: 80a"; "config: MORPHD_STALL_MINUTES: not a number: soon"'
+              then: 'errors "config: MORPHD_TOKEN is required"; "config: MORPHD_PORT: not a number: 80a"; "config: MORPHD_STALL_MINUTES: not a number: soon"; "config: MORPHD_DONE_WAIT: not a number: 1m"'
             - given: 'f := a fake Control (a struct of the test file implementing the 17 methods of control.Control) whose Status returns control.Status{State: "busy", Phase: "P18", Minutes: 37, CostUSD: 1.92, FiveHour: 22, SevenDay: 60, SessionID: "s-1", Queue: control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"}, Repo: github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: 2026-10-08T15:00:00Z}}, nil for "demo" and control.ErrUnknownProject otherwise; h := Build(f, func(p string) bool { return p == "demo" }, func(p string) (string, bool) { return "s", p == "demo" }, "tok-7"); requests by httptest.NewRequest (a body with Content-Type application/json and Accept "application/json, text/event-stream")'
               when: 'GET /healthz; GET /projects/demo/status with Authorization "Bearer tok-7"; POST /mcp/demo with "Bearer tok-7" and the body `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`; GET /projects/demo/status without Authorization — each served by h.ServeHTTP on httptest.NewRecorder'
-              then: '200 with the body exactly `{"status":"ok"}` + "\n"; 200 with the body exactly `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}` + "\n"; 200 with result.tools (the body decoded by encoding/json) holding 10 tools, "status" among their names; 401'
+              then: '200 with the body exactly `{"status":"ok"}` + "\n"; 200 with the body exactly `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}` + "\n"; 200 with result.tools (the body decoded by encoding/json) holding 11 tools, "status" and "events" among their names; 401'
             - given: 'b := [16]byte{0x96, 0x7e, 0x8f, 0x4d, 0xa2, 0xeb, 0x0a, 0xa6, 0x16, 0x8b, 0xb9, 0x05, 0x4a, 0x1c, 0x3d, 0x7e}; then the zero [16]byte; then [16]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; then [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}'
               when: UUIDv4
               then: 'exactly "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e" (byte 6 0x0a → 4a, byte 8 0x16 → 96: the probe''s own session id); "00000000-0000-4000-8000-000000000000"; "ffffffff-ffff-4fff-bfff-ffffffffffff"; "00112233-4455-4677-8899-aabbccddeeff" — each 36 characters, lower-case'

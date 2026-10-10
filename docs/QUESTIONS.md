@@ -97,3 +97,38 @@ event).** Proposals used in the record marked "(proposed, Q<n>)" in PLAN's decis
     "exited 4 times within an hour (last code 1): <first stderr line>"}`, every exit is an `exit` entry of the session's
     event log with the last 20 stderr lines, and every restart is a 🐕 watchdog line "restart n of 3 this hour · <first
     stderr line>". Depends: Control Contract (Exit, Status), Runtime Guard, Pump.
+
+**Added 10.10 (P8a/P8b, the minimal PM MCP harness — operator items 2, 3, 4, 5).** Proposals used in the record marked
+"(proposed, Q<n>)" in PLAN's decisions table until the operator answers.
+
+23. **What adopt writes into an existing repository.** `project_adopt` must register a repo that already exists (MorphStudio
+    itself) without init, commit or push, but the phase sessions push with the PAT the operator PUTs later. Proposal:
+    adopt runs exactly one write — `git config credential.helper "store --file=<state>/<p>/git-credentials"` (git keeps
+    the user's own helpers and adds this one, so the morph user's existing credentials still work); no `user.name`/
+    `user.email`, no `morph init`, no commit. Alternative: write nothing and rely on the morph user's own credentials.
+    Depends: Project Adopt (step 4), Daemon Core (AdoptProject).
+24. **Where adopt lives.** Proposal: HTTP `POST /projects/adopt` (a literal segment beside `POST /projects`; a project
+    could not be named "adopt" through that route — nothing else conflicts) and MCP `project_adopt` on `/mcp`; the
+    `control.Control` interface stays at 17 methods (every judge's fake implements it) and `AdoptProject` is the optional
+    `control.Adopter` that `control.Adopt` resolves by a type assertion (a Control without it → 500 `internal` "adopt not
+    supported", the state between P8a and P8b). Alternative: an 18th method on Control — 4 more re-cuts (control-contract
+    + judge, session-tools-judge, …) for the same behaviour. Depends: Adopt Contract, HTTP Handlers, Router, PM Tools.
+25. **The wait for the last turn.** Proposal: `MORPHD_DONE_WAIT` 30 s (0 = the old behaviour); the daemon holds the
+    `phase_done` end batch until the turn's `result` (or the process's exit), then runs the end check, the kill and the
+    next phase; at the deadline it runs it anyway (that turn's cost is then lost, as today). The regulation asks the
+    session to make `phase_done` the last tool call of its turn and end the turn at once. Known gap: a daemon restart
+    inside the wait loses the pending batch (the loop is "running" → `Exited(-2)` → the phase restarts by the old rule).
+    Depends: Daemon Core (PhaseDone, Tick), Pump, Config And Main.
+26. **The `events` tool's bounds.** Proposal: text and stderr cut at 200 runes + "…", tool names whole, `limit` absent → 50,
+    `since` absent → 0; the HTTP `GET events` keeps the raw entries for the operator's curl. Depends: Event View, PM Tools.
+27. **Caps of an adopted project.** Proposal: `Config.Defaults` as for a created project (the PM's `plan_load` carries
+    per-phase caps anyway). Depends: Daemon Core (AdoptProject).
+28. **The Claude Code hooks under morphd.** `.claude/settings.json` posts 💤 on Stop and 🔔 on Notification through
+    `tools/tg.sh`; the daemon posts both itself (the pump's `idle` and `ask`). Proposal: on the VPS remove
+    `~/.config/morph/tg.env` for the morph user (then `tg.sh` is a silent no-op) — a PM/operator action, not a card; the
+    laptop flow keeps it. Depends: nothing in the record; `docs/AUTONOMY_MORPHD.md` "Observability".
+29. **Which regulation a session reads.** `docs/AUTONOMY.md` keeps the tmux/cron text for the laptop flow;
+    `docs/AUTONOMY_MORPHD.md` is the morphd variant. Proposal: the rule "when the MCP server `morphd` is in the session's
+    tools, AUTONOMY_MORPHD.md overrides the sections it names" is written at the top of AUTONOMY_MORPHD.md; a one-line
+    pointer at the top of `docs/AUTONOMY.md` is the PM's data edit after approval (the architect did not touch that file).
+    Depends: nothing in the record.

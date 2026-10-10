@@ -54,6 +54,10 @@
 | an exit before `phase_done` / `wait_operator` is a crash: logged with its stderr, counted whether the restart is fresh or `--resume`, ≤ N per hour, then a `crash` stop with a 🛑 naming the code and the first stderr line; no restart storm (smoke 2 RED: 57 spawns in 2 min) | P7b | supervisor · Phase Loop, Runtime Guard; daemon · Daemon Core; pump · Pump; control · Control Contract | Runtime Guard 1, 2 (4 exits → "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."), 8 (an exit while waiting is nothing), 9 (the first stderr line); Phase Loop 1, 2, 9 (what resets the count); Pump 8 (a real `sh` claude that dies with exit 1: exactly 4 spawns, the `exit` entry with the stderr, the stop), 9 (an exit after wait_operator: no restart); Daemon Core 11 (a Spawn that always fails: 4 attempts, no "started" post, `continue` gives 4 more); Control Contract 10 (`last_exit` JSON) |
 | D4: a start check "resume" (dirty tree, a branch, local ahead of origin/main) on a loop with no session yet spawns a FRESH session (`--session-id <new id>`, the first line), never `--resume` of an id claude has not seen; a non-empty SessionID still resumes | P7c | supervisor · Phase Loop | Phase Loop 3 (P18, SessionID "" → spawn `id-7` Resume false, `/morph-orchestrator P18`, "P18 resumed on a fresh session" / "session id-7 · cap $12 · 3 h · local ahead of origin/main"), 11 (after Restart, "on branch morph/20261008-083312"), 10 (SessionID "id-1" → Resume true, newID not called) |
 | `five_hour` / `seven_day` null until the first `rate_limit_event` (`limits_at` null too) | P7b | control · Control Contract; daemon · Daemon Core | Control Contract 8, 9 (the exact null bodies); Daemon Core 1 (idle project: `LimitsUnknown`, `Usage{}` marshals the five nulls); Pump 1 (22 / 60 once seen) |
+| harness 2 (operator 10.10): adopt an existing repository — `project_adopt {name, dir, repo_url, language}` on `/mcp` and `POST /projects/adopt`; dir must be a git repo on `main` with `origin` = repo_url and a `contour.yaml`; registered without init, commit or push; only the credential helper is added; errors: not a repo / wrong branch / wrong origin / no contour → 400 `bad_input` with the refusal text, a known name → 409 `exists`; the token PUT unchanged (`FirstPush` finds `origin/main` and pushes nothing) | P8a, P8b | bootstrap · Project Adopt; control · Adopt Contract; api · HTTP Handlers, Router; mcpserver · PM Tools; daemon · Daemon Core | Project Adopt 1 (the four git calls, no init/commit/push), 2–6 (every refusal text), 7 (ssh origin = https repo_url); Adopt Contract 1–3; HTTP Handlers 9 (201 / 400 / 409 / 500); Router 8; PM Tools 9 (`project_adopt`, "exists: project exists", "internal: adopt not supported"); Daemon Core 14 (MorphStudio-like `git@github.com:acme/studio.git` adopted; `ErrExists`; the two `bad input: bootstrap: refused: …` texts) |
+| harness 3 (operator 10.10): session progress over MCP — `events {since, limit}` on `/mcp/<project>` returns a compact, bounded view (seq, dir, type/subtype, text ≤ 200 runes, tool names, result cost / terminal_reason, exit code / stderr), never the raw lines; limit absent → 50 | P8a, P8b | control · Event View; mcpserver · PM Tools | Event View 1 (the five probe lines as exact JSON), 2 (tool_use names, tool_result), 3 (the 327-rune text cut at 20 / 200), 4 (question, interrupt, aborted result), 5 (exit entry, raw lines), 6 (empty); PM Tools 8 (the tool's JSON, `Events("demo", 0, 50)`) |
+| harness 5 (operator 10.10): the last turn's cost is not lost — after `phase_done` the daemon waits for that turn's `result` (≤ `MORPHD_DONE_WAIT` s, default 30; then ends the session anyway) before the end check, the kill and the next phase, so `stretch $` counts the last turn; an exit after `phase_done` is not a crash | P8b | daemon · Daemon Core; pump · Pump; cmd · Config And Main | Pump 10 (line 31's result arrives → `StretchUSD 0.005775230000000001`, the "turn ended" post before "P18 started"), 11 (the session exits after phase_done: no watchdog post, P18 starts); Daemon Core 12 (the 30 s deadline by `Tick`), 13 (a pending done of a replaced process is dropped); Config And Main 2–4 (`DoneWait` 30 / 45 / 0, "not a number: 1m") |
+| harness 4 (operator 10.10): the regulation a morphd session reads (one phase one session, failure, observability, handoff) — data, not code | — | `docs/AUTONOMY_MORPHD.md` (the morphd variant; `docs/AUTONOMY.md` keeps the laptop/tmux text) | — |
 
 Every rule of the brief is an example or a Guardrail: Guardrails "Injected Clock And Ids", "No Network In Tests",
 "No Shell Outside Runner", "Secrets Never Logged"; Requirements "Claude Behind An Interface", "Bearer Token On Every
@@ -111,6 +115,8 @@ Route", "The Session Reports Only Itself". Every not-build item is in "Out of sc
 | P7 | daemon, cmd | Daemon Core, Pump, Config And Main | 6 | 4 | P2–P6 | 0.35 | smoke 2 (RED 08.10: D1 session id, D2 invisible crash / restart storm, D3 limits 0 before any event) |
 | P7b | control, supervisor, daemon, pump, cmd (re-cut of 12 built cards: `morph plan --only`) | Control Contract, Phase Loop, Runtime Guard, Daemon Core, Pump, Config And Main | 12 | 7 | P7 | 0.40 | **smoke 2 re-run (final)** |
 | P7c | supervisor (re-cut of 2 built cards for D4: `morph plan --component supervisor --judge --only phase-loop,phase-loop-judge`) | Phase Loop | 2 | 2 | P7b | 0.05 | **smoke 2 check of D4** (an unpushed commit on main before `POST plan` → one spawn, "resumed on a fresh session", no crash) |
+| P8a | bootstrap, control, api (3 new Functions + re-cut of http-handlers, router and their judges) | Project Adopt, Adopt Contract, Event View, HTTP Handlers, Router | 10 | 4 | P7c | 0.25 | — (after it `POST /projects/adopt` answers 500 `internal` until P8b gives the daemon its Adopter; everything else green) |
+| P8b | mcpserver, daemon, pump, cmd (re-cut of 9 built cards: pm-tools + judge, mcp-mount-judge, daemon-core + judge, pump + judge, config-and-main + judge) | PM Tools, Daemon Core, Pump, Config And Main | 9 | 4 | P8a | 0.40 | **smoke 3** (adopt MorphStudio over MCP, status, events, the last turn counted) |
 
 Measured by the dry cut (V2 binary built from origin/main bc311aa, 08.10, on a scratch copy with the P0 placeholders):
 every phase `morph plan` exit 0 and `morph deck check` 0 errors; generations P1 [3,4,1], P2 [3,4,1], P3 [2,4,2],
@@ -138,6 +144,38 @@ splits on SessionID: non-empty → `--resume <id>` as before (examples 10, Runti
 check's reason) — example 3 changes (its test changes with it), examples 10 and 11 are new; the other 8 stay as they
 are. `checks.json` freezes every package but supervisor; runtime-guard, daemon-core and pump are not re-cut (their
 examples never hit "resume" with an empty SessionID).
+
+P8a / P8b — the minimal PM MCP harness (operator 10.10, items 2, 3, 5; item 4 is the regulation data
+`docs/AUTONOMY_MORPHD.md`). Measured 10.10 by the architect with MorphV2 18dab5b (`~/bin/morphv2`, /tmp/morphbin) on a
+scratch worktree of main with three placeholder files for the new code (`bootstrap/adopt.go`, `control/adopt.go`,
+`control/events.go` — the slices of the judges name them; the real phase writes them):
+- P8a: `morph plan --root . --spec contour.yaml --map morph-map.json --component bootstrap --component control --component
+  api --judge --only project-adopt,project-adopt-judge,adopt-contract,adopt-contract-judge,event-view,event-view-judge,http-handlers,http-handlers-judge,router,router-judge`
+  exit 0; `morph deck check` 0 errors / 0 warnings; 10 cards, generations [3,4,2,1] (adopt-contract + event-view +
+  project-adopt → their judges + http-handlers → http-handlers-judge + router → router-judge); the heaviest slice
+  event-view-judge 103 920 B (the probe log). Nothing listing tool names or the `cmd` Config is touched, so every built
+  test stays green. New: three code files and three test files. Re-cut: `api/handlers.go` (+ `AdoptProject`),
+  `api/router.go` (+ `POST /projects/adopt`) and their judges (examples 1–8 / 1–7 unchanged; HTTP Handlers 9 and
+  Router 8 are new). `checks.json` freezes every package but bootstrap, control and api.
+- P8b: `morph plan … --component mcpserver --component daemon --component pump --component cmd --judge --only
+  pm-tools,pm-tools-judge,mcp-mount-judge,daemon-core,daemon-core-judge,pump,pump-judge,config-and-main,config-and-main-judge`
+  exit 0; `morph deck check` 0 errors / 0 warnings (after the map gave mcp-mount-judge `depends_on: ["pm-tools"]` —
+  the check's one read-write hazard); 9 cards, generations [2,3,3,1] (daemon-core + pm-tools → mcp-mount-judge +
+  pm-tools-judge + pump → config-and-main + daemon-core-judge + pump-judge → config-and-main-judge); the heaviest slice
+  pump-judge 186 160 B, under 200 KB. Examples that change in built cards (their tests change with them): PM Tools 1
+  and 6 (the tool lists gain `events` and `project_adopt`), MCP Mount 1 and 6 (the same lists; `mount.go` itself is
+  not re-cut), Config And Main 2–4 (`DoneWait`) and 5 (11 tools); new: PM Tools 8–9, Daemon Core 12–14, Pump 10–11.
+  Daemon Core 1–11 and Pump 1–9 keep their text and their tests (`DoneWait` 0 in their harness = the old
+  behaviour). `checks.json` freezes every package but mcpserver, daemon and cmd/morphd. Why two phases: 19 card runs
+  and 13 of them re-cuts of built files; P8a's leaves and servers need no daemon change, P8b's daemon + pump are one
+  package and must move together with the `cmd` Config.
+- Design choice, both phases: `AdoptProject` is NOT added to `control.Control` (17 methods, every judge's fake) but to
+  the optional `control.Adopter` interface the daemon implements and `control.Adopt` resolves by a type assertion —
+  the Control Contract card and session-tools-judge are not re-cut and no fake outside the four adopt examples changes.
+  The compact `events` view is a pure Function of package control (`Views` over `eventlog.Entry` + `stream.Parse`), so
+  the MCP tool is one call; the HTTP `GET events` keeps the raw entries. The last-turn wait lives in the daemon
+  (`pendingDone` per project; the pump's `result` or exit, or `Tick` at the deadline, runs the held end batch); the
+  supervisor's Phase Loop is untouched.
 
 - **Smoke stop 1 (after P3, the PM on the VPS, ≤ $0.05 of claude)**: a throwaway `main` outside the repository
   (`/tmp/smoke-p3/main.go`, not committed) that calls `claude.Start(ctx, "claude", claude.Args(claude.Launch{SessionID:
@@ -171,9 +209,24 @@ examples never hit "resume" with an empty SessionID).
   events` holds the `in` first line and no `exit` entry, exactly one session file appears under `<state>/smoke/sessions/`,
   and `status` holds no `last_exit`. Red → a DECISIONS line and an issue labelled for the Component; the stretch stops
   for the operator.
-- **Total**: 7 phases + P7b + P7c, 54 cards (27 code, 27 judge) of which P7b re-cuts 12 and P7c 2 (68 card runs), 212
-  record examples; executor estimate $1.90 on `ds` (cap $5 per phase, $35 for the stretch); claude for the two smokes,
-  the smoke 2 re-run and the D4 check ≤ $1.15.
+- **Smoke stop 3 (after P8b, the PM over the systemd morphd on the VPS through the ssh tunnel, ≤ $0.30 of claude)**:
+  over `/mcp`: `project_adopt {name: "morphstudio", dir: "/home/morph/MorphStudio", repo_url:
+  "https://github.com/VasyaLutiy/MorphStudio", language: "go"}` → the ProjectView with `state "idle"`; `projects_list`
+  holds it; a second `project_adopt` of the same name → `exists: project exists`; `project_adopt` of
+  `/home/morph/morphd` → `bad_input: bad input: bootstrap: refused: not a git repository: /home/morph/morphd`; of a
+  dir with another origin → the `… is not …` text; `git -C /home/morph/MorphStudio config --get-all credential.helper`
+  ends with `store --file=/home/morph/morphd/state/morphstudio/git-credentials` and `git log origin/main -1` is
+  unchanged before and after `PUT /projects/morphstudio/github-token` (`pushed: false`, `access.push: true`); over
+  `/mcp/morphstudio`: `status` is the idle Status with `five_hour: null`, `events {}` → `{"events":[],"last":0}`; then
+  on the throwaway project `smoke` a one-phase plan S3 ("write the MEASURE row, commit, push, phase_done, end the
+  turn"): TG shows `[smoke] 🎉 S3 done: plan complete · stretch $0.0xxx` with a non-zero stretch, `usage` after the
+  stop has `stretch_cost_usd` > 0, `events {since: 0, limit: 50}` shows the `result` view with `cost_usd` > 0 followed
+  by the `exit` view (`code -1`: the kill), and the session ended within `MORPHD_DONE_WAIT` (30 s) of its last
+  `result`; `GET /projects/smoke/events?since=0` still returns raw entries. Red → a DECISIONS line and an issue
+  labelled for the Component.
+- **Total**: 7 phases + P7b + P7c + P8a + P8b, 60 cards (30 code, 30 judge) of which P7b re-cuts 12, P7c 2 and
+  P8a/P8b 13 (87 card runs), 237 record examples; executor estimate $2.55 on `ds` (cap $5 per phase, $35 for the
+  stretch); claude for the smokes, the re-run, the D4 check and smoke 3 ≤ $1.45.
 
 ### Measures per phase
 
@@ -207,6 +260,12 @@ bytes, the run id.
 | Q20 | which ids must be UUIDs | one `newID` (RFC 4122 v4, lower-case 8-4-4-4-12) for the session id, the session token and the interrupt request id | (proposed, Q20) |
 | Q21 | the name `MORPHD_RESUMES_PER_HOUR` now that every restart counts | keep the env key and the Config fields; the loop's list is `restarts` | (proposed, Q21) |
 | Q22 | how a crash shows in `status` | no new `state` value; `last_exit {code, at, stderr, restarts}` (absent until an exit), `stop.kind "crash"` with the exit code and the first stderr line in `reason`, an `exit` entry in `events` with the last 20 stderr lines, a 🐕 line per restart | (proposed, Q22) |
+| Q23 | what adopt writes into the existing repository | only `git config credential.helper "store --file=<state>/<p>/git-credentials"` (git keeps the user's own helpers and adds this one); no identity, no commit, no push, no `morph init` | (proposed, Q23) |
+| Q24 | where adopt lives in the HTTP API and in the Control | `POST /projects/adopt` (a literal segment beside `POST /projects`); the Control interface stays at 17 methods — `AdoptProject` is the optional `control.Adopter` the daemon implements | (proposed, Q24) |
+| Q25 | how long the daemon waits for the last turn after `phase_done` | `MORPHD_DONE_WAIT` 30 s, then the end batch runs anyway; the regulation asks the session to call `phase_done` as the last tool call of its turn and end the turn at once; a daemon restart inside the wait loses it (the phase restarts by the old rule) | (proposed, Q25) |
+| Q26 | the `events` tool's bounds | text and stderr cut at 200 runes + "…"; `limit` absent → 50 entries; the HTTP `GET events` keeps the raw lines | (proposed, Q26) |
+| Q27 | caps of an adopted project | `Config.Defaults` ($30, 3 h, $5), as for a created one | (proposed, Q27) |
+| Q28 | the Claude Code hooks (`.claude/settings.json` → `tools/tg.sh idle/ask`) under morphd | the daemon posts 💤 and 🔔 itself; on the VPS `~/.config/morph/tg.env` should go (then `tg.sh` is a silent no-op) or the lines double — a PM action, not a card | (proposed, Q28) |
 
 ## Out of scope
 
@@ -278,8 +337,10 @@ One line each; nothing here is written by a card.
 
 ## Zero Contour
 
-`contour.yaml` (≈ 190 KB, 18 Components, 27 Functions, 210 examples; sizes by YAML dump of each Component; `pump` is
-the second Component of package daemon — daemon/pump.go — split off at P7b because the two together passed 30 KB):
+`contour.yaml` (≈ 230 KB, 18 Components, 30 Functions, 237 examples; sizes by YAML dump of each Component; `pump` is
+the second Component of package daemon — daemon/pump.go — split off at P7b because the two together passed 30 KB;
+P8a/P8b add Project Adopt to bootstrap and Adopt Contract + Event View to control, and bring daemon to 29.8 KB —
+the next daemon change must split a third Component off package daemon):
 
 | Component | KB | Functions | examples |
 |---|---|---|---|
@@ -291,24 +352,25 @@ the second Component of package daemon — daemon/pump.go — split off at P7b b
 | queue | 5.8 | 1 | 8 |
 | claude | 7.7 | 2 | 14 |
 | github | 4.0 | 1 | 8 |
-| bootstrap | 6.0 | 1 | 7 |
+| bootstrap | 14.7 | 2 | 14 |
 | registry | 7.1 | 2 | 13 |
 | gitrules | 8.0 | 2 | 15 |
-| control | 11.2 | 1 | 10 |
+| control | 21.4 | 3 | 19 |
 | supervisor | 23.7 | 2 | 18 |
-| daemon | 23.7 | 1 | 11 |
-| pump | 15.0 | 1 | 9 |
-| api | 12.2 | 2 | 15 |
-| mcpserver | 18.2 | 3 | 20 |
-| cmd | 8.0 | 1 | 7 |
+| daemon | 29.8 | 1 | 14 |
+| pump | 18.1 | 1 | 11 |
+| api | 15.6 | 2 | 17 |
+| mcpserver | 21.6 | 3 | 22 |
+| cmd | 8.6 | 1 | 7 |
 
 Requirements: Claude Behind An Interface · Bearer Token On Every Route · The Session Reports Only Itself.
 Guardrails: Injected Clock And Ids · No Network In Tests · No Shell Outside Runner · Secrets Never Logged.
 Dependency: `github.com/modelcontextprotocol/go-sdk` v1.8.0 (go), doc `docs/deps/go-sdk.md`, used by mcpserver only.
+Layers: package control now imports `morphstudio/stream` too (Event View); the layer table already allows it.
 
 ## morph-map.json
 
-Committed with this plan (54 entries; P7b re-cuts 12 of them — control-contract, phase-loop, runtime-guard, daemon-core,
+Committed with this plan (60 entries; P8a adds project-adopt, adopt-contract, event-view and their judges — budgets 10 000 / 6 000 / 10 000 and 20 000 / 16 000 / 22 000 — and P8b raises pm-tools 18 000, pm-tools-judge 32 000, http-handlers 18 000, http-handlers-judge 30 000, router-judge 24 000, daemon-core 28 000, daemon-core-judge 38 000, pump-judge 34 000; P7b re-cuts 12 of them — control-contract, phase-loop, runtime-guard, daemon-core,
 pump, config-and-main and their judges — by `morph plan --only`, the judges' instructions widened for the new examples,
 budgets control-contract 14 000, daemon-core 26 000, pump 12 000, judges 18 000 / 26 000 / 34 000 / 32 000 / 20 000;
 P7c re-cuts phase-loop and phase-loop-judge, the judge at 30 000 for 11 examples with a counting `ids`). The cards of P1:
@@ -335,6 +397,9 @@ The operator knows the framework is done when smoke stop 2 is green as written a
 `interrupt`, `usage` over HTTP and the same `status` over the remote MCP from the laptop, posts the start and stop
 lines to Telegram with the `[smoke]` prefix, and `GOFLAGS=-mod=vendor GOPROXY=off go test -count=1 ./...` is green
 with ≈ 212 example tests (one per record example; the count is the sum of the examples of the Functions merged).
+The harness (P8a/P8b) is done when smoke stop 3 is green as written above: MorphStudio itself adopted over `/mcp`
+without a commit or a push, `events` readable as the compact view, and the last turn of a phase counted in the
+stretch; ≈ 237 example tests.
 
 ## Record rules for this project
 

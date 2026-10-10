@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"strings"
@@ -33,10 +32,12 @@ func TestConfigAndMainExample2(t *testing.T) {
 	env := map[string]string{"HOME": "/home/morph"}
 	getenv := func(k string) string { return env[k] }
 	dotenv := map[string]string{"MORPHD_TOKEN": "abc"}
+
 	got, err := Load(getenv, dotenv)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	want := Config{
 		Token:             "abc",
 		Port:              7080,
@@ -54,6 +55,7 @@ func TestConfigAndMainExample2(t *testing.T) {
 		ResumesPerHour:    3,
 		StallMinutes:      30,
 		UsageAlertPercent: 50,
+		DoneWait:          30,
 	}
 	testhelp.Equal(t, "Config", got, want)
 }
@@ -66,12 +68,15 @@ func TestConfigAndMainExample3(t *testing.T) {
 		"MORPHD_CLAUDE_EXTRA_ARGS": "--effort high",
 		"MORPHD_CLAUDE_USD":        "12.5",
 		"MORPHD_MAX_PARALLEL":      "2",
+		"MORPHD_DONE_WAIT":         "45",
 	}
 	getenv := func(k string) string { return env[k] }
 	dotenv := map[string]string{
-		"MORPHD_TOKEN": "file-tok",
-		"MORPHD_HOURS": "1",
+		"MORPHD_TOKEN":     "file-tok",
+		"MORPHD_HOURS":     "1",
+		"MORPHD_DONE_WAIT": "0",
 	}
+
 	got, err := Load(getenv, dotenv)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -81,44 +86,56 @@ func TestConfigAndMainExample3(t *testing.T) {
 	testhelp.Equal(t, "ExtraArgs", got.ExtraArgs, []string{"--effort", "high"})
 	testhelp.Equal(t, "Defaults", got.Defaults, queue.Caps{ClaudeUSD: 12.5, Hours: 1, ExecutorUSD: 5})
 	testhelp.Equal(t, "MaxParallel", got.MaxParallel, 2)
+	testhelp.Equal(t, "DoneWait", got.DoneWait, 45)
+
+	delete(env, "MORPHD_DONE_WAIT")
+	got, err = Load(getenv, dotenv)
+	if err != nil {
+		t.Fatalf("Load (dotenv only): %v", err)
+	}
+	testhelp.Equal(t, "DoneWait from dotenv", got.DoneWait, 0)
 }
 
 func TestConfigAndMainExample4(t *testing.T) {
-	cases := []struct {
-		env    map[string]string
-		dotenv map[string]string
-		want   string
-	}{
-		{
-			env:    map[string]string{},
-			dotenv: map[string]string{},
-			want:   "config: MORPHD_TOKEN is required",
-		},
-		{
-			env:    map[string]string{"MORPHD_TOKEN": "x", "MORPHD_PORT": "80a"},
-			dotenv: map[string]string{},
-			want:   "config: MORPHD_PORT: not a number: 80a",
-		},
-		{
-			env:    map[string]string{"MORPHD_TOKEN": "x", "MORPHD_STALL_MINUTES": "soon"},
-			dotenv: map[string]string{},
-			want:   "config: MORPHD_STALL_MINUTES: not a number: soon",
-		},
-	}
-	for _, c := range cases {
-		env := c.env
-		getenv := func(k string) string { return env[k] }
-		_, err := Load(getenv, c.dotenv)
+	{
+		getenv := func(string) string { return "" }
+		_, err := Load(getenv, map[string]string{})
 		if err == nil {
-			t.Fatalf("Load: expected %q, got nil", c.want)
+			t.Fatal("Load: expected an error")
 		}
-		testhelp.Equal(t, "Load error", err.Error(), c.want)
+		testhelp.Equal(t, "no token", err.Error(), "config: MORPHD_TOKEN is required")
+	}
+	{
+		env := map[string]string{"MORPHD_TOKEN": "x", "MORPHD_PORT": "80a"}
+		getenv := func(k string) string { return env[k] }
+		_, err := Load(getenv, map[string]string{})
+		if err == nil {
+			t.Fatal("Load: expected an error")
+		}
+		testhelp.Equal(t, "bad port", err.Error(), "config: MORPHD_PORT: not a number: 80a")
+	}
+	{
+		env := map[string]string{"MORPHD_TOKEN": "x", "MORPHD_STALL_MINUTES": "soon"}
+		getenv := func(k string) string { return env[k] }
+		_, err := Load(getenv, map[string]string{})
+		if err == nil {
+			t.Fatal("Load: expected an error")
+		}
+		testhelp.Equal(t, "bad stall", err.Error(), "config: MORPHD_STALL_MINUTES: not a number: soon")
+	}
+	{
+		env := map[string]string{"MORPHD_TOKEN": "x", "MORPHD_DONE_WAIT": "1m"}
+		getenv := func(k string) string { return env[k] }
+		_, err := Load(getenv, map[string]string{})
+		if err == nil {
+			t.Fatal("Load: expected an error")
+		}
+		testhelp.Equal(t, "bad done wait", err.Error(), "config: MORPHD_DONE_WAIT: not a number: 1m")
 	}
 }
 
-// cmFake is the one fake control of this file: Status answers "demo" with the
-// record of the example and refuses every other project with ErrUnknownProject;
-// every other method is a no-op.
+// cmFake is a control.Control double that reports one busy project named
+// "demo" and ErrUnknownProject for anything else.
 type cmFake struct{}
 
 func (cmFake) Projects() []control.ProjectView { return nil }
@@ -150,7 +167,7 @@ func (cmFake) Status(project string) (control.Status, error) {
 			Checked:   true,
 			Reachable: true,
 			Push:      true,
-			CheckedAt: time.Date(2026, time.October, 8, 15, 0, 0, 0, time.UTC),
+			CheckedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
 		},
 	}, nil
 }
@@ -169,7 +186,9 @@ func (cmFake) Answer(project string, option int) error { return nil }
 
 func (cmFake) Interrupt(project string) error { return nil }
 
-func (cmFake) Usage(project string) (control.Usage, error) { return control.Usage{}, nil }
+func (cmFake) Usage(project string) (control.Usage, error) {
+	return control.Usage{}, nil
+}
 
 func (cmFake) Restart(project string, force bool) error { return nil }
 
@@ -191,59 +210,69 @@ func (cmFake) WaitOperator(project, sessionToken, kind, reason, issueURL string)
 	return nil
 }
 
-func (cmFake) Milestone(project, sessionToken string, m control.Milestone) error { return nil }
+func (cmFake) Milestone(project, sessionToken string, m control.Milestone) error {
+	return nil
+}
 
 func TestConfigAndMainExample5(t *testing.T) {
 	f := cmFake{}
-	h := Build(f,
-		func(p string) bool { return p == "demo" },
-		func(p string) (string, bool) { return "s", p == "demo" },
-		"tok-7",
-	)
+	known := func(p string) bool { return p == "demo" }
+	sess := func(p string) (string, bool) { return "s", p == "demo" }
+	h := Build(f, known, sess, "tok-7")
 
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	testhelp.Equal(t, "healthz code", rec.Code, http.StatusOK)
-	testhelp.Equal(t, "healthz body", rec.Body.String(), `{"status":"ok"}`+"\n")
-
-	statusReq := httptest.NewRequest(http.MethodGet, "/projects/demo/status", nil)
-	statusReq.Header.Set("Authorization", "Bearer tok-7")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, statusReq)
-	testhelp.Equal(t, "status code", rec.Code, http.StatusOK)
-	testhelp.Equal(t, "status body", rec.Body.String(),
-		`{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`+"\n")
-
-	mcpReq := httptest.NewRequest(http.MethodPost, "/mcp/demo", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
-	mcpReq.Header.Set("Content-Type", "application/json")
-	mcpReq.Header.Set("Accept", "application/json, text/event-stream")
-	mcpReq.Header.Set("Authorization", "Bearer tok-7")
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, mcpReq)
-	testhelp.Equal(t, "mcp code", rec.Code, http.StatusOK)
-
-	var mcpBody struct {
-		Result struct {
-			Tools []struct {
-				Name string `json:"name"`
-			} `json:"tools"`
-		} `json:"result"`
+	{
+		req := httptest.NewRequest("GET", "/healthz", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "healthz code", rec.Code, 200)
+		testhelp.Equal(t, "healthz body", rec.Body.String(), `{"status":"ok"}`+"\n")
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &mcpBody); err != nil {
-		t.Fatalf("decode mcp body: %v (body %q)", err, rec.Body.String())
+
+	{
+		req := httptest.NewRequest("GET", "/projects/demo/status", nil)
+		req.Header.Set("Authorization", "Bearer tok-7")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "status code", rec.Code, 200)
+		want := `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}` + "\n"
+		testhelp.Equal(t, "status body", rec.Body.String(), want)
 	}
-	testhelp.Equal(t, "mcp tool count", len(mcpBody.Result.Tools), 10)
-	hasStatus := false
-	for _, tool := range mcpBody.Result.Tools {
-		if tool.Name == "status" {
-			hasStatus = true
+
+	{
+		body := `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`
+		req := httptest.NewRequest("POST", "/mcp/demo", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer tok-7")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "mcp code", rec.Code, 200)
+
+		var doc struct {
+			Result struct {
+				Tools []struct {
+					Name string `json:"name"`
+				} `json:"tools"`
+			} `json:"result"`
 		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+			t.Fatalf("mcp body: %v", err)
+		}
+		testhelp.Equal(t, "mcp tools", len(doc.Result.Tools), 11)
+		names := map[string]bool{}
+		for _, tool := range doc.Result.Tools {
+			names[tool.Name] = true
+		}
+		testhelp.Equal(t, "mcp has status", names["status"], true)
+		testhelp.Equal(t, "mcp has events", names["events"], true)
 	}
-	testhelp.Equal(t, "mcp has status", hasStatus, true)
 
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/demo/status", nil))
-	testhelp.Equal(t, "unauthorized code", rec.Code, 401)
+	{
+		req := httptest.NewRequest("GET", "/projects/demo/status", nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "unauthorized code", rec.Code, 401)
+	}
 }
 
 func TestConfigAndMainExample6(t *testing.T) {
@@ -252,31 +281,21 @@ func TestConfigAndMainExample6(t *testing.T) {
 	ones := [16]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
 	ramp := [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 
-	cases := []struct {
-		in   [16]byte
-		want string
-	}{
-		{probe, "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e"},
-		{zero, "00000000-0000-4000-8000-000000000000"},
-		{ones, "ffffffff-ffff-4fff-bfff-ffffffffffff"},
-		{ramp, "00112233-4455-4677-8899-aabbccddeeff"},
-	}
-	for _, c := range cases {
-		got := UUIDv4(c.in)
-		testhelp.Equal(t, "UUIDv4", got, c.want)
-		testhelp.Equal(t, "UUIDv4 length", len(got), 36)
-		testhelp.Equal(t, "UUIDv4 lower case", strings.ToLower(got), got)
-	}
+	testhelp.Equal(t, "probe", UUIDv4(probe), "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e")
+	testhelp.Equal(t, "zero", UUIDv4(zero), "00000000-0000-4000-8000-000000000000")
+	testhelp.Equal(t, "ones", UUIDv4(ones), "ffffffff-ffff-4fff-bfff-ffffffffffff")
+	testhelp.Equal(t, "ramp", UUIDv4(ramp), "00112233-4455-4677-8899-aabbccddeeff")
 }
 
 func TestConfigAndMainExample7(t *testing.T) {
-	shape := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	shape := regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+
 	a := newID()
 	b := newID()
 	for _, id := range []string{a, b} {
-		testhelp.Equal(t, "id matches shape", shape.MatchString(id), true)
-		testhelp.Equal(t, "id length", len(id), 36)
-		testhelp.Equal(t, "id lower case", strings.ToLower(id), id)
+		testhelp.Equal(t, "shape", shape.MatchString(id), true)
+		testhelp.Equal(t, "length", len(id), 36)
+		testhelp.Equal(t, "lower case", id, strings.ToLower(id))
 	}
-	testhelp.Equal(t, "ids differ", a != b, true)
+	testhelp.Equal(t, "distinct", a != b, true)
 }

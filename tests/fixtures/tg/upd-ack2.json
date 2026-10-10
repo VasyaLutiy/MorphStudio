@@ -1,0 +1,60 @@
+{
+ "ok": true,
+ "result": [
+  {
+   "update_id": 565763798,
+   "callback_query": {
+    "id": "cbq-2",
+    "from": {
+     "id": 100000001,
+     "is_bot": false,
+     "first_name": "Test",
+     "last_name": "User",
+     "username": "tester",
+     "language_code": "en"
+    },
+    "message": {
+     "message_id": 2,
+     "from": {
+      "id": 200000002,
+      "is_bot": true,
+      "first_name": "theMorph",
+      "username": "MorphX00_bot"
+     },
+     "chat": {
+      "id": 100000001,
+      "first_name": "Test",
+      "last_name": "User",
+      "username": "tester",
+      "type": "private"
+     },
+     "date": 1791673806,
+     "text": "[smoke] 🔔 Gate waiver\nWhich option do you want: A or B?",
+     "entities": [
+      {
+       "offset": 11,
+       "length": 11,
+       "type": "bold"
+      }
+     ],
+     "reply_markup": {
+      "inline_keyboard": [
+       [
+        {
+         "text": "1 Option A",
+         "callback_data": "ans:smoke:9f4ffa22:1"
+        },
+        {
+         "text": "2 Option B",
+         "callback_data": "ans:smoke:9f4ffa22:2"
+        }
+       ]
+      ]
+     }
+    },
+    "chat_instance": "-6692865131912547546",
+    "data": "ans:smoke:9f4ffa22:2"
+   }
+  }
+ ]
+}

@@ -1,0 +1,29 @@
+{
+ "ok": true,
+ "result": {
+  "message_id": 2,
+  "from": {
+   "id": 200000002,
+   "is_bot": true,
+   "first_name": "theMorph",
+   "username": "MorphX00_bot"
+  },
+  "chat": {
+   "id": 100000001,
+   "first_name": "Test",
+   "last_name": "User",
+   "username": "tester",
+   "type": "private"
+  },
+  "date": 1791673806,
+  "edit_date": 1791673827,
+  "text": "[smoke] 🔔 Gate waiver\nWhich option do you want: A or B?\n✅ answered: 1 Option A",
+  "entities": [
+   {
+    "offset": 11,
+    "length": 11,
+    "type": "bold"
+   }
+  ]
+ }
+}

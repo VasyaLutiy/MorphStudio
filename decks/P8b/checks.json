@@ -238,7 +238,7 @@
             "DoneWait",
             "30 * time.Second",
             "60 * time.Second",
-            "git branch",
+            "--no-merged",
             "AdoptProject",
             "git@github.com:acme/studio.git",
             "https://github.com/acme/studio",

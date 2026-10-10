@@ -65,10 +65,10 @@ Built by `morph plan --checks decks/P8b/checks.json --only <the 9 ids>` (Go prof
 - Judges: `== vet` → `== gofmt` → `== guard <file>` (existing files, `new: false`: every old test name kept; min = the
   examples, max = min + 6; literals in `checks.json`, each found in the card's text) → `== full` → `== frozen` → no
   untracked file.
-- Stubs (`decks/P8b/_stubs/`): `daemon/daemon.go` is the current file plus `Config.DoneWait` and an `AdoptProject` that
-  returns a "stub" error; `cmd/morphd/config.go` the current file plus `Config.DoneWait`; `pm.go`, `pump.go`, `main.go`
-  the current files; each test file one passing test. Every changed or new probe example is red on the stubs; the
-  unchanged examples are green by design, and so is the probe's variant "PhaseDone on a ready machine runs at once".
+- Stubs (`decks/P8b/_stubs/`): every code target is re-cut with intent `generate`, so its stub holds ONLY the names the
+  record gives that file, typed (orchestrator skill §6.1, #22): bodies return a "stub <name>" error or a zero value
+  (`PMServer`/`UserServer` an empty server), never the current file; each test file one passing test. `deck check` then
+  builds the kept `mcpserver/session.go` against the pm.go stub. Every probe example is red on the stubs.
 
 ## 4. Constraints
 
@@ -78,7 +78,10 @@ Built by `morph plan --checks decks/P8b/checks.json --only <the 9 ids>` (Go prof
 
 ## 7. Out of scope
 
-- Any edit of the record or the map (a gap is a stop with a report).
+- Any edit of the record or the map beyond the data fix of 10.10 after run 20261010-190913 (a gap is a stop with a report):
+  PM Tools names the three unexported helpers `jsonResult`, `errorResult`, `okView` that the kept `session.go` calls; the
+  instructions of `pump-judge` and `daemon-core-judge` list their guard literals and the int64 types; the lit "git branch"
+  of `daemon-core-judge` became "--no-merged".
 - `mcpserver/mount.go`, `mcpserver/session.go`, `control`, `bootstrap`, `api`, `supervisor` and every other package.
 - Smoke stop 3 (the PM over the systemd morphd on the VPS) — the PM's, after the merge; the VPS; merge to `main`.
 - The restart gap (a pending done lost when morphd restarts) — accepted by Q25.

@@ -1665,6 +1665,10 @@ System:
             a phase's id; optional (omitempty): force (absent = false), since and limit (absent = 0), a phase's stop_after and
             caps, and each of claude_usd, hours, executor_usd (absent = 0). Tool names are exactly these, tool descriptions one
             sentence each. `func ToolNames(s *mcp.Server) []string` is not needed: tests list tools through a client session.
+            Also declares, unexported, the three helpers mcpserver/session.go calls (keep these names and signatures):
+            `func jsonResult(v any) (*mcp.CallToolResult, any, error)` (the json.Marshal of v as the one TextContent; a Marshal
+            error → errorResult of it), `func errorResult(err error) (*mcp.CallToolResult, any, error)` (IsError true, the one
+            TextContent "<code>: <err.Error()>" as above) and `type okView struct { OK bool `json:"ok"` }` (the {"ok":true} view).
           steps:
             - uses: control
             - produces: mcp.Server

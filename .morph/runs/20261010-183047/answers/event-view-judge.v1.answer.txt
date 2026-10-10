@@ -1,0 +1,148 @@
+```
+package control
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"unicode/utf8"
+
+	"morphstudio/eventlog"
+	"morphstudio/internal/testhelp"
+)
+
+// evEnt builds the eventlog entry of probe line n of the stream fixture:
+// its direction, its raw message bytes and the sequence number n.
+func evEnt(t testing.TB, n int) eventlog.Entry {
+	t.Helper()
+	dir, msg := testhelp.ProbeLine(t, "../tests/fixtures/stream/probe.jsonl", n)
+	return eventlog.Entry{Seq: int64(n), Dir: dir, Msg: msg}
+}
+
+// evJSON marshals v and returns the compact JSON as a string.
+func evJSON(t testing.TB, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// TestEventViewExample1 checks a whole window: the compact view of each of the
+// five entries, in order, and the window's last sequence.
+func TestEventViewExample1(t *testing.T) {
+	entries := []eventlog.Entry{evEnt(t, 3), evEnt(t, 4), evEnt(t, 5), evEnt(t, 6), evEnt(t, 7)}
+	got := Views(Events{Entries: entries, Last: 7}, 200)
+	want := `{"events":[{"seq":3,"dir":"in","type":"user","text":"Reply with exactly one word: PONG"},{"seq":4,"dir":"out","type":"system","subtype":"init"},{"seq":5,"dir":"out","type":"assistant","text":"PONG"},{"seq":6,"dir":"out","type":"rate_limit_event","text":"five_hour 22% · seven_day 60%"},{"seq":7,"dir":"out","type":"result","subtype":"success","text":"PONG","cost_usd":0.0021784900000000004,"terminal_reason":"completed"}],"last":7}`
+	testhelp.Equal(t, "EventView example 1", evJSON(t, got), want)
+}
+
+// TestEventViewExample2 checks the assistant/user shapes: a tool_use part
+// yields the tool names, a tool_result array yields the subtype, and a
+// thinking-only part yields neither text nor tools.
+func TestEventViewExample2(t *testing.T) {
+	testhelp.Equal(t, "EventView example 2 line 13",
+		evJSON(t, View(evEnt(t, 13), 200)),
+		`{"seq":13,"dir":"out","type":"assistant","tools":["Bash"]}`)
+	testhelp.Equal(t, "EventView example 2 line 14",
+		evJSON(t, View(evEnt(t, 14), 200)),
+		`{"seq":14,"dir":"out","type":"user","subtype":"tool_result"}`)
+	testhelp.Equal(t, "EventView example 2 line 12",
+		evJSON(t, View(evEnt(t, 12), 200)),
+		`{"seq":12,"dir":"out","type":"assistant"}`)
+	testhelp.Equal(t, "EventView example 2 line 34",
+		evJSON(t, View(evEnt(t, 34), 200)),
+		`{"seq":34,"dir":"out","type":"assistant","tools":["Bash"]}`)
+}
+
+// TestEventViewExample3 checks Cut through a long assistant text: the whole
+// text at a large max, the first max runes plus one U+2026 below it, and the
+// 200-rune default when max is not positive.
+func TestEventViewExample3(t *testing.T) {
+	text := View(evEnt(t, 17), 400).Text
+	testhelp.Equal(t, "EventView example 3 runes", utf8.RuneCountInString(text), 327)
+	if !strings.HasPrefix(text, "1\n2\n3\n") {
+		t.Errorf("EventView example 3 head:\ngot:  %q\nwant: %q", text, "1\n2\n3\n")
+	}
+	testhelp.Equal(t, "EventView example 3 max 20",
+		View(evEnt(t, 17), 20).Text,
+		"1\n2\n3\n4\n5\n6\n7\n8\n9\n10…")
+	capped := View(evEnt(t, 17), 0).Text
+	testhelp.Equal(t, "EventView example 3 max 0 runes", utf8.RuneCountInString(capped), 201)
+	testhelp.Equal(t, "EventView example 3 max 0 head",
+		string([]rune(capped)[:200]), string([]rune(text)[:200]))
+	testhelp.Equal(t, "EventView example 3 max 0 tail", string([]rune(capped)[200]), "…")
+}
+
+// TestEventViewExample4 checks the control traffic: the AskUserQuestion
+// control_request with its question text and tool, both control_responses,
+// the interrupt request, the aborted result and the interrupted-user notice.
+func TestEventViewExample4(t *testing.T) {
+	testhelp.Equal(t, "EventView example 4 line 27",
+		evJSON(t, View(evEnt(t, 27), 200)),
+		`{"seq":27,"dir":"out","type":"control_request","subtype":"can_use_tool","text":"Which option do you want: A or B?","tools":["AskUserQuestion"]}`)
+	testhelp.Equal(t, "EventView example 4 line 28",
+		evJSON(t, View(evEnt(t, 28), 200)),
+		`{"seq":28,"dir":"in","type":"control_response","subtype":"success"}`)
+	testhelp.Equal(t, "EventView example 4 line 15",
+		evJSON(t, View(evEnt(t, 15), 200)),
+		`{"seq":15,"dir":"in","type":"control_request","subtype":"interrupt"}`)
+	testhelp.Equal(t, "EventView example 4 line 16",
+		evJSON(t, View(evEnt(t, 16), 200)),
+		`{"seq":16,"dir":"out","type":"control_response","subtype":"success"}`)
+	testhelp.Equal(t, "EventView example 4 line 19",
+		evJSON(t, View(evEnt(t, 19), 200)),
+		`{"seq":19,"dir":"out","type":"result","subtype":"error_during_execution","cost_usd":0.0028906000000000005,"terminal_reason":"aborted_streaming"}`)
+	testhelp.Equal(t, "EventView example 4 line 18",
+		evJSON(t, View(evEnt(t, 18), 200)),
+		`{"seq":18,"dir":"out","type":"user","subtype":"text","text":"[Request interrupted by user]"}`)
+}
+
+// TestEventViewExample5 checks the exit direction and the raw fallbacks: an
+// exit payload's code and stderr (cut at max runes), lines that are not
+// objects or carry no type, and an exit payload that does not decode.
+func TestEventViewExample5(t *testing.T) {
+	const exitMsg = `{"code":1,"stderr":"Error: Invalid session ID. Must be a valid UUID.\nsecond line"}`
+	testhelp.Equal(t, "EventView example 5 exit",
+		evJSON(t, View(eventlog.Entry{Seq: 9, Dir: "exit", Msg: []byte(exitMsg)}, 200)),
+		`{"seq":9,"dir":"exit","type":"exit","exit":{"code":1,"stderr":"Error: Invalid session ID. Must be a valid UUID.\nsecond line"}}`)
+
+	var wire map[string]any
+	if err := json.Unmarshal([]byte(evJSON(t, View(eventlog.Entry{Seq: 9, Dir: "exit", Msg: []byte(exitMsg)}, 10))), &wire); err != nil {
+		t.Fatal(err)
+	}
+	exit, ok := wire["exit"].(map[string]any)
+	if !ok {
+		t.Fatalf("EventView example 5: no exit object in %#v", wire)
+	}
+	testhelp.Equal(t, "EventView example 5 exit stderr", exit["stderr"], "Error: Inv…")
+
+	testhelp.Equal(t, "EventView example 5 line 6",
+		evJSON(t, View(eventlog.Entry{Seq: 6, Dir: "out", Msg: []byte(`"not json"`)}, 200)),
+		`{"seq":6,"dir":"out","type":"raw","text":"not json"}`)
+	testhelp.Equal(t, "EventView example 5 line 7",
+		evJSON(t, View(eventlog.Entry{Seq: 7, Dir: "out", Msg: []byte(`[1,2]`)}, 200)),
+		`{"seq":7,"dir":"out","type":"raw","text":"[1,2]"}`)
+	testhelp.Equal(t, "EventView example 5 line 8",
+		evJSON(t, View(eventlog.Entry{Seq: 8, Dir: "out", Msg: []byte(`{"a":1}`)}, 200)),
+		`{"seq":8,"dir":"out","type":"raw","text":"{\"a\":1}"}`)
+	testhelp.Equal(t, "EventView example 5 line 2",
+		evJSON(t, View(eventlog.Entry{Seq: 2, Dir: "exit", Msg: []byte(`"x"`)}, 200)),
+		`{"seq":2,"dir":"exit","type":"exit"}`)
+}
+
+// TestEventViewExample6 checks the empty window (a non-nil, empty events
+// slice either way) and Cut's edges: an empty string, runes rather than
+// bytes, a non-positive max meaning 200, and a string of exactly max runes.
+func TestEventViewExample6(t *testing.T) {
+	got := Views(Events{Entries: []eventlog.Entry{}, Last: 3}, 200)
+	testhelp.Equal(t, "EventView example 6 empty", got, EventsView{Events: []EventView{}, Last: 3})
+	testhelp.Equal(t, "EventView example 6 empty JSON", evJSON(t, got), `{"events":[],"last":3}`)
+	testhelp.Equal(t, "EventView example 6 zero JSON", evJSON(t, Views(Events{}, 50)), `{"events":[],"last":0}`)
+	testhelp.Equal(t, "EventView example 6 cut empty", Cut("", 5), "")
+	testhelp.Equal(t, "EventView example 6 cut runes", Cut("héllo wörld", 5), "héllo…")
+	testhelp.Equal(t, "EventView example 6 cut zero", Cut("abc", 0), "abc")
+	testhelp.Equal(t, "EventView example 6 cut whole", Cut("abcde", 5), "abcde")
+}
+```

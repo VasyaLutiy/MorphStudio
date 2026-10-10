@@ -1,0 +1,176 @@
+```
+package control
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+type acFake struct {
+	calls     [][4]string
+	views     []ProjectView
+	errs      []error
+	callIndex int
+}
+
+func (f *acFake) AdoptProject(ctx context.Context, name, dir, repoURL, language string) (ProjectView, error) {
+	f.calls = append(f.calls, [4]string{name, dir, repoURL, language})
+	var view ProjectView
+	var err error
+	if f.callIndex < len(f.views) {
+		view = f.views[f.callIndex]
+	}
+	if f.callIndex < len(f.errs) {
+		err = f.errs[f.callIndex]
+	}
+	f.callIndex++
+	return view, err
+}
+
+func (f *acFake) Projects() []ProjectView { return nil }
+func (f *acFake) CreateProject(ctx context.Context, name, language, repoURL string) (ProjectView, error) {
+	return ProjectView{}, nil
+}
+func (f *acFake) Status(project string) (Status, error) { return Status{}, nil }
+func (f *acFake) Events(project string, since int64, max int) (Events, error) {
+	return Events{}, nil
+}
+func (f *acFake) Order(project, text string) (session.OrderResult, error) {
+	return session.OrderResult{}, nil
+}
+func (f *acFake) Pending(project string) (*Question, error) { return nil, nil }
+func (f *acFake) Answer(project string, option int) error   { return nil }
+func (f *acFake) Interrupt(project string) error            { return nil }
+func (f *acFake) Usage(project string) (Usage, error)       { return Usage{}, nil }
+func (f *acFake) Restart(project string, force bool) error  { return nil }
+func (f *acFake) PlanLoad(project string, plan queue.Plan) (QueueView, error) {
+	return QueueView{}, nil
+}
+func (f *acFake) Continue(project string) error { return nil }
+func (f *acFake) StopCheck(project string) (*Stop, error) {
+	return nil, nil
+}
+func (f *acFake) PutGithubToken(ctx context.Context, project, token string) (TokenResult, error) {
+	return TokenResult{}, nil
+}
+func (f *acFake) PhaseDone(project, sessionToken, phase, next string) error { return nil }
+func (f *acFake) WaitOperator(project, sessionToken, kind, reason, issueURL string) error {
+	return nil
+}
+func (f *acFake) Milestone(project, sessionToken string, m Milestone) error { return nil }
+
+type acPlain struct{}
+
+func (p *acPlain) Projects() []ProjectView { return nil }
+func (p *acPlain) CreateProject(ctx context.Context, name, language, repoURL string) (ProjectView, error) {
+	return ProjectView{}, nil
+}
+func (p *acPlain) Status(project string) (Status, error) { return Status{}, nil }
+func (p *acPlain) Events(project string, since int64, max int) (Events, error) {
+	return Events{}, nil
+}
+func (p *acPlain) Order(project, text string) (session.OrderResult, error) {
+	return session.OrderResult{}, nil
+}
+func (p *acPlain) Pending(project string) (*Question, error) { return nil, nil }
+func (p *acPlain) Answer(project string, option int) error   { return nil }
+func (p *acPlain) Interrupt(project string) error            { return nil }
+func (p *acPlain) Usage(project string) (Usage, error)       { return Usage{}, nil }
+func (p *acPlain) Restart(project string, force bool) error  { return nil }
+func (p *acPlain) PlanLoad(project string, plan queue.Plan) (QueueView, error) {
+	return QueueView{}, nil
+}
+func (p *acPlain) Continue(project string) error { return nil }
+func (p *acPlain) StopCheck(project string) (*Stop, error) {
+	return nil, nil
+}
+func (p *acPlain) PutGithubToken(ctx context.Context, project, token string) (TokenResult, error) {
+	return TokenResult{}, nil
+}
+func (p *acPlain) PhaseDone(project, sessionToken, phase, next string) error { return nil }
+func (p *acPlain) WaitOperator(project, sessionToken, kind, reason, issueURL string) error {
+	return nil
+}
+func (p *acPlain) Milestone(project, sessionToken string, m Milestone) error { return nil }
+
+func TestAdoptContractExample1(t *testing.T) {
+	c := &acFake{
+		views: []ProjectView{{
+			Name:      "studio",
+			Language:  "go",
+			RepoURL:   "https://github.com/VasyaLutiy/MorphStudio",
+			State:     "idle",
+			CreatedAt: time.Date(2026, 10, 10, 18, 0, 0, 0, time.UTC),
+		}},
+		errs: []error{nil},
+	}
+	want := ProjectView{
+		Name:      "studio",
+		Language:  "go",
+		RepoURL:   "https://github.com/VasyaLutiy/MorphStudio",
+		State:     "idle",
+		CreatedAt: time.Date(2026, 10, 10, 18, 0, 0, 0, time.UTC),
+	}
+
+	got, err := Adopt(context.Background(), c, "studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go")
+
+	testhelp.Equal(t, "view", got, want)
+	testhelp.Equal(t, "err", err, nil)
+	testhelp.Equal(t, "calls", c.calls, [][4]string{
+		{"studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go"},
+	})
+	var _ Adopter = c
+}
+
+func TestAdoptContractExample2(t *testing.T) {
+	p := &acPlain{}
+
+	got, err := Adopt(context.Background(), p, "studio", "/x", "https://github.com/o/r", "go")
+
+	testhelp.Equal(t, "view", got, ProjectView{})
+	if !errors.Is(err, ErrUnsupported) {
+		t.Errorf("errors.Is ErrUnsupported: got %v", err)
+	}
+	testhelp.Equal(t, "err.Error()", err.Error(), "adopt not supported")
+	code, name := Code(ErrUnsupported)
+	testhelp.Equal(t, "Code", []any{code, name}, []any{500, "internal"})
+}
+
+func TestAdoptContractExample3(t *testing.T) {
+	c := &acFake{
+		views: []ProjectView{{}, {}},
+		errs: []error{
+			fmt.Errorf("%w: bootstrap: refused: not a git repository: /home/morph/nowhere", ErrBadInput),
+			ErrExists,
+		},
+	}
+
+	_, err1 := Adopt(context.Background(), c, "gamma", "/home/morph/nowhere", "https://github.com/o/gamma", "go")
+	_, err2 := Adopt(context.Background(), c, "demo", "/home/morph/demo", "https://github.com/o/demo", "python")
+
+	if !errors.Is(err1, ErrBadInput) {
+		t.Errorf("errors.Is ErrBadInput: got %v", err1)
+	}
+	testhelp.Equal(t, "err1.Error()", err1.Error(), "bad input: bootstrap: refused: not a git repository: /home/morph/nowhere")
+	code1, name1 := Code(err1)
+	testhelp.Equal(t, "Code1", []any{code1, name1}, []any{400, "bad_input"})
+
+	if !errors.Is(err2, ErrExists) {
+		t.Errorf("errors.Is ErrExists: got %v", err2)
+	}
+	code2, name2 := Code(err2)
+	testhelp.Equal(t, "Code2", []any{code2, name2}, []any{409, "exists"})
+
+	testhelp.Equal(t, "calls", c.calls, [][4]string{
+		{"gamma", "/home/morph/nowhere", "https://github.com/o/gamma", "go"},
+		{"demo", "/home/morph/demo", "https://github.com/o/demo", "python"},
+	})
+}
+```

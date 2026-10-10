@@ -1,0 +1,406 @@
+{
+  "schema": 1,
+  "scoutId": "20261010-185853-31dd1117",
+  "createdAt": "2026-10-10T18:58:53.773Z",
+  "root": "/home/john/Documents/Work2026/MorphStudio",
+  "ref": "4fe5d2d1992026f0e01b18befeb7308ea30ecd2b",
+  "question": "Phase P8b of MorphStudio (PLAN.md row P8b; contour.yaml groups daemon, pump, mcpserver, cmd — already updated, commit 50a83fd/P8a merged).\nChange: mcpserver PMServer gains the tool `events {since, limit}` (control.Views over Control.Events, limit 0 -> 50); UserServer gains `project_adopt {name, dir, repo_url, language}` via control.Adopt. daemon.Daemon implements control.Adopter (AdoptProject over bootstrap.Adopt) and, after PhaseDone with Config.DoneWait > 0 and a busy machine, holds a pendingDone that the pump runs on the turn's `result` or the process exit, or Tick runs at its deadline. cmd/morphd Config gains DoneWait (MORPHD_DONE_WAIT, default 30 s).\nContract: control/adopt.go, control/events.go (P8a, unchanged), daemon/daemon.go, daemon/pump.go, mcpserver/pm.go, cmd/morphd/config.go, main.go.\nUnchanged: control.Control (17 methods), supervisor, api, bootstrap, mcpserver/mount.go, session.go.\nName every test and caller that relies on the old behaviour: the old tool lists (10 PM tools, 2 user tools), PhaseDone executing the end batch at once, the cmd Config without DoneWait.\n",
+  "questionSha256": "31dd11172678e7e56c3ed66ee75a797bf2a38bf7b41031818bd9d0d8d7c560ce",
+  "protocolSha256": "9732611e1757d7319ab0c9e29a5235622796da57d618e080e6c13864d2a6accc",
+  "processor": "ds",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "seed": {
+    "source": "primer",
+    "path": null,
+    "files": [
+      "api/router.go",
+      "api/handlers.go",
+      "bootstrap/adopt.go",
+      "control/events.go",
+      "control/adopt.go",
+      "supervisor/loop.go"
+    ],
+    "chars": 1038
+  },
+  "budgets": {
+    "calls": 30,
+    "reads": 12,
+    "chars": 120000,
+    "rounds": 40,
+    "deadlineMs": 1800000
+  },
+  "caps": {
+    "readLines": 400,
+    "grepHits": 200,
+    "grepLineChars": 300,
+    "listEntries": 300,
+    "grepSkip": [
+      ".morph",
+      "decks"
+    ]
+  },
+  "status": "no_answer",
+  "answer": null,
+  "stopReason": "no answer: the model did not answer after the budget closed: the read budget is spent (12 of 12 reads)",
+  "spent": {
+    "calls": 17,
+    "reads": 12,
+    "chars": 120086,
+    "rounds": 27
+  },
+  "elapsedMs": 73466,
+  "usage": {
+    "requests": 27,
+    "inputTokens": 475039,
+    "outputTokens": 3077,
+    "cost": 0.01545597
+  },
+  "journal": [
+    {
+      "round": 1,
+      "turn": "malformed",
+      "action": null,
+      "chars": 215,
+      "error": "8 actions in one turn (LIST, LIST, LIST, LIST, LIST, LIST, LIST, LIST): send one per turn",
+      "inputTokens": 1176,
+      "outputTokens": 117,
+      "cost": 0.0002466
+    },
+    {
+      "round": 2,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "mcpserver"
+      },
+      "chars": 120,
+      "error": null,
+      "inputTokens": 1286,
+      "outputTokens": 19,
+      "cost": 0.00006606
+    },
+    {
+      "round": 3,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "mcpserver/pm.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 9491,
+      "error": null,
+      "inputTokens": 1329,
+      "outputTokens": 22,
+      "cost": 0.00007431
+    },
+    {
+      "round": 4,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "control"
+      },
+      "chars": 126,
+      "error": null,
+      "inputTokens": 4365,
+      "outputTokens": 27,
+      "cost": 0.00053271
+    },
+    {
+      "round": 5,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/adopt.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 938,
+      "error": null,
+      "inputTokens": 4406,
+      "outputTokens": 6,
+      "cost": 0.00011154
+    },
+    {
+      "round": 6,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/events.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5777,
+      "error": null,
+      "inputTokens": 4686,
+      "outputTokens": 6,
+      "cost": 0.00015354
+    },
+    {
+      "round": 7,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/control.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 9040,
+      "error": null,
+      "inputTokens": 6750,
+      "outputTokens": 23,
+      "cost": 0.00040422
+    },
+    {
+      "round": 8,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "daemon"
+      },
+      "chars": 87,
+      "error": null,
+      "inputTokens": 9684,
+      "outputTokens": 27,
+      "cost": 0.00057024
+    },
+    {
+      "round": 9,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 12032,
+      "error": null,
+      "inputTokens": 9720,
+      "outputTokens": 8,
+      "cost": 0.00021864
+    },
+    {
+      "round": 10,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": 401,
+        "to": 706
+      },
+      "chars": 10016,
+      "error": null,
+      "inputTokens": 13939,
+      "outputTokens": 12,
+      "cost": 0.00085389
+    },
+    {
+      "round": 11,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5043,
+      "error": null,
+      "inputTokens": 17390,
+      "outputTokens": 25,
+      "cost": 0.00075726
+    },
+    {
+      "round": 12,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "cmd/morphd"
+      },
+      "chars": 69,
+      "error": null,
+      "inputTokens": 19229,
+      "outputTokens": 15,
+      "cost": 0.00061239
+    },
+    {
+      "round": 13,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/config.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5876,
+      "error": null,
+      "inputTokens": 19259,
+      "outputTokens": 8,
+      "cost": 0.00033621
+    },
+    {
+      "round": 14,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/main.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3582,
+      "error": null,
+      "inputTokens": 21404,
+      "outputTokens": 17,
+      "cost": 0.00066336
+    },
+    {
+      "round": 15,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "bootstrap/adopt.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3728,
+      "error": null,
+      "inputTokens": 22756,
+      "outputTokens": 138,
+      "cost": 0.00066228
+    },
+    {
+      "round": 16,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 24059,
+      "outputTokens": 122,
+      "cost": 0.00064077
+    },
+    {
+      "round": 17,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 24142,
+      "outputTokens": 42,
+      "cost": 0.00046698
+    },
+    {
+      "round": 18,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 24230,
+      "outputTokens": 21,
+      "cost": 0.00039846
+    },
+    {
+      "round": 19,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 24304,
+      "outputTokens": 41,
+      "cost": 0.00042156
+    },
+    {
+      "round": 20,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 24392,
+      "outputTokens": 129,
+      "cost": 0.00048756
+    },
+    {
+      "round": 21,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 24466,
+      "outputTokens": 28,
+      "cost": 0.00043806
+    },
+    {
+      "round": 22,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "DoneWait",
+        "path": ""
+      },
+      "chars": 4426,
+      "error": null,
+      "inputTokens": 24540,
+      "outputTokens": 22,
+      "cost": 0.00044556
+    },
+    {
+      "round": 23,
+      "turn": "malformed",
+      "action": null,
+      "chars": 185,
+      "error": "3 actions in one turn (GREP, GREP, GREP): send one per turn",
+      "inputTokens": 25885,
+      "outputTokens": 123,
+      "cost": 0.00070791
+    },
+    {
+      "round": 24,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (READ, READ): send one per turn",
+      "inputTokens": 25983,
+      "outputTokens": 339,
+      "cost": 0.00064485
+    },
+    {
+      "round": 25,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 1270,
+        "to": 1360
+      },
+      "chars": 12757,
+      "error": null,
+      "inputTokens": 26065,
+      "outputTokens": 24,
+      "cost": 0.00046815
+    },
+    {
+      "round": 26,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 1360,
+        "to": 1560
+      },
+      "chars": 35282,
+      "error": null,
+      "inputTokens": 29429,
+      "outputTokens": 45,
+      "cost": 0.00098535
+    },
+    {
+      "round": 27,
+      "turn": "malformed",
+      "action": null,
+      "chars": 0,
+      "error": "no action: one line must start with READ, GREP, LIST or ANSWER",
+      "inputTokens": 40165,
+      "outputTokens": 1671,
+      "cost": 0.00308751
+    }
+  ]
+}

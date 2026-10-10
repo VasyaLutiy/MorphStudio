@@ -1,0 +1,258 @@
+{
+  "schema": 1,
+  "scoutId": "20261010-190028-69392d54",
+  "createdAt": "2026-10-10T19:00:28.798Z",
+  "root": "/home/john/Documents/Work2026/MorphStudio",
+  "ref": "4fe5d2d1992026f0e01b18befeb7308ea30ecd2b",
+  "question": "MorphStudio P8b, main item only: after PhaseDone with Config.DoneWait > 0 and a busy machine, daemon.Daemon holds a pendingDone (contour.yaml group daemon, Daemon Core examples 12-13; group pump, Pump examples 10-11; group cmd, Config And Main 2-4); the pump runs it on the turn's `result` or the process exit, Tick at its deadline; cmd/morphd Config gains DoneWait (MORPHD_DONE_WAIT, default 30).\nUnchanged: control.Control (17 methods), supervisor, api, mcpserver/mount.go; with DoneWait 0 PhaseDone ends the session at once as today.\nOut of scope: mcpserver tools, bootstrap, control.\nName every test and caller that relies on the old behaviour (daemon.Config literal, cmd Config literal, PhaseDone running the end batch at once).\n",
+  "questionSha256": "69392d54c9eed8ff1239cb7b9de88c7a88556609ef98edddfd6af9a8b6ce1e40",
+  "protocolSha256": "9732611e1757d7319ab0c9e29a5235622796da57d618e080e6c13864d2a6accc",
+  "processor": "ds",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "seed": {
+    "source": "file",
+    "path": "/tmp/P8b/seed.json",
+    "files": [
+      "daemon/daemon.go",
+      "daemon/pump.go",
+      "cmd/morphd/config.go",
+      "cmd/morphd/main.go"
+    ],
+    "chars": 236
+  },
+  "budgets": {
+    "calls": 30,
+    "reads": 12,
+    "chars": 120000,
+    "rounds": 40,
+    "deadlineMs": 1800000
+  },
+  "caps": {
+    "readLines": 400,
+    "grepHits": 200,
+    "grepLineChars": 300,
+    "listEntries": 300,
+    "grepSkip": [
+      ".morph",
+      "decks"
+    ]
+  },
+  "status": "no_answer",
+  "answer": null,
+  "stopReason": "no answer: the model did not answer after the budget closed: the read budget is spent (12 of 12 reads)",
+  "spent": {
+    "calls": 12,
+    "reads": 12,
+    "chars": 109540,
+    "rounds": 14
+  },
+  "elapsedMs": 72442,
+  "usage": {
+    "requests": 14,
+    "inputTokens": 263271,
+    "outputTokens": 3671,
+    "cost": 0.012317250000000002
+  },
+  "journal": [
+    {
+      "round": 1,
+      "turn": "malformed",
+      "action": null,
+      "chars": 191,
+      "error": "4 actions in one turn (READ, READ, READ, READ): send one per turn",
+      "inputTokens": 790,
+      "outputTokens": 40,
+      "cost": 0.0001425
+    },
+    {
+      "round": 2,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 12032,
+      "error": null,
+      "inputTokens": 887,
+      "outputTokens": 17,
+      "cost": 0.00007413
+    },
+    {
+      "round": 3,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": 401,
+        "to": 706
+      },
+      "chars": 10016,
+      "error": null,
+      "inputTokens": 5106,
+      "outputTokens": 24,
+      "cost": 0.0007803
+    },
+    {
+      "round": 4,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5043,
+      "error": null,
+      "inputTokens": 8557,
+      "outputTokens": 15,
+      "cost": 0.00073959
+    },
+    {
+      "round": 5,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/config.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5876,
+      "error": null,
+      "inputTokens": 10396,
+      "outputTokens": 36,
+      "cost": 0.00047508
+    },
+    {
+      "round": 6,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/main.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3582,
+      "error": null,
+      "inputTokens": 12541,
+      "outputTokens": 8,
+      "cost": 0.00050355
+    },
+    {
+      "round": 7,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 12957,
+      "error": null,
+      "inputTokens": 13893,
+      "outputTokens": 75,
+      "cost": 0.00047007
+    },
+    {
+      "round": 8,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": 401,
+        "to": 827
+      },
+      "chars": 16313,
+      "error": null,
+      "inputTokens": 18775,
+      "outputTokens": 15,
+      "cost": 0.00095901
+    },
+    {
+      "round": 9,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": 801,
+        "to": 827
+      },
+      "chars": 1009,
+      "error": null,
+      "inputTokens": 24626,
+      "outputTokens": 26,
+      "cost": 0.00122118
+    },
+    {
+      "round": 10,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump_examples_test.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 12577,
+      "error": null,
+      "inputTokens": 25021,
+      "outputTokens": 154,
+      "cost": 0.00052779
+    },
+    {
+      "round": 11,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump_examples_test.go",
+        "from": 401,
+        "to": 929
+      },
+      "chars": 14939,
+      "error": null,
+      "inputTokens": 29592,
+      "outputTokens": 72,
+      "cost": 0.00116424
+    },
+    {
+      "round": 12,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump_examples_test.go",
+        "from": 801,
+        "to": 929
+      },
+      "chars": 4559,
+      "error": null,
+      "inputTokens": 35206,
+      "outputTokens": 64,
+      "cost": 0.00137946
+    },
+    {
+      "round": 13,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/config_examples_test.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 10446,
+      "error": null,
+      "inputTokens": 36950,
+      "outputTokens": 83,
+      "cost": 0.00089214
+    },
+    {
+      "round": 14,
+      "turn": "malformed",
+      "action": null,
+      "chars": 0,
+      "error": "no action: one line must start with READ, GREP, LIST or ANSWER",
+      "inputTokens": 40931,
+      "outputTokens": 3042,
+      "cost": 0.00298821
+    }
+  ]
+}

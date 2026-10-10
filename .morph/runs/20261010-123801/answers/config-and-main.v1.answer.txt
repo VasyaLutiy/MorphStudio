@@ -1,0 +1,318 @@
+FILE: cmd/morphd/config.go
+```
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"morphstudio/queue"
+)
+
+// Config is the daemon's configuration read from the environment and .env.
+type Config struct {
+	Token             string
+	Port              int
+	StateDir          string
+	ProjectsDir       string
+	ClaudeBin         string
+	MorphBin          string
+	TGToken           string
+	TGChatID          string
+	Model             string
+	ExtraArgs         []string
+	Defaults          queue.Caps
+	StretchUSD        float64
+	MaxParallel       int
+	ResumesPerHour    int
+	StallMinutes      int
+	UsageAlertPercent int
+}
+
+// ParseDotenv reads the text of a .env file into a key/value map. Lines are
+// trimmed; empty lines and lines beginning "#" are skipped; a leading
+// "export " is removed; the first "=" splits key and value; the value is
+// trimmed and, when wrapped in matching single or double quotes, unquoted; a
+// line without "=" is skipped.
+func ParseDotenv(text string) map[string]string {
+	out := map[string]string{}
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		eq := strings.Index(line, "=")
+		if eq < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.TrimSpace(line[eq+1:])
+		if len(val) >= 2 {
+			first := val[0]
+			last := val[len(val)-1]
+			if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		out[key] = val
+	}
+	return out
+}
+
+// Load builds a Config from the environment and the parsed .env. Each key is
+// read as getenv(key), then dotenv[key], then a default.
+func Load(getenv func(string) string, dotenv map[string]string) (Config, error) {
+	get := func(key string) string {
+		if v := getenv(key); v != "" {
+			return v
+		}
+		return dotenv[key]
+	}
+	inum := func(key string, def int) (int, error) {
+		v := get(key)
+		if v == "" {
+			return def, nil
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("config: %s: not a number: %s", key, v)
+		}
+		return n, nil
+	}
+	fnum := func(key string, def float64) (float64, error) {
+		v := get(key)
+		if v == "" {
+			return def, nil
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("config: %s: not a number: %s", key, v)
+		}
+		return f, nil
+	}
+
+	token := get("MORPHD_TOKEN")
+	if token == "" {
+		return Config{}, errors.New("config: MORPHD_TOKEN is required")
+	}
+
+	port, err := inum("MORPHD_PORT", 7080)
+	if err != nil {
+		return Config{}, err
+	}
+	home := getenv("HOME")
+	claudeUSD, err := fnum("MORPHD_CLAUDE_USD", 30)
+	if err != nil {
+		return Config{}, err
+	}
+	hours, err := fnum("MORPHD_HOURS", 3)
+	if err != nil {
+		return Config{}, err
+	}
+	executorUSD, err := fnum("MORPHD_EXECUTOR_USD", 5)
+	if err != nil {
+		return Config{}, err
+	}
+	stretch, err := fnum("MORPHD_STRETCH_USD", 30)
+	if err != nil {
+		return Config{}, err
+	}
+	maxParallel, err := inum("MORPHD_MAX_PARALLEL", 1)
+	if err != nil {
+		return Config{}, err
+	}
+	resumes, err := inum("MORPHD_RESUMES_PER_HOUR", 3)
+	if err != nil {
+		return Config{}, err
+	}
+	stall, err := inum("MORPHD_STALL_MINUTES", 30)
+	if err != nil {
+		return Config{}, err
+	}
+	usageAlert, err := inum("MORPHD_USAGE_ALERT", 50)
+	if err != nil {
+		return Config{}, err
+	}
+
+	var extra []string
+	if v := get("MORPHD_CLAUDE_EXTRA_ARGS"); v != "" {
+		extra = strings.Fields(v)
+	}
+
+	str := func(key, def string) string {
+		if v := get(key); v != "" {
+			return v
+		}
+		return def
+	}
+
+	return Config{
+		Token:             token,
+		Port:              port,
+		StateDir:          str("MORPHD_STATE_DIR", home+"/.local/state/morphd"),
+		ProjectsDir:       str("MORPHD_PROJECTS_DIR", home+"/projects"),
+		ClaudeBin:         str("MORPHD_CLAUDE_BIN", "claude"),
+		MorphBin:          str("MORPHD_MORPH_BIN", "morph"),
+		TGToken:           get("TG_BOT_TOKEN"),
+		TGChatID:          get("TG_CHAT_ID"),
+		Model:             get("MORPHD_MODEL"),
+		ExtraArgs:         extra,
+		Defaults:          queue.Caps{ClaudeUSD: claudeUSD, Hours: hours, ExecutorUSD: executorUSD},
+		StretchUSD:        stretch,
+		MaxParallel:       maxParallel,
+		ResumesPerHour:    resumes,
+		StallMinutes:      stall,
+		UsageAlertPercent: usageAlert,
+	}, nil
+}
+
+// UUIDv4 renders b as a lower-case UUID in RFC 4122 version 4 form: the
+// version nibble of byte 6 and the variant bits of byte 8 are forced, every
+// other byte is written as given, the groups joined by "-".
+func UUIDv4(b [16]byte) string {
+	b[6] = 0x40 | (b[6] & 0x0f)
+	b[8] = 0x80 | (b[8] & 0x3f)
+	const hex = "0123456789abcdef"
+	out := make([]byte, 0, 36)
+	for i, c := range b {
+		if i == 4 || i == 6 || i == 8 || i == 10 {
+			out = append(out, '-')
+		}
+		out = append(out, hex[c>>4], hex[c&0x0f])
+	}
+	return string(out)
+}
+```
+
+FILE: cmd/morphd/main.go
+```
+// Command morphd runs the morphstudio daemon: it opens the project registry,
+// builds the phase loop, and serves the guarded HTTP and MCP surfaces.
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"morphstudio/api"
+	"morphstudio/claude"
+	"morphstudio/control"
+	"morphstudio/daemon"
+	"morphstudio/mcpserver"
+	"morphstudio/registry"
+	"morphstudio/runner"
+	"morphstudio/supervisor"
+	"morphstudio/telegram"
+)
+
+// newID returns a fresh version 4 UUID string. The claude CLI refuses any
+// other form of session id, so every id morphd mints - session id, session
+// token and interrupt request id - comes from here.
+func newID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return UUIDv4(b)
+}
+
+// Build wires the HTTP surface: the API router guarded by token, with the
+// MCP mount behind it.
+func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler {
+	return api.NewRouter(api.Handlers{Control: d}, token,
+		mcpserver.Handler(d, known, mcpserver.Tokens{API: token, Session: session}))
+}
+
+func main() {
+	dotenv := map[string]string{}
+	if data, err := os.ReadFile(".env"); err == nil {
+		dotenv = ParseDotenv(string(data))
+	}
+	cfg, err := Load(os.Getenv, dotenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	reg, err := registry.Open(cfg.StateDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	ctx := context.Background()
+	deps := daemon.Deps{
+		Registry: reg,
+		Runner:   runner.OS{},
+		Spawn: func(ctx context.Context, l claude.Launch) (claude.Process, error) {
+			return claude.Start(ctx, l.Bin, claude.Args(l), l.Dir, claude.Env(l))
+		},
+		Post: telegram.Client{
+			Token:  cfg.TGToken,
+			ChatID: cfg.TGChatID,
+			Do:     http.DefaultClient.Do,
+		}.Post,
+		GitHubDo: http.DefaultClient.Do,
+		Now:      time.Now,
+		NewID:    newID,
+		Config: daemon.Config{
+			ClaudeBin:   cfg.ClaudeBin,
+			MorphBin:    cfg.MorphBin,
+			ProjectsDir: cfg.ProjectsDir,
+			MCPBaseURL:  "http://127.0.0.1:" + strconv.Itoa(cfg.Port),
+			Model:       cfg.Model,
+			ExtraArgs:   cfg.ExtraArgs,
+			Defaults:    cfg.Defaults,
+			MaxParallel: cfg.MaxParallel,
+			Loop: supervisor.Config{
+				MaxResumesPerHour: cfg.ResumesPerHour,
+				StallMinutes:      cfg.StallMinutes,
+				StretchUSD:        cfg.StretchUSD,
+				UsageAlertPercent: cfg.UsageAlertPercent,
+			},
+		},
+	}
+
+	d, err := daemon.Open(ctx, deps)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			d.Tick(ctx)
+		}
+	}()
+
+	known := func(p string) bool {
+		_, err := reg.Get(p)
+		return err == nil
+	}
+	session := func(p string) (string, bool) {
+		tok, err := reg.ReadSecret(p, "session-token")
+		if err != nil {
+			return "", false
+		}
+		return tok, true
+	}
+
+	addr := "127.0.0.1:" + strconv.Itoa(cfg.Port)
+	handler := Build(d, known, session, cfg.Token)
+	fmt.Println("morphd listening on " + addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+}
+```

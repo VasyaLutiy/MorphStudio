@@ -1,0 +1,350 @@
+```
+package supervisor
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"testing"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/gitrules"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+)
+
+func plQueue(t *testing.T) queue.Queue {
+	t.Helper()
+	data, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p queue.Plan
+	if err := json.Unmarshal(data, &p); err != nil {
+		t.Fatal(err)
+	}
+	q, err := queue.Load(p, queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+func plIDs(ids ...string) func() string {
+	i := 0
+	return func() string {
+		id := ids[i]
+		i++
+		return id
+	}
+}
+
+func plRunningP17(t *testing.T) *Loop {
+	t.Helper()
+	q := plQueue(t)
+	l := New("demo", q)
+	if _, err := l.Begin(time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	l.StartChecked(gitrules.Start{Mode: "fresh", Local: "aaa111", Remote: "aaa111"}, plIDs("id-1", "id-2"), time.Date(2026, 10, 8, 15, 0, 1, 0, time.UTC))
+	return l
+}
+
+func plRunningP18(t *testing.T) *Loop {
+	t.Helper()
+	q := plQueue(t)
+	q.Index = 1
+	q.State = "running"
+	l := New("demo", q)
+	l.State = "running"
+	l.Phase = "P18"
+	l.SessionID = "id-2"
+	l.PhaseStartedAt = time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC)
+	return l
+}
+
+func plStartingP18(t *testing.T, sessionID string) *Loop {
+	t.Helper()
+	q := plQueue(t)
+	q.Index = 1
+	q.State = "running"
+	l := New("demo", q)
+	l.State = "starting"
+	l.Phase = "P18"
+	l.SessionID = sessionID
+	return l
+}
+
+func TestPhaseLoopExample1(t *testing.T) {
+	q := plQueue(t)
+	l := New("demo", q)
+	l.Restarts = []time.Time{time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC)}
+	l.LastExit = &control.Exit{Code: 7, At: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC), Stderr: "old", Restarts: 1}
+
+	actions, err := l.Begin(time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	testhelp.Equal(t, "actions", actions, []Action{{Kind: "start_check", Phase: "P17"}})
+	testhelp.Equal(t, "State", l.State, "starting")
+	testhelp.Equal(t, "Phase", l.Phase, "P17")
+	testhelp.Equal(t, "Queue.State", l.Queue.State, "running")
+	testhelp.Equal(t, "Restarts", l.Restarts, []time.Time(nil))
+	if l.LastExit != nil {
+		t.Errorf("LastExit: got %#v, want nil", l.LastExit)
+	}
+
+	_, err2 := l.Begin(time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC))
+	if err2 == nil {
+		t.Fatal("second Begin: expected error")
+	}
+	testhelp.Equal(t, "second Begin err", err2.Error(), "queue: cannot start in state \"running\"")
+	testhelp.Equal(t, "State after", l.State, "starting")
+	testhelp.Equal(t, "Phase after", l.Phase, "P17")
+	testhelp.Equal(t, "Queue.State after", l.Queue.State, "running")
+}
+
+func TestPhaseLoopExample2(t *testing.T) {
+	q := plQueue(t)
+	l := New("demo", q)
+	if _, err := l.Begin(time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	restarts := []time.Time{time.Date(2026, 10, 8, 14, 50, 0, 0, time.UTC)}
+	exit := &control.Exit{Code: 1, At: time.Date(2026, 10, 8, 14, 50, 0, 0, time.UTC), Stderr: "boom", Restarts: 1}
+	l.Restarts = restarts
+	l.LastExit = exit
+
+	actions := l.StartChecked(gitrules.Start{Mode: "fresh", Local: "aaa111", Remote: "aaa111"}, plIDs("id-1", "id-2"), time.Date(2026, 10, 8, 15, 0, 1, 0, time.UTC))
+	testhelp.Equal(t, "actions", actions, []Action{
+		{Kind: "spawn", Phase: "P17", SessionID: "id-1", Resume: false, BudgetUSD: 30},
+		{Kind: "first_line", Line: "/morph-orchestrator P17"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "start", Headline: "P17 started", Numbers: "session id-1 · cap $30 · 3 h"}},
+	})
+	testhelp.Equal(t, "State", l.State, "running")
+	testhelp.Equal(t, "SessionID", l.SessionID, "id-1")
+	testhelp.Equal(t, "PhaseStartedAt", l.PhaseStartedAt, time.Date(2026, 10, 8, 15, 0, 1, 0, time.UTC))
+	testhelp.Equal(t, "Restarts", l.Restarts, restarts)
+	if l.LastExit == nil {
+		t.Fatal("LastExit is nil")
+	}
+	testhelp.Equal(t, "LastExit", *l.LastExit, control.Exit{Code: 1, At: time.Date(2026, 10, 8, 14, 50, 0, 0, time.UTC), Stderr: "boom", Restarts: 1})
+}
+
+func TestPhaseLoopExample3(t *testing.T) {
+	now := time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC)
+
+	l := plStartingP18(t, "")
+	actions := l.StartChecked(gitrules.Start{Mode: "resume", Reason: "local ahead of origin/main"}, plIDs("id-7"), now)
+	testhelp.Equal(t, "actions", actions, []Action{
+		{Kind: "spawn", Phase: "P18", SessionID: "id-7", Resume: true, BudgetUSD: 12},
+		{Kind: "post", Milestone: control.Milestone{Kind: "start", Headline: "P18 resumed", Numbers: "session id-7 · local ahead of origin/main"}},
+	})
+	testhelp.Equal(t, "SessionID", l.SessionID, "id-7")
+
+	l2 := plStartingP18(t, "id-3")
+	actions2 := l2.StartChecked(gitrules.Start{Mode: "resume", Reason: "local ahead of origin/main"}, plIDs("id-7"), now)
+	testhelp.Equal(t, "actions with session", actions2, []Action{
+		{Kind: "spawn", Phase: "P18", SessionID: "id-3", Resume: true, BudgetUSD: 12},
+		{Kind: "post", Milestone: control.Milestone{Kind: "start", Headline: "P18 resumed", Numbers: "session id-3 · local ahead of origin/main"}},
+	})
+}
+
+func TestPhaseLoopExample4(t *testing.T) {
+	q := plQueue(t)
+	l := New("demo", q)
+	if _, err := l.Begin(time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 8, 15, 2, 0, 0, time.UTC)
+	actions := l.StartChecked(gitrules.Start{Mode: "diverged", Reason: "local aaa111 and origin/main ccc333 diverged"}, plIDs("id-1"), now)
+	testhelp.Equal(t, "actions", actions, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17 not started: git", Numbers: "local aaa111 and origin/main ccc333 diverged"}},
+	})
+	testhelp.Equal(t, "State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "Stop", *l.Stop, control.Stop{Kind: "git", Phase: "P17", Reason: "local aaa111 and origin/main ccc333 diverged", At: now})
+	testhelp.Equal(t, "Queue.State", l.Queue.State, "stopped")
+}
+
+func TestPhaseLoopExample5(t *testing.T) {
+	l := plRunningP17(t)
+	actions, err := l.PhaseDone("P17", "P18")
+	if err != nil {
+		t.Fatalf("PhaseDone: %v", err)
+	}
+	testhelp.Equal(t, "PhaseDone actions", actions, []Action{{Kind: "end_check", Phase: "P17"}})
+
+	end := l.EndChecked(gitrules.End{OK: true, Local: "ddd", Remote: "ddd", Problems: []string{}}, time.Date(2026, 10, 8, 15, 40, 0, 0, time.UTC))
+	testhelp.Equal(t, "EndChecked actions", end, []Action{
+		{Kind: "kill"},
+		{Kind: "start_check", Phase: "P18"},
+	})
+	testhelp.Equal(t, "State", l.State, "starting")
+	testhelp.Equal(t, "Phase", l.Phase, "P18")
+	testhelp.Equal(t, "SessionID", l.SessionID, "")
+	testhelp.Equal(t, "Queue.Index", l.Queue.Index, 1)
+	testhelp.Equal(t, "Queue.State", l.Queue.State, "running")
+}
+
+func TestPhaseLoopExample6(t *testing.T) {
+	l := plRunningP17(t)
+	_, err := l.PhaseDone("P16", "P17")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, ErrPhaseMismatch) {
+		t.Errorf("errors.Is: got %v, want ErrPhaseMismatch", err)
+	}
+	testhelp.Equal(t, "err", err.Error(), "phase mismatch: phase_done \"P16\" while running \"P17\"")
+
+	l2 := plRunningP17(t)
+	l2.State = "waiting"
+	_, err2 := l2.PhaseDone("P17", "P18")
+	if err2 == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err2, ErrPhaseMismatch) {
+		t.Errorf("errors.Is: got %v, want ErrPhaseMismatch", err2)
+	}
+	testhelp.Equal(t, "err2", err2.Error(), "phase mismatch: phase_done \"P17\" while waiting \"P17\"")
+}
+
+func TestPhaseLoopExample7(t *testing.T) {
+	l := plRunningP17(t)
+	l.SessionUSD = 1.92
+
+	now := time.Date(2026, 10, 8, 16, 0, 0, 0, time.UTC)
+	actions := l.EndChecked(gitrules.End{OK: false, Problems: []string{"not pushed: HEAD bbb222, origin/main aaa111"}}, now)
+	testhelp.Equal(t, "EndChecked actions", actions, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17 not pushed", Numbers: "not pushed: HEAD bbb222, origin/main aaa111"}},
+	})
+	testhelp.Equal(t, "State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "Stop", *l.Stop, control.Stop{Kind: "not_pushed", Phase: "P17", Reason: "not pushed: HEAD bbb222, origin/main aaa111", At: now})
+	testhelp.Equal(t, "StretchUSD", l.StretchUSD, 0.0)
+	testhelp.Equal(t, "Queue.State", l.Queue.State, "stopped")
+
+	cont, err := l.Continue(time.Date(2026, 10, 8, 16, 5, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Continue: %v", err)
+	}
+	testhelp.Equal(t, "Continue actions", cont, []Action{{Kind: "end_check", Phase: "P17"}})
+	testhelp.Equal(t, "State", l.State, "running")
+	if l.Stop != nil {
+		t.Errorf("Stop: got %#v, want nil", l.Stop)
+	}
+	testhelp.Equal(t, "Queue.State", l.Queue.State, "running")
+	testhelp.Equal(t, "Queue.Index", l.Queue.Index, 0)
+
+	end := l.EndChecked(gitrules.End{OK: true, Problems: []string{}}, time.Date(2026, 10, 8, 16, 10, 0, 0, time.UTC))
+	testhelp.Equal(t, "EndChecked actions", end, []Action{
+		{Kind: "kill"},
+		{Kind: "start_check", Phase: "P18"},
+	})
+	testhelp.Equal(t, "StretchUSD", l.StretchUSD, 1.92)
+	testhelp.Equal(t, "SessionUSD", l.SessionUSD, 0.0)
+}
+
+func TestPhaseLoopExample8(t *testing.T) {
+	l := plRunningP18(t)
+	l.SessionUSD = 0.5
+	l.StretchUSD = 1.0
+
+	actions := l.EndChecked(gitrules.End{OK: true, Problems: []string{}}, time.Date(2026, 10, 8, 17, 0, 0, 0, time.UTC))
+	testhelp.Equal(t, "EndChecked actions", actions, []Action{
+		{Kind: "kill"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P18 done: stop after smoke", Numbers: "next P19 · waiting for continue"}},
+	})
+	testhelp.Equal(t, "State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "Stop.Kind", l.Stop.Kind, "smoke")
+	testhelp.Equal(t, "StretchUSD", l.StretchUSD, 1.5)
+
+	cont, err := l.Continue(time.Date(2026, 10, 8, 17, 30, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Continue: %v", err)
+	}
+	testhelp.Equal(t, "Continue actions", cont, []Action{{Kind: "start_check", Phase: "P19"}})
+	testhelp.Equal(t, "State", l.State, "starting")
+	testhelp.Equal(t, "Phase", l.Phase, "P19")
+	testhelp.Equal(t, "Stop", l.Stop, (*control.Stop)(nil))
+
+	l.StartChecked(gitrules.Start{Mode: "fresh", Local: "eee", Remote: "eee"}, plIDs("id-9"), time.Date(2026, 10, 8, 17, 31, 0, 0, time.UTC))
+	testhelp.Equal(t, "State running", l.State, "running")
+
+	end := l.EndChecked(gitrules.End{OK: true, Problems: []string{}}, time.Date(2026, 10, 8, 17, 40, 0, 0, time.UTC))
+	testhelp.Equal(t, "P19 end actions", end, []Action{
+		{Kind: "kill"},
+		{Kind: "post", Milestone: control.Milestone{Kind: "end", Headline: "P19 done: plan complete", Numbers: "stretch $1.5000"}},
+	})
+	testhelp.Equal(t, "State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "Stop.Kind", l.Stop.Kind, "end")
+	testhelp.Equal(t, "Queue.State", l.Queue.State, "done")
+
+	_, err = l.Continue(time.Date(2026, 10, 8, 17, 45, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	testhelp.Equal(t, "err", err.Error(), "queue: nothing to continue (state \"done\")")
+}
+
+func TestPhaseLoopExample9(t *testing.T) {
+	l := plRunningP17(t)
+	now := time.Date(2026, 10, 8, 15, 10, 0, 0, time.UTC)
+	actions := l.WaitOperator("gate", "forecast $1.4 over the cap", "", now)
+	testhelp.Equal(t, "actions", actions, []Action{
+		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: "P17: wait_operator gate", Numbers: "forecast $1.4 over the cap"}},
+	})
+	testhelp.Equal(t, "State", l.State, "waiting")
+	if l.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "Stop", *l.Stop, control.Stop{Kind: "gate", Phase: "P17", Reason: "forecast $1.4 over the cap", At: now})
+
+	l2 := plRunningP17(t)
+	actions2 := l2.WaitOperator("emergency", "card x red after fix", "https://github.com/o/r/issues/12", time.Date(2026, 10, 8, 15, 12, 0, 0, time.UTC))
+	testhelp.Equal(t, "actions2 numbers", actions2[0].Milestone.Numbers, "card x red after fix · https://github.com/o/r/issues/12")
+	if l2.Stop == nil {
+		t.Fatal("Stop is nil")
+	}
+	testhelp.Equal(t, "Stop.IssueURL", l2.Stop.IssueURL, "https://github.com/o/r/issues/12")
+
+	restartActions, err := l.Restart(time.Date(2026, 10, 8, 15, 20, 0, 0, time.UTC))
+	if !errors.Is(err, control.ErrNoSession) {
+		t.Fatalf("Restart err: got %v, want ErrNoSession", err)
+	}
+	testhelp.Equal(t, "Restart actions", restartActions, []Action(nil))
+
+	l3 := plRunningP17(t)
+	kept := &control.Exit{Code: 3, At: time.Date(2026, 10, 8, 15, 5, 0, 0, time.UTC), Stderr: "", Restarts: 1}
+	l3.Restarts = []time.Time{time.Date(2026, 10, 8, 15, 5, 0, 0, time.UTC)}
+	l3.LastExit = kept
+
+	r, err := l3.Restart(time.Date(2026, 10, 8, 15, 25, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	testhelp.Equal(t, "Restart actions", r, []Action{
+		{Kind: "kill"},
+		{Kind: "start_check", Phase: "P17"},
+	})
+	testhelp.Equal(t, "State", l3.State, "starting")
+	testhelp.Equal(t, "SessionID", l3.SessionID, "")
+	testhelp.Equal(t, "Restarts", l3.Restarts, []time.Time(nil))
+	if l3.LastExit == nil {
+		t.Fatal("LastExit is nil")
+	}
+	testhelp.Equal(t, "LastExit", *l3.LastExit, control.Exit{Code: 3, At: time.Date(2026, 10, 8, 15, 5, 0, 0, time.UTC), Stderr: "", Restarts: 1})
+}
+```

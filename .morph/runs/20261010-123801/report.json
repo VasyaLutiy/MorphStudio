@@ -1,0 +1,375 @@
+{
+  "runId": "20261010-123801",
+  "completedAt": 1791638864337,
+  "branch": "morph/20261010-123801",
+  "processor": "ds",
+  "generations": 7,
+  "outcomes": [
+    {
+      "customId": "control-contract",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 2,
+      "winningVariant": "control-contract.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.405s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\ngofmt -l lists: control/control.go\ndiff control/control.go.orig control/control.go\n--- control/control.go.orig\n+++ control/control.go\n@@ -116,13 +116,13 @@\n // rate_limit_event has been seen.\n func (u Usage) MarshalJSON() ([]byte, error) {\n \ttype usageJSON struct {\n-\t\tFiveHour         any       `json:\"five_hour\"`\n-\t\tSevenDay         any       `json:\"seven_day\"`\n-\t\tFiveHourResetsAt any       `json:\"five_hour_resets_at\"`\n-\t\tSevenDayResetsAt any       `json:\"seven_day_resets_at\"`\n-\t\tSessionCostUSD   float64   `json:\"session_cost_usd\"`\n-\t\tStretchCostUSD   float64   `json:\"stretch_cost_usd\"`\n-\t\tLimitsAt         any       `json:\"limits_at\"`\n+\t\tFiveHour         any     `json:\"five_hour\"`\n+\t\tSevenDay         any     `json:\"seven_day\"`\n+\t\tFiveHourResetsAt any     `json:\"five_hour_resets_at\"`\n+\t\tSevenDayResetsAt any     `json:\"seven_day_resets_at\"`\n+\t\tSessionCostUSD   float64 `json:\"session_cost_usd\"`\n+\t\tStretchCostUSD   float64 `json:\"stretch_cost_usd\"`\n+\t\tLimitsAt         any     `json:\"limits_at\"`\n \t}\n \tout := usageJSON{\n \t\tSessionCostUSD: u.SessionCostUSD,\n== guard\n== probe\n== vet or gofmt failed (see above); every step between it and here passed\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "control-contract-judge",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "control-contract-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.412s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.003s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.011s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.006s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.033s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.015s\nok  \tmorphstudio/stream\t0.011s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "phase-loop",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "phase-loop.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.421s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.005s\nok  \tmorphstudio/claude\t0.010s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.006s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.019s\nok  \tmorphstudio/stream\t0.013s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "phase-loop-judge",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "phase-loop-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.415s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.009s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.028s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.711s\nok  \tmorphstudio/session\t0.016s\nok  \tmorphstudio/stream\t0.011s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "runtime-guard",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "runtime-guard.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.407s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\nok  \tmorphstudio/api\t0.010s\nok  \tmorphstudio/bootstrap\t0.012s\nok  \tmorphstudio/claude\t0.029s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.010s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.034s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.010s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.016s\nok  \tmorphstudio/stream\t0.013s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "daemon-core",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 2,
+      "winningVariant": "daemon-core.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.386s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "runtime-guard-judge",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "runtime-guard-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.407s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\nok  \tmorphstudio/api\t0.003s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.011s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.014s\nok  \tmorphstudio/stream\t0.013s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "pump",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 2,
+      "winningVariant": "pump.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.403s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbePumpExample1 (0.01s)\n    pump_probe_test.go:256: example 1 variant the saved loop:\n        got:  []interface {}{true, 0, \"running\"}\n        want: []interface {}{true, 0.0021784900000000004, \"running\"}\nFAIL\tmorphstudio/daemon\t0.407s\nfirst difference at char 22 of 54/34: expected \"[]interface {}{true, 0.0021784900000000004, \\\"running\\\"}\" received \"[]interface {}{true, 0, \\\"running\\\"}\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "config-and-main",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "config-and-main.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.399s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "daemon-core-judge",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 2,
+      "winningVariant": "daemon-core-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard daemon/daemon_examples_test.go\n== own\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.405s\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon.go:520:2: declared and not used: p\n== gofmt\n== guard daemon/daemon_examples_test.go\nguard: daemon/daemon_examples_test.go does not mention the example literal \"restart 1 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory\"\nguard: daemon/daemon_examples_test.go does not mention the example literal \"exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory\"\n",
+        "== vet\n== gofmt\n== guard daemon/daemon_examples_test.go\nguard: daemon/daemon_examples_test.go does not mention the example literal \"restart 1 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory\"\nguard: daemon/daemon_examples_test.go does not mention the example literal \"exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "pump-judge",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 1,
+      "winningVariant": "pump-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard daemon/pump_examples_test.go\n== own\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.393s\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon.go:520:2: declared and not used: p\n== gofmt\n== guard daemon/pump_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon.go:520:2: declared and not used: p\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "config-and-main-judge",
+      "status": "budget-exceeded",
+      "reason": "deadline",
+      "attempts": 2,
+      "winningVariant": "config-and-main-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample9 (0.00s)\n    daemon_examples_test.go:725: beta queue:\n        got:  control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"P17\", Reason:\"\"}\n        want: control.QueueView{State:\"queued\", Approved:\"7b31dfe\", Index:0, Phases:3, Current:\"\", Reason:\"\"}\nFAIL\tmorphstudio/daemon\t0.405s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nfirst difference at char 82 of 95/98: expected \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"\\\", Reason:\\\"\\\"}\" received \"...:\\\"7b31dfe\\\", Index:0, Phases:3, Current:\\\"P17\\\", Reason:\\\"\\\"}\"\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\ndaemon/daemon.go:520:2: declared and not used: p\n== gofmt\ngofmt -l lists: cmd/morphd/config_examples_test.go\ndiff cmd/morphd/config_examples_test.go.orig cmd/morphd/config_examples_test.go\n--- cmd/morphd/config_examples_test.go.orig\n+++ cmd/morphd/config_examples_test.go\n@@ -138,12 +138,12 @@\n \n func TestConfigAndMainExample3(t *testing.T) {\n \tenv := map[string]string{\n-\t\t\"HOME\":                      \"/h\",\n-\t\t\"MORPHD_TOKEN\":              \"env-tok\",\n-\t\t\"MORPHD_PORT\":               \"7181\",\n-\t\t\"MORPHD_CLAUDE_EXTRA_ARGS\":  \"--effort high\",\n-\t\t\"MORPHD_CLAUDE_USD\":         \"12.5\",\n-\t\t\"MORPHD_MAX_PARALLEL\":       \"2\",\n+\t\t\"HOME\":                     \"/h\",\n+\t\t\"MORPHD_TOKEN\":             \"env-tok\",\n+\t\t\"MORPHD_PORT\":              \"7181\",\n+\t\t\"MORPHD_CLAUDE_EXTRA_ARGS\": \"--effort high\",\n+\t\t\"MORPHD_CLAUDE_USD\":        \"12.5\",\n+\t\t\"MORPHD_MAX_PARALLEL\":      \"2\",\n \t}\n \tgetenv := func(key string) string { return env[key] }\n \tdotenv := map[string]string{\n== guard cmd/morphd/config_examples_test.go\nguard: cmd/morphd/config_examples_test.go does not mention the example literal \"401\"\n",
+        "== vet\n== gofmt\ngofmt -l lists: cmd/morphd/config_examples_test.go\ndiff cmd/morphd/config_examples_test.go.orig cmd/morphd/config_examples_test.go\n--- cmd/morphd/config_examples_test.go.orig\n+++ cmd/morphd/config_examples_test.go\n@@ -138,12 +138,12 @@\n \n func TestConfigAndMainExample3(t *testing.T) {\n \tenv := map[string]string{\n-\t\t\"HOME\":                      \"/h\",\n-\t\t\"MORPHD_TOKEN\":              \"env-tok\",\n-\t\t\"MORPHD_PORT\":               \"7181\",\n-\t\t\"MORPHD_CLAUDE_EXTRA_ARGS\":  \"--effort high\",\n-\t\t\"MORPHD_CLAUDE_USD\":         \"12.5\",\n-\t\t\"MORPHD_MAX_PARALLEL\":       \"2\",\n+\t\t\"HOME\":                     \"/h\",\n+\t\t\"MORPHD_TOKEN\":             \"env-tok\",\n+\t\t\"MORPHD_PORT\":              \"7181\",\n+\t\t\"MORPHD_CLAUDE_EXTRA_ARGS\": \"--effort high\",\n+\t\t\"MORPHD_CLAUDE_USD\":        \"12.5\",\n+\t\t\"MORPHD_MAX_PARALLEL\":      \"2\",\n \t}\n \tgetenv := func(key string) string { return env[key] }\n \tdotenv := map[string]string{\n== guard cmd/morphd/config_examples_test.go\nguard: cmd/morphd/config_examples_test.go does not mention the example literal \"401\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 409862,
+    "outputTokens": 396230,
+    "cost": 0.59732868,
+    "requests": 17
+  },
+  "requests": [
+    {
+      "customId": "control-contract.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791635882-xfclgR9vuK3a0RVvEoHb",
+      "inputTokens": 9690,
+      "outputTokens": 16765,
+      "cost": 0.023025,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636021-ilFOQPWqoejQQfOu2jJV",
+      "inputTokens": 10421,
+      "outputTokens": 4005,
+      "cost": 0.0079323,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636021-mtSNX84gpgugF0vRDO0s",
+      "inputTokens": 10270,
+      "outputTokens": 11197,
+      "cost": 0.01596444,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636127-a0kLjXg4CzrsJt53MfiA",
+      "inputTokens": 11273,
+      "outputTokens": 15439,
+      "cost": 0.0219087,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636126-jkrwK9kNAsu826DHs7JN",
+      "inputTokens": 11499,
+      "outputTokens": 8245,
+      "cost": 0.0133437,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636269-KyrBLiJ7Gll8fUpc3SzK",
+      "inputTokens": 31791,
+      "outputTokens": 25906,
+      "cost": 0.0406245,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636269-hdnf32azMnxokZH485Mt",
+      "inputTokens": 16866,
+      "outputTokens": 22670,
+      "cost": 0.0322638,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636526-GPDzQrYDwmJrwnuhoJMM",
+      "inputTokens": 22386,
+      "outputTokens": 12408,
+      "cost": 0.0216054,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636657-CTSPHClajUFdaLkHcora",
+      "inputTokens": 27323,
+      "outputTokens": 13393,
+      "cost": 0.0242685,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636898-FxdNBBC9BWYjN0T1umdQ",
+      "inputTokens": 29531,
+      "outputTokens": 59838,
+      "cost": 0.08038842,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791636898-Lpw9z4mmMxKNt9rrZltO",
+      "inputTokens": 56312,
+      "outputTokens": 55933,
+      "cost": 0.08373672,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791637496-tMkEmr4M1iDgTPzLdlNt",
+      "inputTokens": 11539,
+      "outputTokens": 13784,
+      "cost": 0.0200025,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791637599-BM0MVp7n64ihsAXNVS3x",
+      "inputTokens": 20917,
+      "outputTokens": 5137,
+      "cost": 0.0124395,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791637640-aT2X4OQkmi0zFyS1V6eu",
+      "inputTokens": 50099,
+      "outputTokens": 27609,
+      "cost": 0.0481605,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791637905-Tpb5zHvbOWdg3w1WHT8B",
+      "inputTokens": 36391,
+      "outputTokens": 23299,
+      "cost": 0.0388761,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791638118-t4K5dCAWpYcsby11Hd75",
+      "inputTokens": 35702,
+      "outputTokens": 57756,
+      "cost": 0.0800178,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791638657-8VT7OBh0PNREvcJPmRMJ",
+      "inputTokens": 17852,
+      "outputTokens": 22846,
+      "cost": 0.0327708,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

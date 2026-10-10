@@ -52,6 +52,7 @@
 | GitHub token: HTTP only, stored mode 600, never returned; status reports reachable + push access with a plain reason | P3, P4, P5 | github · Repo Access; registry · Secret Files; api · HTTP Handlers | Repo Access 4–8 (401/403/404 reasons); Secret Files 1, 4 (0600); HTTP Handlers 8 (the token appears nowhere in the body) |
 | session ids the claude CLI accepts (2.1.294: "Invalid session ID. Must be a valid UUID."): RFC 4122 v4, lower-case 8-4-4-4-12 | P7b | cmd · Config And Main | Config And Main 6 (`UUIDv4` of the probe's own bytes → `967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e`, the zero and all-ff bytes), 7 (`newID` matches the v4 regexp, two differ) |
 | an exit before `phase_done` / `wait_operator` is a crash: logged with its stderr, counted whether the restart is fresh or `--resume`, ≤ N per hour, then a `crash` stop with a 🛑 naming the code and the first stderr line; no restart storm (smoke 2 RED: 57 spawns in 2 min) | P7b | supervisor · Phase Loop, Runtime Guard; daemon · Daemon Core; pump · Pump; control · Control Contract | Runtime Guard 1, 2 (4 exits → "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."), 8 (an exit while waiting is nothing), 9 (the first stderr line); Phase Loop 1, 2, 9 (what resets the count); Pump 8 (a real `sh` claude that dies with exit 1: exactly 4 spawns, the `exit` entry with the stderr, the stop), 9 (an exit after wait_operator: no restart); Daemon Core 11 (a Spawn that always fails: 4 attempts, no "started" post, `continue` gives 4 more); Control Contract 10 (`last_exit` JSON) |
+| D4: a start check "resume" (dirty tree, a branch, local ahead of origin/main) on a loop with no session yet spawns a FRESH session (`--session-id <new id>`, the first line), never `--resume` of an id claude has not seen; a non-empty SessionID still resumes | P7c | supervisor · Phase Loop | Phase Loop 3 (P18, SessionID "" → spawn `id-7` Resume false, `/morph-orchestrator P18`, "P18 resumed on a fresh session" / "session id-7 · cap $12 · 3 h · local ahead of origin/main"), 11 (after Restart, "on branch morph/20261008-083312"), 10 (SessionID "id-1" → Resume true, newID not called) |
 | `five_hour` / `seven_day` null until the first `rate_limit_event` (`limits_at` null too) | P7b | control · Control Contract; daemon · Daemon Core | Control Contract 8, 9 (the exact null bodies); Daemon Core 1 (idle project: `LimitsUnknown`, `Usage{}` marshals the five nulls); Pump 1 (22 / 60 once seen) |
 
 Every rule of the brief is an example or a Guardrail: Guardrails "Injected Clock And Ids", "No Network In Tests",
@@ -109,6 +110,7 @@ Route", "The Session Reports Only Itself". Every not-build item is in "Out of sc
 | P6 | mcpserver | PM Tools, Session Tools, MCP Mount | 6 | 4 | P4 | 0.20 | — |
 | P7 | daemon, cmd | Daemon Core, Pump, Config And Main | 6 | 4 | P2–P6 | 0.35 | smoke 2 (RED 08.10: D1 session id, D2 invisible crash / restart storm, D3 limits 0 before any event) |
 | P7b | control, supervisor, daemon, pump, cmd (re-cut of 12 built cards: `morph plan --only`) | Control Contract, Phase Loop, Runtime Guard, Daemon Core, Pump, Config And Main | 12 | 7 | P7 | 0.40 | **smoke 2 re-run (final)** |
+| P7c | supervisor (re-cut of 2 built cards for D4: `morph plan --component supervisor --judge --only phase-loop,phase-loop-judge`) | Phase Loop | 2 | 2 | P7b | 0.05 | **smoke 2 check of D4** (an unpushed commit on main before `POST plan` → one spawn, "resumed on a fresh session", no crash) |
 
 Measured by the dry cut (V2 binary built from origin/main bc311aa, 08.10, on a scratch copy with the P0 placeholders):
 every phase `morph plan` exit 0 and `morph deck check` 0 errors; generations P1 [3,4,1], P2 [3,4,1], P3 [2,4,2],
@@ -127,6 +129,15 @@ out are external and done); the heaviest slice pump-judge 172 869 B (the probe l
 freezes every package but control, supervisor, daemon and cmd/morphd. Why one phase and not P7b/P7c: 12 cards is the
 cap and every generation is a 1–3 card step whose siblings never build each other's package; a split would double the
 orchestrator session for the same 12 cards.
+
+P7c (MorphV2 18dab5b, on main after P7b, 10.10): `morph plan --root . --spec contour.yaml --map morph-map.json --component
+supervisor --judge --only phase-loop,phase-loop-judge` exit 0, `morph deck check` 0 errors / 0 warnings, 2 cards,
+generations [1,1] (phase-loop → phase-loop-judge), slices 27 233 B and 40 332 B. Phase Loop's start-check "resume" branch
+splits on SessionID: non-empty → `--resume <id>` as before (examples 10, Runtime Guard 2, Daemon Core 2 unchanged); empty
+→ a fresh session (`--session-id <new id>`, the first line, the post "<phase> resumed on a fresh session" with the
+check's reason) — example 3 changes (its test changes with it), examples 10 and 11 are new; the other 8 stay as they
+are. `checks.json` freezes every package but supervisor; runtime-guard, daemon-core and pump are not re-cut (their
+examples never hit "resume" with an empty SessionID).
 
 - **Smoke stop 1 (after P3, the PM on the VPS, ≤ $0.05 of claude)**: a throwaway `main` outside the repository
   (`/tmp/smoke-p3/main.go`, not committed) that calls `claude.Start(ctx, "claude", claude.Args(claude.Launch{SessionID:
@@ -154,11 +165,15 @@ orchestrator session for the same 12 cards.
   session exit on its own before `phase_done`: `GET events` ends with an `exit` entry `{"code":<n>,"stderr":"…"}`, TG
   shows `[smoke] 🐕 S1: session exited (code <n>), restarting` with `restart 1 of 3 this hour · <first stderr line>`,
   `status` shows `last_exit`, and never more than 4 session files appear under `<state>/smoke/sessions/` within an hour
-  (the fourth exit posts `🛑 S1: session keeps exiting` and `GET stop` → `{"stop":{"kind":"crash",…}}`). Red → a
-  DECISIONS line and an issue labelled for the Component; the stretch stops for the operator.
-- **Total**: 7 phases + P7b, 54 cards (27 code, 27 judge) of which P7b re-cuts 12 (66 card runs), 210 record examples;
-  executor estimate $1.85 on `ds` (cap $5 per phase, $35 for the stretch); claude for the two smokes and the smoke 2
-  re-run ≤ $1.05.
+  (the fourth exit posts `🛑 S1: session keeps exiting` and `GET stop` → `{"stop":{"kind":"crash",…}}`). Added for the
+  check of D4 after P7c: with a commit on the project's main not yet pushed (local ahead of origin/main) before `POST
+  plan`, TG shows `[smoke] 🚀 S1 resumed on a fresh session` with `· local ahead of origin/main` in the numbers, `GET
+  events` holds the `in` first line and no `exit` entry, exactly one session file appears under `<state>/smoke/sessions/`,
+  and `status` holds no `last_exit`. Red → a DECISIONS line and an issue labelled for the Component; the stretch stops
+  for the operator.
+- **Total**: 7 phases + P7b + P7c, 54 cards (27 code, 27 judge) of which P7b re-cuts 12 and P7c 2 (68 card runs), 212
+  record examples; executor estimate $1.90 on `ds` (cap $5 per phase, $35 for the stretch); claude for the two smokes,
+  the smoke 2 re-run and the D4 check ≤ $1.15.
 
 ### Measures per phase
 
@@ -295,8 +310,8 @@ Dependency: `github.com/modelcontextprotocol/go-sdk` v1.8.0 (go), doc `docs/deps
 
 Committed with this plan (54 entries; P7b re-cuts 12 of them — control-contract, phase-loop, runtime-guard, daemon-core,
 pump, config-and-main and their judges — by `morph plan --only`, the judges' instructions widened for the new examples,
-budgets control-contract 14 000, daemon-core 26 000, pump 12 000, judges 18 000 / 26 000 / 34 000 / 32 000 / 20 000). The
-cards of P1:
+budgets control-contract 14 000, daemon-core 26 000, pump 12 000, judges 18 000 / 26 000 / 34 000 / 32 000 / 20 000;
+P7c re-cuts phase-loop and phase-loop-judge, the judge at 30 000 for 11 examples with a counting `ids`). The cards of P1:
 
 | card | target | slice | depends on | max_tokens |
 |---|---|---|---|---|
@@ -319,7 +334,7 @@ The operator knows the framework is done when smoke stop 2 is green as written a
 `smoke` project through a real claude session to `phase_done` and its stop, serves `status`, `events`, `order`,
 `interrupt`, `usage` over HTTP and the same `status` over the remote MCP from the laptop, posts the start and stop
 lines to Telegram with the `[smoke]` prefix, and `GOFLAGS=-mod=vendor GOPROXY=off go test -count=1 ./...` is green
-with ≈ 210 example tests (one per record example; the count is the sum of the examples of the Functions merged).
+with ≈ 212 example tests (one per record example; the count is the sum of the examples of the Functions merged).
 
 ## Record rules for this project
 

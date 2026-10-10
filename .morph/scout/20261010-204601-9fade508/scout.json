@@ -1,0 +1,463 @@
+{
+  "schema": 1,
+  "scoutId": "20261010-204601-9fade508",
+  "createdAt": "2026-10-10T20:46:01.479Z",
+  "root": "/home/john/Documents/Work2026/MorphStudio",
+  "ref": "ecf962e1f73307272a623ca0972b4a5f94d20636",
+  "question": "MorphStudio P8b, item daemon: daemon/daemon.go (contour.yaml group daemon, Function Daemon Core) and daemon/pump.go (group pump, Function Pump) are rewritten from the record by cards that never see the current files; Daemon gains Config.DoneWait, pendingDone, AdoptProject, finishDone; the pump calls finishDone after a `result` and on the exit of a process with a pending done.\nContract: the record's Daemon Core and Pump behaviours. Test files daemon/daemon_examples_test.go and daemon/pump_examples_test.go are regenerated too.\nOut of scope: mcpserver, control, api, supervisor, bootstrap.\nQuestion: which identifiers (exported or private) declared in daemon/daemon.go or daemon/pump.go are used by any file outside package daemon (cmd/morphd included), with file:line, and which field types (int vs int64, pointer vs value) of eventlog.Entry, control.Events and supervisor types do the daemon tests have to construct?\nName every test and caller that relies on the old behaviour (the end batch run at once after phase_done).\n",
+  "questionSha256": "9fade5084eac2b85f1572980ad72b48fea6031b566b6f50c49179303e7aad76f",
+  "protocolSha256": "f4277a23036671a78527bac6371514271758732ac83cd9c008c784d40448bb78",
+  "processor": "ds",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "seed": {
+    "source": "file",
+    "path": "/tmp/p8b3/seed2.json",
+    "files": [
+      "daemon/daemon.go",
+      "daemon/pump.go",
+      "cmd/morphd/main.go",
+      "eventlog/log.go",
+      "control/events.go"
+    ],
+    "chars": 211
+  },
+  "budgets": {
+    "calls": 30,
+    "reads": 12,
+    "chars": 120000,
+    "rounds": 40,
+    "deadlineMs": 1800000
+  },
+  "caps": {
+    "readLines": 400,
+    "readChars": 12000,
+    "grepHits": 200,
+    "grepLineChars": 300,
+    "listEntries": 300,
+    "grepSkip": [
+      ".morph",
+      "decks"
+    ]
+  },
+  "status": "ok",
+  "answer": {
+    "targets": [
+      "daemon/daemon.go",
+      "daemon/pump.go",
+      "daemon/daemon_examples_test.go",
+      "daemon/pump_examples_test.go"
+    ],
+    "context_slice": [
+      "cmd/morphd/main.go",
+      "control/control.go",
+      "control/events.go",
+      "eventlog/log.go",
+      "supervisor/loop.go"
+    ],
+    "reasoning": "Identifiers declared in daemon/daemon.go and used outside package daemon (only two kinds): the exported surface a caller names directly — cmd/morphd/main.go:15 `import \"morphstudio/daemon\"`, main.go:63 `daemon.Deps{...}` (Registry, Runner, Spawn, Post, GitHubDo, Now, NewID, Config), main.go:77 `daemon.Config{...}` (ClaudeBin, MorphBin, ProjectsDir, MCPBaseURL, Model, ExtraArgs, Defaults, MaxParallel, Loop supervisor.Config), main.go:95 `daemon.Open(ctx, deps)`, main.go:119 `d.Tick(ctx)` — plus `*daemon.Daemon` as a value passed as the control.Control interface at main.go:113 `Build(d, ...)` and main.go:36 `mcpserver.Handler(d, ...)`; every other exported method (Projects, CreateProject, Status, Events, Order, Pending, Answer, Interrupt, Usage, Restart, PlanLoad, Continue, StopCheck, PutGithubToken, PhaseDone, WaitOperator, Milestone, Execute) is reached only through control.Control (api/handlers.go, mcpserver/session.go:65) or, after the change, through control.Adopter's AdoptProject by the type assertion in control.Adopt (control/adopt.go:20) — no file outside the package writes `daemon.X` for them, and no private identifier of daemon.go or pump.go (proj, execute, executeAction, spawnSession, orderLine, writeLine, names, runningCount, queueView, startPump, pump, pumpLine, pumpExit, Wait, stderrTail, truncateRunes, the new pendingDone/finishDone/AdoptProject/proj.done) is visible outside the package; pump.go's Wait and Execute are used only by daemon/pump_examples_test.go (607, 683, 746, 831) and daemon's own code. Field types the daemon tests must build: control.Events (value, control/control.go:149-152) with Entries []eventlog.Entry ([]value, never []*eventlog.Entry) and Last int64; eventlog.Entry (value, eventlog/log.go:18-23) with Seq int64, T float64, Dir string, Msg json.RawMessage (daemon/pump_examples_test.go:318, 351); supervisor.Config (value, supervisor/loop.go:48-53) with MaxResumesPerHour int, StallMinutes int, StretchUSD float64, UsageAlertPercent int, held as daemon.Config.Loop (daemon/daemon_examples_test.go:202, daemon/pump_examples_test.go:231) beside the new Config.DoneWait time.Duration; supervisor.Loop by value in State.Loop (daemon.go:54) with Stop *control.Stop and LastExit *control.Exit (pointers, daemon/pump_examples_test.go:641, 659); supervisor.Action by value in a []supervisor.Action. Old end-batch-at-once behaviour is relied on by daemon/daemon_examples_test.go Examples 5 (419-425: `d.PhaseDone` then `fp.Killed() == true`, second spawn already observed at 428-438) and 6 (460-469: PhaseDone, status waiting, kill/post seen at once), and implicitly by every test whose harness Config carries no DoneWait (daemon_examples_test.go:195-208, pump_examples_test.go:224-233) — i.e. DoneWait 0 = run the batch at once; the new tests that need the deferral (the record's Daemon Core 12-14, DoneWait 30/45 s with a movable clock, and Pump 10-11, `result` after phase_done and exit with a pending done) are the only ones that must not see the old path. Production callers of (*Daemon).PhaseDone that keep their exact answers are mcpserver/session.go:65 and api/handlers.go:244."
+  },
+  "stopReason": "the model answered on its own",
+  "spent": {
+    "calls": 26,
+    "reads": 10,
+    "chars": 114068,
+    "rounds": 27
+  },
+  "elapsedMs": 266716,
+  "usage": {
+    "requests": 27,
+    "inputTokens": 835558,
+    "outputTokens": 24915,
+    "cost": 0.034874699999999995
+  },
+  "journal": [
+    {
+      "round": 1,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "daemon/"
+      },
+      "chars": 135,
+      "error": null,
+      "inputTokens": 7551,
+      "outputTokens": 117,
+      "cost": 0.00120285
+    },
+    {
+      "round": 2,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 12032,
+      "error": null,
+      "inputTokens": 7682,
+      "outputTokens": 86,
+      "cost": 0.00023622
+    },
+    {
+      "round": 3,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": 401,
+        "to": 706
+      },
+      "chars": 10016,
+      "error": null,
+      "inputTokens": 11923,
+      "outputTokens": 22,
+      "cost": 0.00076485
+    },
+    {
+      "round": 4,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5043,
+      "error": null,
+      "inputTokens": 15395,
+      "outputTokens": 129,
+      "cost": 0.00079689
+    },
+    {
+      "round": 5,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "daemon\\.[A-Z]",
+        "path": ""
+      },
+      "chars": 808,
+      "error": null,
+      "inputTokens": 17277,
+      "outputTokens": 300,
+      "cost": 0.00069795
+    },
+    {
+      "round": 6,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/main.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3582,
+      "error": null,
+      "inputTokens": 17604,
+      "outputTokens": 28,
+      "cost": 0.00037644
+    },
+    {
+      "round": 7,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "eventlog/log.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3998,
+      "error": null,
+      "inputTokens": 18977,
+      "outputTokens": 775,
+      "cost": 0.00096147
+    },
+    {
+      "round": 8,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/events.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5777,
+      "error": null,
+      "inputTokens": 20546,
+      "outputTokens": 181,
+      "cost": 0.00063306
+    },
+    {
+      "round": 9,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "Adopter|Adopt\\b|type Events",
+        "path": ""
+      },
+      "chars": 14453,
+      "error": null,
+      "inputTokens": 22653,
+      "outputTokens": 264,
+      "cost": 0.00079155
+    },
+    {
+      "round": 10,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "\\.Wait\\(|\\.Execute\\(|supervisor\\.Config\\{|supervisor\\.Loop\\{",
+        "path": ""
+      },
+      "chars": 3837,
+      "error": null,
+      "inputTokens": 26963,
+      "outputTokens": 645,
+      "cost": 0.00139017
+    },
+    {
+      "round": 11,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "supervisor/loop.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 9945,
+      "error": null,
+      "inputTokens": 28227,
+      "outputTokens": 1299,
+      "cost": 0.00141921
+    },
+    {
+      "round": 12,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/control.go",
+        "from": 120,
+        "to": 200
+      },
+      "chars": 3087,
+      "error": null,
+      "inputTokens": 31755,
+      "outputTokens": 1467,
+      "cost": 0.00184185
+    },
+    {
+      "round": 13,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "Finish|DoneWait|PhaseDone|AdoptProject|Config\\{",
+        "path": "daemon/"
+      },
+      "chars": 993,
+      "error": null,
+      "inputTokens": 32797,
+      "outputTokens": 641,
+      "cost": 0.00101871
+    },
+    {
+      "round": 14,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "run at once|old behaviour|old behavior|immediately after phase_done|DoneWait 0",
+        "path": ""
+      },
+      "chars": 1163,
+      "error": null,
+      "inputTokens": 33211,
+      "outputTokens": 861,
+      "cost": 0.00107457
+    },
+    {
+      "round": 15,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "docs/TASK_P8b_mcpserver-daemon-pump-cmd.md",
+        "from": null,
+        "to": null
+      },
+      "chars": 7509,
+      "error": null,
+      "inputTokens": 33636,
+      "outputTokens": 598,
+      "cost": 0.00098052
+    },
+    {
+      "round": 16,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "^func Test",
+        "path": "daemon/"
+      },
+      "chars": 1581,
+      "error": null,
+      "inputTokens": 36226,
+      "outputTokens": 1371,
+      "cost": 0.0017637
+    },
+    {
+      "round": 17,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": 400,
+        "to": 520
+      },
+      "chars": 4643,
+      "error": null,
+      "inputTokens": 36782,
+      "outputTokens": 234,
+      "cost": 0.0008193
+    },
+    {
+      "round": 18,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "morphstudio/daemon",
+        "path": ""
+      },
+      "chars": 101,
+      "error": null,
+      "inputTokens": 38528,
+      "outputTokens": 307,
+      "cost": 0.00105588
+    },
+    {
+      "round": 19,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "eventlog\\.|control\\.Events|supervisor\\.",
+        "path": "daemon/"
+      },
+      "chars": 2475,
+      "error": null,
+      "inputTokens": 38623,
+      "outputTokens": 2144,
+      "cost": 0.00189585
+    },
+    {
+      "round": 20,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump_examples_test.go",
+        "from": 300,
+        "to": 370
+      },
+      "chars": 2464,
+      "error": null,
+      "inputTokens": 39462,
+      "outputTokens": 120,
+      "cost": 0.0008073
+    },
+    {
+      "round": 21,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "PhaseDone\\(",
+        "path": ""
+      },
+      "chars": 5653,
+      "error": null,
+      "inputTokens": 40348,
+      "outputTokens": 2244,
+      "cost": 0.00207636
+    },
+    {
+      "round": 22,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump_examples_test.go",
+        "from": 560,
+        "to": 700
+      },
+      "chars": 4889,
+      "error": null,
+      "inputTokens": 43125,
+      "outputTokens": 1199,
+      "cost": 0.00179679
+    },
+    {
+      "round": 23,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": 150,
+        "to": 230
+      },
+      "chars": 2337,
+      "error": null,
+      "inputTokens": 45025,
+      "outputTokens": 2350,
+      "cost": 0.00235767
+    },
+    {
+      "round": 24,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": 520,
+        "to": 660
+      },
+      "chars": 5819,
+      "error": null,
+      "inputTokens": 45966,
+      "outputTokens": 1426,
+      "cost": 0.00173706
+    },
+    {
+      "round": 25,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "daemon|DoneWait|Daemon",
+        "path": "cmd/"
+      },
+      "chars": 431,
+      "error": null,
+      "inputTokens": 48111,
+      "outputTokens": 1223,
+      "cost": 0.00179877
+    },
+    {
+      "round": 26,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon_examples_test.go",
+        "from": 370,
+        "to": 400
+      },
+      "chars": 1297,
+      "error": null,
+      "inputTokens": 48318,
+      "outputTokens": 1851,
+      "cost": 0.00193014
+    },
+    {
+      "round": 27,
+      "turn": "answer",
+      "action": null,
+      "chars": 0,
+      "error": null,
+      "inputTokens": 48847,
+      "outputTokens": 3033,
+      "cost": 0.00264957
+    }
+  ]
+}

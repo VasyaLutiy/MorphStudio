@@ -1,0 +1,279 @@
+{
+  "version": 1,
+  "phase": "P8a",
+  "parts": "decks/P8a/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "tools",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "registry",
+    "gitrules",
+    "supervisor",
+    "daemon",
+    "mcpserver",
+    "cmd"
+  ],
+  "cards": [
+    {
+      "id": "project-adopt",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./bootstrap) || exit 1; for i in $I; do case $i in context|errors|fmt|os|path/filepath|regexp|strings|morphstudio/github|morphstudio/runner) ;; *) echo \"imports: package bootstrap imports $i (allowed: context, errors, fmt, os, path/filepath, regexp, strings, morphstudio/github, morphstudio/runner)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' bootstrap/adopt.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' bootstrap/adopt.go 2>&1); [ -z \"$C\" ] || { echo \"clock: bootstrap/adopt.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "project-adopt-judge",
+      "files": [
+        {
+          "file": "bootstrap/adopt_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestProjectAdoptExample1",
+            "TestProjectAdoptExample2",
+            "TestProjectAdoptExample3",
+            "TestProjectAdoptExample4",
+            "TestProjectAdoptExample5",
+            "TestProjectAdoptExample6",
+            "TestProjectAdoptExample7",
+            "contour.yaml",
+            "ErrRefused",
+            "GIT_TERMINAL_PROMPT=0",
+            "git rev-parse --is-inside-work-tree",
+            "git rev-parse --abbrev-ref HEAD",
+            "git remote get-url origin",
+            "git config credential.helper store --file=/st/demo/git-credentials",
+            "store --file=/st/demo/git-credentials",
+            "bootstrap: refused: bad project name ",
+            "bootstrap: refused: unknown language ",
+            "bootstrap: refused: github: not a github repository url: https://gitlab.com/o/r",
+            "bootstrap: refused: dir must be absolute: relative/demo",
+            "bootstrap: refused: not a directory: ",
+            "bootstrap: refused: no contour.yaml in ",
+            "bootstrap: refused: not a git repository: ",
+            "bootstrap: refused: on branch morph/20261010-084526, not main",
+            "bootstrap: step 2 failed (exit 128): fatal: ambiguous argument",
+            "bootstrap: refused: no origin remote",
+            "bootstrap: refused: origin git@github.com:o/other.git is not https://github.com/o/demo",
+            "git@github.com:o/demo.git",
+            "https://github.com/o/demo/",
+            "bootstrap: refused: origin https://example.com/x is not https://github.com/o/demo",
+            "bootstrap: step 1: runner: exec: ",
+            "bootstrap: step 4 failed (exit 1): error: could not lock config file .git/config",
+            "git@github.com:o/a-1-b.git",
+            "/var/morphd/a-1-b/git-credentials"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "adopt-contract",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./control) || exit 1; for i in $I; do case $i in context|encoding/json|errors|fmt|net/http|time|unicode/utf8|morphstudio/queue|morphstudio/github|morphstudio/eventlog|morphstudio/session|morphstudio/stream) ;; *) echo \"imports: package control imports $i (allowed: context, encoding/json, errors, fmt, net/http, time, unicode/utf8, morphstudio/queue, morphstudio/github, morphstudio/eventlog, morphstudio/session, morphstudio/stream)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' control/adopt.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' control/adopt.go 2>&1); [ -z \"$C\" ] || { echo \"clock: control/adopt.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head; do C=$(gofmt -l -r \"$x -> http.NoBody\" control/adopt.go 2>&1); [ -z \"$C\" ] || { echo \"net: control/adopt.go uses $x (no HTTP client and never a listener in package control)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "adopt-contract-judge",
+      "files": [
+        {
+          "file": "control/adopt_examples_test.go",
+          "min": 3,
+          "max": 9,
+          "new": true,
+          "lits": [
+            "TestAdoptContractExample1",
+            "TestAdoptContractExample2",
+            "TestAdoptContractExample3",
+            "Adopter",
+            "ErrUnsupported",
+            "adopt not supported",
+            "https://github.com/VasyaLutiy/MorphStudio",
+            "/home/morph/MorphStudio",
+            "bad input: bootstrap: refused: not a git repository: /home/morph/nowhere",
+            "https://github.com/o/gamma",
+            "/home/morph/demo",
+            "python",
+            "ErrExists",
+            "ErrBadInput",
+            "bad_input",
+            "exists",
+            "internal"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "event-view",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./control) || exit 1; for i in $I; do case $i in context|encoding/json|errors|fmt|net/http|time|unicode/utf8|morphstudio/queue|morphstudio/github|morphstudio/eventlog|morphstudio/session|morphstudio/stream) ;; *) echo \"imports: package control imports $i (allowed: context, encoding/json, errors, fmt, net/http, time, unicode/utf8, morphstudio/queue, morphstudio/github, morphstudio/eventlog, morphstudio/session, morphstudio/stream)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' control/events.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' control/events.go 2>&1); [ -z \"$C\" ] || { echo \"clock: control/events.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head; do C=$(gofmt -l -r \"$x -> http.NoBody\" control/events.go 2>&1); [ -z \"$C\" ] || { echo \"net: control/events.go uses $x (no HTTP client and never a listener in package control)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "event-view-judge",
+      "files": [
+        {
+          "file": "control/events_examples_test.go",
+          "min": 6,
+          "max": 12,
+          "new": true,
+          "lits": [
+            "TestEventViewExample1",
+            "TestEventViewExample2",
+            "TestEventViewExample3",
+            "TestEventViewExample4",
+            "TestEventViewExample5",
+            "TestEventViewExample6",
+            "../tests/fixtures/stream/probe.jsonl",
+            "ProbeLine",
+            "RuneCountInString",
+            "Reply with exactly one word: PONG",
+            "five_hour 22% · seven_day 60%",
+            "0.0021784900000000004",
+            "\"terminal_reason\":\"completed\"",
+            "\"tools\":[\"Bash\"]",
+            "\"subtype\":\"tool_result\"",
+            "Which option do you want: A or B?",
+            "\"tools\":[\"AskUserQuestion\"]",
+            "\"subtype\":\"interrupt\"",
+            "error_during_execution",
+            "0.0028906000000000005",
+            "aborted_streaming",
+            "[Request interrupted by user]",
+            "Error: Invalid session ID. Must be a valid UUID.",
+            "Error: Inv…",
+            "\"type\":\"raw\"",
+            "{\"events\":[],\"last\":3}",
+            "{\"events\":[],\"last\":0}",
+            "héllo…",
+            "327"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "http-handlers",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./api) || exit 1; for i in $I; do case $i in crypto/subtle|encoding/json|errors|io|mime|net/http|strconv|strings|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package api imports $i (allowed: crypto/subtle, encoding/json, errors, io, mime, net/http, strconv, strings, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' api/handlers.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' api/handlers.go 2>&1); [ -z \"$C\" ] || { echo \"clock: api/handlers.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" api/handlers.go 2>&1); [ -z \"$C\" ] || { echo \"net: api/handlers.go uses $x (no HTTP client and never a listener in package api)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "http-handlers-judge",
+      "files": [
+        {
+          "file": "api/handlers_examples_test.go",
+          "min": 9,
+          "max": 15,
+          "new": false,
+          "lits": [
+            "TestHTTPHandlersExample1",
+            "TestHTTPHandlersExample2",
+            "TestHTTPHandlersExample3",
+            "TestHTTPHandlersExample4",
+            "TestHTTPHandlersExample5",
+            "TestHTTPHandlersExample6",
+            "TestHTTPHandlersExample7",
+            "TestHTTPHandlersExample8",
+            "TestHTTPHandlersExample9",
+            "application/json",
+            "SetPathValue",
+            "/projects/demo/status",
+            "unknown_project",
+            "unknown project",
+            "smoke checked green. Resume with P12b",
+            "application/json; charset=utf-8",
+            "text/plain",
+            "application/xml",
+            "unsupported_media_type",
+            "Content-Type must be application/json",
+            "bad_json",
+            "bad json",
+            "option out of range: 3 of 1..2",
+            "bad_option",
+            "since=2&max=5",
+            "since=x",
+            "since must be an integer",
+            "bad_input",
+            "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+            "Which option do you want: A or B?",
+            "../tests/fixtures/plan/queue-3.json",
+            "7b31dfe",
+            "ghp_abc",
+            "401 bad credentials",
+            "/projects/demo/github-token",
+            "/projects/demo/restart",
+            "disk full",
+            "internal",
+            "1.92",
+            "/projects/adopt",
+            "AdoptProject",
+            "/home/morph/MorphStudio",
+            "https://github.com/VasyaLutiy/MorphStudio",
+            "bad input: bootstrap: refused: not a git repository: /home/morph/nowhere",
+            "project exists",
+            "\"created_at\":\"2026-10-10T18:00:00Z\""
+          ]
+        }
+      ]
+    },
+    {
+      "id": "router",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./api) || exit 1; for i in $I; do case $i in crypto/subtle|encoding/json|errors|io|mime|net/http|strconv|strings|morphstudio/control|morphstudio/queue) ;; *) echo \"imports: package api imports $i (allowed: crypto/subtle, encoding/json, errors, io, mime, net/http, strconv, strings, morphstudio/control, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' api/router.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' api/router.go 2>&1); [ -z \"$C\" ] || { echo \"clock: api/router.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" api/router.go 2>&1); [ -z \"$C\" ] || { echo \"net: api/router.go uses $x (no HTTP client and never a listener in package api)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "router-judge",
+      "files": [
+        {
+          "file": "api/router_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": false,
+          "lits": [
+            "TestRouterExample1",
+            "TestRouterExample2",
+            "TestRouterExample3",
+            "TestRouterExample4",
+            "TestRouterExample5",
+            "TestRouterExample6",
+            "TestRouterExample7",
+            "TestRouterExample8",
+            "/healthz",
+            "tok-1",
+            "Bearer wrong",
+            "Basic dG9rLTE=",
+            "Bearer tok-1 ",
+            "bearer tok-1",
+            "unauthorized",
+            "bearer token required",
+            "/projects/nope/status",
+            "/projects/demo/messages",
+            "/projects/demo/pending",
+            "/projects/demo/interrupt",
+            "/projects/demo/usage",
+            "/projects/demo/continue",
+            "/projects/demo/stop",
+            "/projects/demo/github-token",
+            "DELETE",
+            "/nowhere",
+            "mcp /mcp/demo/session",
+            "/mcp/demo",
+            "299",
+            "405",
+            "ServeHTTP",
+            "/projects/adopt",
+            "AdoptProject",
+            "/home/morph/MorphStudio",
+            "https://github.com/VasyaLutiy/MorphStudio",
+            "\"created_at\":\"2026-10-10T18:00:00Z\""
+          ]
+        }
+      ]
+    }
+  ]
+}

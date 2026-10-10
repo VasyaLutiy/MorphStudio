@@ -1001,9 +1001,15 @@ System:
             PhaseStartedAt = now, LastEventAt = now, State "running", actions [{Kind "spawn", Phase, SessionID, Resume false,
             BudgetUSD = the current phase''s Caps.ClaudeUSD}, {Kind "first_line", Line "/morph-orchestrator " + Phase},
             {post start "<phase> started" numbers "session <id> · cap $<ClaudeUSD 'f' -1> · <Hours 'f' -1> h"}] (a Reason
-            "pulled to …" appends " · " + Reason to the numbers); Mode "resume" → SessionID kept when non-empty else newID(),
-            State "running", PhaseStartedAt = now, LastEventAt = now, actions [{spawn Resume true …}, {post start "<phase> resumed"
-            numbers "session <id> · " + Reason}] (no first_line); Mode "diverged" or "error" → State "waiting", Stop =
+            "pulled to …" appends " · " + Reason to the numbers); Mode "resume" with SessionID non-empty (the conversation the
+            guard restarts after an exit) → SessionID kept, newID not called, State "running", PhaseStartedAt = now, LastEventAt = now,
+            actions [{Kind "spawn", Phase, SessionID, Resume true, BudgetUSD = the current phase''s Caps.ClaudeUSD}, {post start
+            "<phase> resumed" numbers "session <id> · " + Reason}] (no first_line); Mode "resume" with SessionID "" (no conversation
+            to resume: the first start of a phase, the start after Restart or after an end_check''s next phase — a --resume of an
+            unknown id is refused by claude) → the fresh transition under another post: SessionID = newID(), State "running",
+            PhaseStartedAt = now, LastEventAt = now, actions [{Kind "spawn", Phase, SessionID, Resume false, BudgetUSD = Caps.ClaudeUSD},
+            {Kind "first_line", Line "/morph-orchestrator " + Phase}, {post start "<phase> resumed on a fresh session" numbers
+            "session <id> · cap $<ClaudeUSD 'f' -1> · <Hours 'f' -1> h · " + Reason}]; Mode "diverged" or "error" → State "waiting", Stop =
             {Kind "git", Phase, Reason, At now}, Queue.Stop(Reason), actions [{post stop "<phase> not started: git" numbers Reason}].
             PhaseDone: State "running" or "paused" and phase == Phase → actions [{Kind "end_check", Phase}] (nothing else
             changes); otherwise (nil, fmt.Errorf("%w: phase_done %q while %s %q", ErrPhaseMismatch, phase, State, Phase)).
@@ -1038,9 +1044,9 @@ System:
             - given: 'the loop after example 1 (State "starting", P17) with l.Restarts set to [2026-10-08T14:50:00Z] and l.LastExit to &control.Exit{Code: 1, At: 2026-10-08T14:50:00Z, Stderr: "boom", Restarts: 1} before the call; StartChecked(gitrules.Start{Mode: "fresh", Local: "aaa111", Remote: "aaa111"}, ids, 15:00:01Z)'
               when: StartChecked
               then: 'exactly [{Kind "spawn", Phase "P17", SessionID "id-1", Resume false, BudgetUSD 30}, {Kind "first_line", Line "/morph-orchestrator P17"}, {Kind "post", Milestone {start, "P17 started", "session id-1 · cap $30 · 3 h"}}]; State "running", SessionID "id-1", PhaseStartedAt 15:00:01Z; Restarts still exactly [14:50:00Z] and LastExit still that Exit (a fresh start keeps the restart count)'
-            - given: 'a loop in State "starting" for P18 with SessionID "" (the loop at the end of example 5, or one built with its Queue at Index 1 and Queue.State "running"); StartChecked(Start{Mode: "resume", Reason: "local ahead of origin/main"}, ids returning "id-7", now)'
+            - given: 'a loop in State "starting" for P18 with SessionID "" (the loop at the end of example 5, or one built with its Queue at Index 1 and Queue.State "running"); StartChecked(Start{Mode: "resume", Reason: "local ahead of origin/main", Local: "bbb222", Remote: "aaa111"}, ids returning "id-7", 2026-10-08T15:45:00Z)'
               when: StartChecked
-              then: 'exactly [{spawn P18 "id-7" Resume true BudgetUSD 12}, {post start "P18 resumed" "session id-7 · local ahead of origin/main"}] — no first_line; with SessionID "id-3" kept from before, the spawn carries "id-3"'
+              then: 'exactly [{Kind "spawn", Phase "P18", SessionID "id-7", Resume false, BudgetUSD 12}, {Kind "first_line", Line "/morph-orchestrator P18"}, {post start "P18 resumed on a fresh session" "session id-7 · cap $12 · 3 h · local ahead of origin/main"}] (no conversation to resume: a fresh session, never Resume true with a new id); State "running", SessionID "id-7", PhaseStartedAt 15:45:00Z, LastEventAt 15:45:00Z'
             - given: 'a loop in State "starting" for P17 (the loop after example 1); StartChecked(Start{Mode: "diverged", Reason: "local aaa111 and origin/main ccc333 diverged"}, ids, 2026-10-08T15:02:00Z)'
               when: StartChecked
               then: '[{post stop "P17 not started: git" "local aaa111 and origin/main ccc333 diverged"}]; State "waiting", Stop {Kind "git", Phase "P17", Reason as given, At 15:02:00Z}, Queue.State "stopped"'
@@ -1059,6 +1065,12 @@ System:
             - given: 'the running loop of example 2; WaitOperator("gate", "forecast $1.4 over the cap", "", 15:10:00Z); then on a fresh running loop WaitOperator("emergency", "card x red after fix", "https://github.com/o/r/issues/12", now); then Restart on the waiting loop; then Restart on a running loop whose Restarts is [15:05:00Z] and LastExit &control.Exit{Code: 3, At: 15:05:00Z, Stderr: "", Restarts: 1}'
               when: 'WaitOperator; Restart'
               then: '[{post stop "P17: wait_operator gate" "forecast $1.4 over the cap"}], State "waiting", Stop {gate, P17, "forecast $1.4 over the cap", IssueURL ""}; then numbers "card x red after fix · https://github.com/o/r/issues/12" and Stop.IssueURL set; Restart → (nil, control.ErrNoSession); on the running loop → [{kill}, {start_check P17}], State "starting", SessionID "", Restarts nil ([]time.Time(nil)), LastExit still that Exit'
+            - given: 'the running loop of example 2 (P17, SessionID "id-1") with l.State set to "starting" directly (as Runtime Guard''s Exited leaves it after an exit); ids := a func counting its calls and returning "id-9"; StartChecked(Start{Mode: "resume", Reason: "dirty tree (1 paths)"}, ids, 2026-10-08T15:21:00Z)'
+              when: StartChecked
+              then: 'exactly [{Kind "spawn", Phase "P17", SessionID "id-1", Resume true, BudgetUSD 30}, {post start "P17 resumed" "session id-1 · dirty tree (1 paths)"}] — no first_line; SessionID still "id-1", ids called 0 times; State "running", PhaseStartedAt 15:21:00Z, LastEventAt 15:21:00Z'
+            - given: 'the running loop of example 2; Restart(2026-10-08T15:30:00Z); then ids := a func counting its calls and returning "id-2"; StartChecked(Start{Mode: "resume", Reason: "on branch morph/20261008-083312", Branch: "morph/20261008-083312"}, ids, 15:30:05Z)'
+              when: 'Restart then StartChecked'
+              then: 'Restart → [{Kind "kill"}, {Kind "start_check", Phase "P17"}], nil, SessionID ""; StartChecked → exactly [{Kind "spawn", Phase "P17", SessionID "id-2", Resume false, BudgetUSD 30}, {Kind "first_line", Line "/morph-orchestrator P17"}, {post start "P17 resumed on a fresh session" "session id-2 · cap $30 · 3 h · on branch morph/20261008-083312"}]; State "running", SessionID "id-2", ids called once, PhaseStartedAt 15:30:05Z'
         - name: Runtime Guard
           description: What the loop does on its own between the session's reports — exits, limits, stalls and caps.
           behavior: >

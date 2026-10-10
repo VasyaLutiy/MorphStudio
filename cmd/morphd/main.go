@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -21,15 +20,23 @@ import (
 	"morphstudio/telegram"
 )
 
-// Build assembles the daemon's HTTP surface: the control API behind a bearer
-// token plus the MCP mount that speaks for the daemon, the projects and their
-// sessions.
+// newID mints a fresh version 4 UUID. The claude CLI refuses any other session
+// id shape, and the daemon cannot run without ids, so a read failure panics.
+func newID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return UUIDv4(b)
+}
+
+// Build assembles the HTTP surface: the bearer-guarded API router plus the
+// three MCP mounts.
 func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler {
-	return api.NewRouter(
-		api.Handlers{Control: d},
-		token,
-		mcpserver.Handler(d, known, mcpserver.Tokens{API: token, Session: session}),
-	)
+	return api.NewRouter(api.Handlers{Control: d}, token, mcpserver.Handler(d, known, mcpserver.Tokens{
+		API:     token,
+		Session: session,
+	}))
 }
 
 func main() {
@@ -50,15 +57,8 @@ func main() {
 		os.Exit(2)
 	}
 
-	newID := func() string {
-		var b [16]byte
-		_, _ = rand.Read(b[:])
-		return hex.EncodeToString(b[:])
-	}
-
-	addr := "127.0.0.1:" + strconv.Itoa(cfg.Port)
-	baseURL := "http://" + addr
-	tg := telegram.Client{Token: cfg.TGToken, ChatID: cfg.TGChatID, Do: http.DefaultClient.Do}
+	ctx := context.Background()
+	baseURL := "http://127.0.0.1:" + strconv.Itoa(cfg.Port)
 
 	deps := daemon.Deps{
 		Registry: reg,
@@ -66,7 +66,11 @@ func main() {
 		Spawn: func(ctx context.Context, l claude.Launch) (claude.Process, error) {
 			return claude.Start(ctx, l.Bin, claude.Args(l), l.Dir, claude.Env(l))
 		},
-		Post:     tg.Post,
+		Post: telegram.Client{
+			Token:  cfg.TGToken,
+			ChatID: cfg.TGChatID,
+			Do:     http.DefaultClient.Do,
+		}.Post,
 		GitHubDo: http.DefaultClient.Do,
 		Now:      time.Now,
 		NewID:    newID,
@@ -88,35 +92,35 @@ func main() {
 		},
 	}
 
-	ctx := context.Background()
-	dm, err := daemon.Open(ctx, deps)
+	d, err := daemon.Open(ctx, deps)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 
-	known := func(p string) bool {
-		_, err := reg.Get(p)
+	known := func(project string) bool {
+		_, err := reg.Get(project)
 		return err == nil
 	}
-	session := func(p string) (string, bool) {
-		tok, err := reg.ReadSecret(p, "session-token")
+	session := func(project string) (string, bool) {
+		tok, err := reg.ReadSecret(project, "session-token")
 		if err != nil {
 			return "", false
 		}
 		return tok, true
 	}
 
-	handler := Build(dm, known, session, cfg.Token)
+	handler := Build(d, known, session, cfg.Token)
 
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 	go func() {
-		t := time.NewTicker(30 * time.Second)
-		defer t.Stop()
-		for range t.C {
-			dm.Tick(ctx)
+		for range ticker.C {
+			d.Tick(ctx)
 		}
 	}()
 
+	addr := "127.0.0.1:" + strconv.Itoa(cfg.Port)
 	fmt.Println("morphd listening on " + addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		fmt.Fprintln(os.Stderr, err)

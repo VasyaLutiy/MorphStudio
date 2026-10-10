@@ -8,7 +8,7 @@ import (
 	"morphstudio/queue"
 )
 
-// Config holds every setting of the morphd daemon.
+// Config holds the resolved daemon configuration.
 type Config struct {
 	Token             string
 	Port              int
@@ -28,27 +28,24 @@ type Config struct {
 	UsageAlertPercent int
 }
 
-// ParseDotenv parses a .env file into a key-to-value map. It trims each line,
-// skips blank lines and lines beginning with "#", removes an "export "
-// prefix, splits on the first "=", trims both sides and strips a pair of
-// matching single or double quotes around the value.
+// ParseDotenv reads a .env document into a key-value map. Lines are trimmed;
+// empty lines and lines beginning with "#" are skipped; an "export " prefix is
+// removed; the first "=" splits key and value; the value is trimmed and, when
+// wrapped in matching single or double quotes, unquoted.
 func ParseDotenv(text string) map[string]string {
 	out := map[string]string{}
-	for _, raw := range strings.Split(text, "\n") {
-		line := strings.TrimSpace(raw)
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		i := strings.Index(line, "=")
-		if i < 0 {
+		line = strings.TrimPrefix(line, "export ")
+		idx := strings.Index(line, "=")
+		if idx < 0 {
 			continue
 		}
-		key := strings.TrimSpace(line[:i])
-		if key == "" {
-			continue
-		}
-		val := strings.TrimSpace(line[i+1:])
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
 		if len(val) >= 2 {
 			first, last := val[0], val[len(val)-1]
 			if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
@@ -60,129 +57,134 @@ func ParseDotenv(text string) map[string]string {
 	return out
 }
 
-// Load reads a Config from getenv with dotenv as fallback and the documented
-// defaults. A numeric setting that does not parse is an error; the message
-// names the key and the offending value, without echoing any secret.
+// Load resolves the configuration. Each key is read from getenv, falling back
+// to dotenv, then to its default.
 func Load(getenv func(string) string, dotenv map[string]string) (Config, error) {
-	lookup := func(key string) string {
+	get := func(key string) string {
 		if v := getenv(key); v != "" {
 			return v
 		}
-		if v := dotenv[key]; v != "" {
-			return v
-		}
-		return ""
+		return dotenv[key]
 	}
+	home := getenv("HOME")
 
-	intVal := func(key string, def int) (int, error) {
-		raw := lookup(key)
-		if raw == "" {
-			return def, nil
-		}
-		n, err := strconv.Atoi(raw)
-		if err != nil {
-			return 0, fmt.Errorf("config: %s: not a number: %s", key, raw)
-		}
-		return n, nil
-	}
-
-	floatVal := func(key string, def float64) (float64, error) {
-		raw := lookup(key)
-		if raw == "" {
-			return def, nil
-		}
-		n, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			return 0, fmt.Errorf("config: %s: not a number: %s", key, raw)
-		}
-		return n, nil
-	}
-
-	token := lookup("MORPHD_TOKEN")
+	token := get("MORPHD_TOKEN")
 	if token == "" {
 		return Config{}, fmt.Errorf("config: MORPHD_TOKEN is required")
 	}
 
-	port, err := intVal("MORPHD_PORT", 7080)
+	port, err := getInt(get, "MORPHD_PORT", 7080)
 	if err != nil {
 		return Config{}, err
 	}
-	claudeUSD, err := floatVal("MORPHD_CLAUDE_USD", 30)
+	claudeUSD, err := getFloat(get, "MORPHD_CLAUDE_USD", 30)
 	if err != nil {
 		return Config{}, err
 	}
-	hours, err := floatVal("MORPHD_HOURS", 3)
+	hours, err := getFloat(get, "MORPHD_HOURS", 3)
 	if err != nil {
 		return Config{}, err
 	}
-	executorUSD, err := floatVal("MORPHD_EXECUTOR_USD", 5)
+	executorUSD, err := getFloat(get, "MORPHD_EXECUTOR_USD", 5)
 	if err != nil {
 		return Config{}, err
 	}
-	stretchUSD, err := floatVal("MORPHD_STRETCH_USD", 30)
+	stretch, err := getFloat(get, "MORPHD_STRETCH_USD", 30)
 	if err != nil {
 		return Config{}, err
 	}
-	maxParallel, err := intVal("MORPHD_MAX_PARALLEL", 1)
+	maxParallel, err := getInt(get, "MORPHD_MAX_PARALLEL", 1)
 	if err != nil {
 		return Config{}, err
 	}
-	resumesPerHour, err := intVal("MORPHD_RESUMES_PER_HOUR", 3)
+	resumesPerHour, err := getInt(get, "MORPHD_RESUMES_PER_HOUR", 3)
 	if err != nil {
 		return Config{}, err
 	}
-	stallMinutes, err := intVal("MORPHD_STALL_MINUTES", 30)
+	stallMinutes, err := getInt(get, "MORPHD_STALL_MINUTES", 30)
 	if err != nil {
 		return Config{}, err
 	}
-	usageAlert, err := intVal("MORPHD_USAGE_ALERT", 50)
+	usageAlert, err := getInt(get, "MORPHD_USAGE_ALERT", 50)
 	if err != nil {
 		return Config{}, err
-	}
-
-	home := getenv("HOME")
-
-	stateDir := lookup("MORPHD_STATE_DIR")
-	if stateDir == "" {
-		stateDir = home + "/.local/state/morphd"
-	}
-	projectsDir := lookup("MORPHD_PROJECTS_DIR")
-	if projectsDir == "" {
-		projectsDir = home + "/projects"
-	}
-	claudeBin := lookup("MORPHD_CLAUDE_BIN")
-	if claudeBin == "" {
-		claudeBin = "claude"
-	}
-	morphBin := lookup("MORPHD_MORPH_BIN")
-	if morphBin == "" {
-		morphBin = "morph"
 	}
 
 	var extraArgs []string
-	if raw := lookup("MORPHD_CLAUDE_EXTRA_ARGS"); raw != "" {
+	if raw := get("MORPHD_CLAUDE_EXTRA_ARGS"); raw != "" {
 		extraArgs = strings.Fields(raw)
-		if len(extraArgs) == 0 {
-			extraArgs = nil
-		}
 	}
 
-	return Config{
+	cfg := Config{
 		Token:             token,
 		Port:              port,
-		StateDir:          stateDir,
-		ProjectsDir:       projectsDir,
-		ClaudeBin:         claudeBin,
-		MorphBin:          morphBin,
-		TGToken:           lookup("TG_BOT_TOKEN"),
-		TGChatID:          lookup("TG_CHAT_ID"),
-		Model:             lookup("MORPHD_MODEL"),
+		StateDir:          getStr(get, "MORPHD_STATE_DIR", home+"/.local/state/morphd"),
+		ProjectsDir:       getStr(get, "MORPHD_PROJECTS_DIR", home+"/projects"),
+		ClaudeBin:         getStr(get, "MORPHD_CLAUDE_BIN", "claude"),
+		MorphBin:          getStr(get, "MORPHD_MORPH_BIN", "morph"),
+		TGToken:           getStr(get, "TG_BOT_TOKEN", ""),
+		TGChatID:          getStr(get, "TG_CHAT_ID", ""),
+		Model:             getStr(get, "MORPHD_MODEL", ""),
 		ExtraArgs:         extraArgs,
-		Defaults:          queue.Caps{ClaudeUSD: claudeUSD, Hours: hours, ExecutorUSD: executorUSD},
-		StretchUSD:        stretchUSD,
+		StretchUSD:        stretch,
 		MaxParallel:       maxParallel,
 		ResumesPerHour:    resumesPerHour,
 		StallMinutes:      stallMinutes,
 		UsageAlertPercent: usageAlert,
-	}, nil
+		Defaults: queue.Caps{
+			ClaudeUSD:   claudeUSD,
+			Hours:       hours,
+			ExecutorUSD: executorUSD,
+		},
+	}
+	return cfg, nil
+}
+
+func getStr(get func(string) string, key, def string) string {
+	if v := get(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func getInt(get func(string) string, key string, def int) (int, error) {
+	v := get(key)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("config: %s: not a number: %s", key, v)
+	}
+	return n, nil
+}
+
+func getFloat(get func(string) string, key string, def float64) (float64, error) {
+	v := get(key)
+	if v == "" {
+		return def, nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, fmt.Errorf("config: %s: not a number: %s", key, v)
+	}
+	return f, nil
+}
+
+// UUIDv4 renders a version 4 UUID from the given 16 bytes: the version nibble
+// is forced in byte 6, the variant bits in byte 8, everything else is
+// preserved. The result is lower-case hex in the groups 8-4-4-4-12.
+func UUIDv4(b [16]byte) string {
+	b[6] = 0x40 | (b[6] & 0x0f)
+	b[8] = 0x80 | (b[8] & 0x3f)
+
+	const hex = "0123456789abcdef"
+	out := make([]byte, 0, 36)
+	for i := 0; i < 16; i++ {
+		if i == 4 || i == 6 || i == 8 || i == 10 {
+			out = append(out, '-')
+		}
+		out = append(out, hex[b[i]>>4], hex[b[i]&0x0f])
+	}
+	return string(out)
 }

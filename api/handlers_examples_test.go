@@ -20,19 +20,23 @@ import (
 	"morphstudio/session"
 )
 
-// hhFake is the test's Control: configurable results plus a recorded call list.
+// hhFake is the test file's Control: configurable results plus a recorded call
+// list. It implements exactly the 17 methods of control.Control.
 type hhFake struct {
+	calls []string
+
 	projects   []control.ProjectView
 	createView control.ProjectView
 	createErr  error
 
-	statuses  map[string]control.Status
+	status    control.Status
 	statusErr error
+	statusFn  func(project string) (control.Status, error)
 
 	events    control.Events
 	eventsErr error
 
-	orderRes session.OrderResult
+	order    session.OrderResult
 	orderErr error
 
 	pending    *control.Question
@@ -55,14 +59,12 @@ type hhFake struct {
 	stop    *control.Stop
 	stopErr error
 
-	tokenRes control.TokenResult
-	tokenErr error
+	tokenResult control.TokenResult
+	tokenErr    error
 
 	phaseDoneErr error
 	waitErr      error
 	milestoneErr error
-
-	calls []string
 }
 
 func (f *hhFake) Projects() []control.ProjectView {
@@ -77,13 +79,10 @@ func (f *hhFake) CreateProject(ctx context.Context, name, language, repoURL stri
 
 func (f *hhFake) Status(project string) (control.Status, error) {
 	f.calls = append(f.calls, fmt.Sprintf("Status(%q)", project))
-	if f.statusErr != nil {
-		return control.Status{}, f.statusErr
+	if f.statusFn != nil {
+		return f.statusFn(project)
 	}
-	if s, ok := f.statuses[project]; ok {
-		return s, nil
-	}
-	return control.Status{}, control.ErrUnknownProject
+	return f.status, f.statusErr
 }
 
 func (f *hhFake) Events(project string, since int64, max int) (control.Events, error) {
@@ -93,7 +92,7 @@ func (f *hhFake) Events(project string, since int64, max int) (control.Events, e
 
 func (f *hhFake) Order(project, text string) (session.OrderResult, error) {
 	f.calls = append(f.calls, fmt.Sprintf("Order(%q, %q)", project, text))
-	return f.orderRes, f.orderErr
+	return f.order, f.orderErr
 }
 
 func (f *hhFake) Pending(project string) (*control.Question, error) {
@@ -139,7 +138,7 @@ func (f *hhFake) StopCheck(project string) (*control.Stop, error) {
 
 func (f *hhFake) PutGithubToken(ctx context.Context, project, token string) (control.TokenResult, error) {
 	f.calls = append(f.calls, fmt.Sprintf("PutGithubToken(%q, %q)", project, token))
-	return f.tokenRes, f.tokenErr
+	return f.tokenResult, f.tokenErr
 }
 
 func (f *hhFake) PhaseDone(project, sessionToken, phase, next string) error {
@@ -157,9 +156,40 @@ func (f *hhFake) Milestone(project, sessionToken string, m control.Milestone) er
 	return f.milestoneErr
 }
 
+// hhWrapErr carries a message and unwraps to a sentinel, so the error keeps
+// its control.Code mapping while its text is the example's.
+type hhWrapErr struct {
+	msg string
+	err error
+}
+
+func (e hhWrapErr) Error() string { return e.msg }
+
+func (e hhWrapErr) Unwrap() error { return e.err }
+
+// hhAdopter adds the optional Adopter surface to the fake, recording the four
+// string arguments of every AdoptProject call.
+type hhAdopter struct {
+	*hhFake
+
+	adoptView control.ProjectView
+	adoptErr  error
+	adoptArgs []string
+}
+
+func (a *hhAdopter) AdoptProject(ctx context.Context, name, dir, repoURL, language string) (control.ProjectView, error) {
+	a.adoptArgs = append(a.adoptArgs, name, dir, repoURL, language)
+	return a.adoptView, a.adoptErr
+}
+
+// HTTP Handlers example 1: Status answers the project's status, and the
+// unknown project with the stable 404 body.
 func TestHTTPHandlersExample1(t *testing.T) {
-	fake := &hhFake{statuses: map[string]control.Status{
-		"demo": {
+	fake := &hhFake{statusFn: func(project string) (control.Status, error) {
+		if project != "demo" {
+			return control.Status{}, control.ErrUnknownProject
+		}
+		return control.Status{
 			State:     "busy",
 			Phase:     "P18",
 			Minutes:   37,
@@ -167,14 +197,20 @@ func TestHTTPHandlersExample1(t *testing.T) {
 			FiveHour:  22,
 			SevenDay:  60,
 			SessionID: "s-1",
-			Queue:     control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"},
+			Queue: control.QueueView{
+				State:    "running",
+				Approved: "7b31dfe",
+				Index:    1,
+				Phases:   3,
+				Current:  "P18",
+			},
 			Repo: github.Access{
 				Checked:   true,
 				Reachable: true,
 				Push:      true,
 				CheckedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
 			},
-		},
+		}, nil
 	}}
 	h := Handlers{Control: fake}
 
@@ -182,102 +218,109 @@ func TestHTTPHandlersExample1(t *testing.T) {
 	req.SetPathValue("project", "demo")
 	rec := httptest.NewRecorder()
 	h.Status(rec, req)
-	testhelp.Equal(t, "status code", rec.Code, 200)
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
 	testhelp.Equal(t, "content type", rec.Header().Get("Content-Type"), "application/json")
-	testhelp.Equal(t, "body", rec.Body.String(), `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`+"\n")
+	testhelp.Equal(t, "body", rec.Body.String(),
+		`{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`+"\n")
 
-	req = httptest.NewRequest(http.MethodGet, "/projects/nope/status", nil)
-	req.SetPathValue("project", "nope")
-	rec = httptest.NewRecorder()
-	h.Status(rec, req)
-	testhelp.Equal(t, "unknown status code", rec.Code, 404)
-	testhelp.Equal(t, "unknown body", rec.Body.String(), `{"error":{"code":"unknown_project","message":"unknown project"}}`+"\n")
+	req2 := httptest.NewRequest(http.MethodGet, "/projects/nope/status", nil)
+	req2.SetPathValue("project", "nope")
+	rec2 := httptest.NewRecorder()
+	h.Status(rec2, req2)
+	testhelp.Equal(t, "status 404", rec2.Code, http.StatusNotFound)
+	testhelp.Equal(t, "body 404", rec2.Body.String(),
+		`{"error":{"code":"unknown_project","message":"unknown project"}}`+"\n")
 }
 
+// HTTP Handlers example 2: Messages routes the text through Order and answers
+// the result.
 func TestHTTPHandlersExample2(t *testing.T) {
-	fake := &hhFake{orderRes: session.OrderResult{Queued: 1}}
+	fake := &hhFake{order: session.OrderResult{Queued: 1}}
 	h := Handlers{Control: fake}
 
-	req := httptest.NewRequest(http.MethodPost, "/projects/demo/messages", strings.NewReader(`{"text":"smoke checked green. Resume with P12b"}`))
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req := httptest.NewRequest(http.MethodPost, "/projects/demo/messages",
+		strings.NewReader(`{"text":"smoke checked green. Resume with P12b"}`))
 	req.SetPathValue("project", "demo")
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	rec := httptest.NewRecorder()
 	h.Messages(rec, req)
-	testhelp.Equal(t, "queued status", rec.Code, 200)
-	testhelp.Equal(t, "queued body", rec.Body.String(), `{"queued":1}`+"\n")
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"queued":1}`+"\n")
 	testhelp.Equal(t, "calls", fake.calls, []string{`Order("demo", "smoke checked green. Resume with P12b")`})
 
-	fake.orderRes = session.OrderResult{Sent: true}
-	req = httptest.NewRequest(http.MethodPost, "/projects/demo/messages", strings.NewReader(`{"text":"x"}`))
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Messages(rec, req)
-	testhelp.Equal(t, "sent status", rec.Code, 200)
-	testhelp.Equal(t, "sent body", rec.Body.String(), `{"sent":true}`+"\n")
+	fake.order = session.OrderResult{Sent: true}
+	req2 := httptest.NewRequest(http.MethodPost, "/projects/demo/messages", strings.NewReader(`{"text":"x"}`))
+	req2.SetPathValue("project", "demo")
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	h.Messages(rec2, req2)
+	testhelp.Equal(t, "sent status", rec2.Code, http.StatusOK)
+	testhelp.Equal(t, "sent body", rec2.Body.String(), `{"sent":true}`+"\n")
 }
 
+// HTTP Handlers example 3: a body that is not application/json is refused
+// before the Control is reached.
 func TestHTTPHandlersExample3(t *testing.T) {
 	fake := &hhFake{}
 	h := Handlers{Control: fake}
 
-	cases := []struct {
-		name        string
-		contentType string
-	}{
-		{"text plain", "text/plain"},
-		{"missing", ""},
-		{"xml", "application/xml"},
-	}
-	for _, tc := range cases {
+	cts := []string{"text/plain", "", "application/xml"}
+	for i, ct := range cts {
 		req := httptest.NewRequest(http.MethodPost, "/projects/demo/messages", strings.NewReader(`{"text":"x"}`))
-		if tc.contentType != "" {
-			req.Header.Set("Content-Type", tc.contentType)
-		}
 		req.SetPathValue("project", "demo")
+		if ct != "" {
+			req.Header.Set("Content-Type", ct)
+		}
 		rec := httptest.NewRecorder()
 		h.Messages(rec, req)
-		testhelp.Equal(t, tc.name+" status", rec.Code, 415)
-		testhelp.Equal(t, tc.name+" body", rec.Body.String(), `{"error":{"code":"unsupported_media_type","message":"Content-Type must be application/json"}}`+"\n")
+		testhelp.Equal(t, fmt.Sprintf("status %d", i), rec.Code, http.StatusUnsupportedMediaType)
+		testhelp.Equal(t, fmt.Sprintf("body %d", i), rec.Body.String(),
+			`{"error":{"code":"unsupported_media_type","message":"Content-Type must be application/json"}}`+"\n")
 	}
-	testhelp.Equal(t, "no orders", fake.calls, []string(nil))
+	testhelp.Equal(t, "no calls", len(fake.calls), 0)
 }
 
+// HTTP Handlers example 4: Answer reads the option with the JSON rules and
+// routes it, then reports the Control's bad option.
 func TestHTTPHandlersExample4(t *testing.T) {
 	fake := &hhFake{}
 	h := Handlers{Control: fake}
 
-	badBodies := []string{`{"option":`, `{"option":1,"x":2}`, `{"option":1} {}`, ``}
-	for i, body := range badBodies {
+	bad := []string{`{"option":`, `{"option":1,"x":2}`, `{"option":1}{}`, ``}
+	for i, body := range bad {
 		req := httptest.NewRequest(http.MethodPost, "/projects/demo/answer", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
 		req.SetPathValue("project", "demo")
+		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		h.Answer(rec, req)
-		testhelp.Equal(t, fmt.Sprintf("bad body %d status", i), rec.Code, 400)
-		testhelp.Equal(t, fmt.Sprintf("bad body %d body", i), rec.Body.String(), `{"error":{"code":"bad_json","message":"bad json"}}`+"\n")
+		testhelp.Equal(t, fmt.Sprintf("status %d", i), rec.Code, http.StatusBadRequest)
+		testhelp.Equal(t, fmt.Sprintf("body %d", i), rec.Body.String(),
+			`{"error":{"code":"bad_json","message":"bad json"}}`+"\n")
 	}
+	testhelp.Equal(t, "no calls", len(fake.calls), 0)
 
 	req := httptest.NewRequest(http.MethodPost, "/projects/demo/answer", strings.NewReader(`{"option":2}`))
-	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("project", "demo")
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h.Answer(rec, req)
-	testhelp.Equal(t, "ok status", rec.Code, 200)
-	testhelp.Equal(t, "ok body", rec.Body.String(), `{"ok":true}`+"\n")
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body", rec.Body.String(), `{"ok":true}`+"\n")
 	testhelp.Equal(t, "calls", fake.calls, []string{`Answer("demo", 2)`})
 
-	fake.calls = nil
-	fake.answerErr = fmt.Errorf("%w: %d of 1..%d", control.ErrBadOption, 3, 2)
-	req = httptest.NewRequest(http.MethodPost, "/projects/demo/answer", strings.NewReader(`{"option":3}`))
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Answer(rec, req)
-	testhelp.Equal(t, "bad option status", rec.Code, 400)
-	testhelp.Equal(t, "bad option body", rec.Body.String(), `{"error":{"code":"bad_option","message":"option out of range: 3 of 1..2"}}`+"\n")
+	fake.answerErr = hhWrapErr{msg: "option out of range: 3 of 1..2", err: control.ErrBadOption}
+	req2 := httptest.NewRequest(http.MethodPost, "/projects/demo/answer", strings.NewReader(`{"option":3}`))
+	req2.SetPathValue("project", "demo")
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	h.Answer(rec2, req2)
+	testhelp.Equal(t, "bad option status", rec2.Code, http.StatusBadRequest)
+	testhelp.Equal(t, "bad option body", rec2.Body.String(),
+		`{"error":{"code":"bad_option","message":"option out of range: 3 of 1..2"}}`+"\n")
 }
 
+// HTTP Handlers example 5: Events reads since and max from the query and
+// passes them through; a non-integer since is bad input.
 func TestHTTPHandlersExample5(t *testing.T) {
 	fake := &hhFake{events: control.Events{Entries: []eventlog.Entry{}, Last: 7}}
 	h := Handlers{Control: fake}
@@ -286,26 +329,29 @@ func TestHTTPHandlersExample5(t *testing.T) {
 	req.SetPathValue("project", "demo")
 	rec := httptest.NewRecorder()
 	h.Events(rec, req)
-	testhelp.Equal(t, "status", rec.Code, 200)
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
 	testhelp.Equal(t, "body", rec.Body.String(), `{"entries":[],"last":7}`+"\n")
-	testhelp.Equal(t, "first calls", fake.calls, []string{`Events("demo", 2, 5)`})
+	testhelp.Equal(t, "calls", fake.calls, []string{`Events("demo", 2, 5)`})
 
-	fake.calls = nil
-	req = httptest.NewRequest(http.MethodGet, "/projects/demo/events?since=x", nil)
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Events(rec, req)
-	testhelp.Equal(t, "bad since status", rec.Code, 400)
-	testhelp.Equal(t, "bad since body", rec.Body.String(), `{"error":{"code":"bad_input","message":"since must be an integer"}}`+"\n")
-	testhelp.Equal(t, "second calls", fake.calls, []string(nil))
+	req2 := httptest.NewRequest(http.MethodGet, "/projects/demo/events?since=x", nil)
+	req2.SetPathValue("project", "demo")
+	rec2 := httptest.NewRecorder()
+	h.Events(rec2, req2)
+	testhelp.Equal(t, "bad since status", rec2.Code, http.StatusBadRequest)
+	testhelp.Equal(t, "bad since body", rec2.Body.String(),
+		`{"error":{"code":"bad_input","message":"since must be an integer"}}`+"\n")
+	testhelp.Equal(t, "calls after bad", len(fake.calls), 1)
 
-	req = httptest.NewRequest(http.MethodGet, "/projects/demo/events", nil)
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Events(rec, req)
-	testhelp.Equal(t, "third calls", fake.calls, []string{`Events("demo", 0, 0)`})
+	req3 := httptest.NewRequest(http.MethodGet, "/projects/demo/events", nil)
+	req3.SetPathValue("project", "demo")
+	rec3 := httptest.NewRecorder()
+	h.Events(rec3, req3)
+	testhelp.Equal(t, "no query status", rec3.Code, http.StatusOK)
+	testhelp.Equal(t, "no query calls", fake.calls[1], `Events("demo", 0, 0)`)
 }
 
+// HTTP Handlers example 6: Pending writes the question, null when there is
+// none.
 func TestHTTPHandlersExample6(t *testing.T) {
 	fake := &hhFake{}
 	h := Handlers{Control: fake}
@@ -314,8 +360,8 @@ func TestHTTPHandlersExample6(t *testing.T) {
 	req.SetPathValue("project", "demo")
 	rec := httptest.NewRecorder()
 	h.Pending(rec, req)
-	testhelp.Equal(t, "no question status", rec.Code, 200)
-	testhelp.Equal(t, "no question body", rec.Body.String(), `{"question":null}`+"\n")
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body null", rec.Body.String(), `{"question":null}`+"\n")
 
 	fake.pending = &control.Question{
 		RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
@@ -324,41 +370,50 @@ func TestHTTPHandlersExample6(t *testing.T) {
 		Options:   []string{"Option A", "Option B"},
 		AskedAt:   time.Date(2026, 10, 8, 13, 9, 8, 0, time.UTC),
 	}
-	req = httptest.NewRequest(http.MethodGet, "/projects/demo/pending", nil)
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Pending(rec, req)
-	testhelp.Equal(t, "question status", rec.Code, 200)
-	testhelp.Equal(t, "question body", rec.Body.String(), `{"question":{"request_id":"9f4ffa22-2676-4391-bfd9-bd7d16c3866c","text":"Which option do you want: A or B?","header":"A or B","options":["Option A","Option B"],"asked_at":"2026-10-08T13:09:08Z"}}`+"\n")
+	req2 := httptest.NewRequest(http.MethodGet, "/projects/demo/pending", nil)
+	req2.SetPathValue("project", "demo")
+	rec2 := httptest.NewRecorder()
+	h.Pending(rec2, req2)
+	testhelp.Equal(t, "question status", rec2.Code, http.StatusOK)
+	testhelp.Equal(t, "question body", rec2.Body.String(),
+		`{"question":{"request_id":"9f4ffa22-2676-4391-bfd9-bd7d16c3866c","text":"Which option do you want: A or B?","header":"A or B","options":["Option A","Option B"],"asked_at":"2026-10-08T13:09:08Z"}}`+"\n")
 }
 
+// HTTP Handlers example 7: Plan decodes the fixture's plan and answers the
+// queue view PlanLoad returned.
 func TestHTTPHandlersExample7(t *testing.T) {
-	data, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	fake := &hhFake{planView: control.QueueView{
+		State:    "running",
+		Approved: "7b31dfe",
+		Index:    0,
+		Phases:   3,
+		Current:  "P17",
+	}}
+	h := Handlers{Control: fake}
+
+	body, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	fake := &hhFake{planView: control.QueueView{State: "running", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17"}}
-	h := Handlers{Control: fake}
-
-	req := httptest.NewRequest(http.MethodPost, "/projects/demo/plan", bytes.NewReader(data))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest(http.MethodPost, "/projects/demo/plan", bytes.NewReader(body))
 	req.SetPathValue("project", "demo")
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h.Plan(rec, req)
-	testhelp.Equal(t, "status", rec.Code, 200)
-	testhelp.Equal(t, "body", rec.Body.String(), `{"state":"running","approved":"7b31dfe","index":0,"phases":3,"current":"P17","reason":""}`+"\n")
-	testhelp.Equal(t, "plan", fake.planArg, queue.Plan{
-		Approved: "7b31dfe",
-		Phases: []queue.Phase{
-			{ID: "P17", StopAfter: "none"},
-			{ID: "P18", StopAfter: "smoke", Caps: queue.Caps{ClaudeUSD: 12}},
-			{ID: "P19", StopAfter: "none"},
-		},
-	})
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
+	testhelp.Equal(t, "body", rec.Body.String(),
+		`{"state":"running","approved":"7b31dfe","index":0,"phases":3,"current":"P17","reason":""}`+"\n")
+	testhelp.Equal(t, "phases", len(fake.planArg.Phases), 3)
+	testhelp.Equal(t, "approved", fake.planArg.Approved, "7b31dfe")
+	testhelp.Equal(t, "phase P18 stop", fake.planArg.Phases[1].StopAfter, "smoke")
+	testhelp.Equal(t, "phase P18 caps", fake.planArg.Phases[1].Caps.ClaudeUSD, 12.0)
 }
 
+// HTTP Handlers example 8: GithubToken never echoes the token, Restart reads
+// an optional body, Projects answers the empty list, and an unexpected error
+// is the stable 500 body.
 func TestHTTPHandlersExample8(t *testing.T) {
-	fake := &hhFake{tokenRes: control.TokenResult{
+	fake := &hhFake{tokenResult: control.TokenResult{
 		Access: github.Access{
 			Checked:   true,
 			Reachable: false,
@@ -370,47 +425,123 @@ func TestHTTPHandlersExample8(t *testing.T) {
 	h := Handlers{Control: fake}
 
 	req := httptest.NewRequest(http.MethodPut, "/projects/demo/github-token", strings.NewReader(`{"token":"ghp_abc"}`))
-	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("project", "demo")
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h.GithubToken(rec, req)
-	testhelp.Equal(t, "token status", rec.Code, 200)
+	testhelp.Equal(t, "status", rec.Code, http.StatusOK)
 	body := rec.Body.String()
-	testhelp.Equal(t, "token body", body, `{"access":{"checked":true,"reachable":false,"push":false,"reason":"401 bad credentials","checked_at":"2026-10-08T15:00:00Z"},"pushed":false}`+"\n")
-	testhelp.Equal(t, "no token leak", strings.Contains(body, "ghp_abc"), false)
-	testhelp.Equal(t, "token calls", fake.calls, []string{`PutGithubToken("demo", "ghp_abc")`})
+	testhelp.Equal(t, "body", body,
+		`{"access":{"checked":true,"reachable":false,"push":false,"reason":"401 bad credentials","checked_at":"2026-10-08T15:00:00Z"},"pushed":false}`+"\n")
+	testhelp.Equal(t, "no token in body", strings.Contains(body, "ghp_abc"), false)
+	testhelp.Equal(t, "calls", fake.calls, []string{`PutGithubToken("demo", "ghp_abc")`})
 
-	fake.calls = nil
-	req = httptest.NewRequest(http.MethodPost, "/projects/demo/restart", nil)
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Restart(rec, req)
-	testhelp.Equal(t, "restart status", rec.Code, 200)
-	testhelp.Equal(t, "restart body", rec.Body.String(), `{"ok":true}`+"\n")
-	testhelp.Equal(t, "restart calls", fake.calls, []string{`Restart("demo", false)`})
+	req2 := httptest.NewRequest(http.MethodPost, "/projects/demo/restart", nil)
+	req2.SetPathValue("project", "demo")
+	rec2 := httptest.NewRecorder()
+	h.Restart(rec2, req2)
+	testhelp.Equal(t, "restart status", rec2.Code, http.StatusOK)
+	testhelp.Equal(t, "restart body", rec2.Body.String(), `{"ok":true}`+"\n")
+	testhelp.Equal(t, "restart call", fake.calls[len(fake.calls)-1], `Restart("demo", false)`)
 
-	fake.calls = nil
-	req = httptest.NewRequest(http.MethodPost, "/projects/demo/restart", strings.NewReader(`{"force":true}`))
-	req.Header.Set("Content-Type", "application/json")
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	h.Restart(rec, req)
-	testhelp.Equal(t, "force status", rec.Code, 200)
-	testhelp.Equal(t, "force body", rec.Body.String(), `{"ok":true}`+"\n")
-	testhelp.Equal(t, "force calls", fake.calls, []string{`Restart("demo", true)`})
+	req3 := httptest.NewRequest(http.MethodPost, "/projects/demo/restart", strings.NewReader(`{"force":true}`))
+	req3.SetPathValue("project", "demo")
+	req3.Header.Set("Content-Type", "application/json")
+	rec3 := httptest.NewRecorder()
+	h.Restart(rec3, req3)
+	testhelp.Equal(t, "force status", rec3.Code, http.StatusOK)
+	testhelp.Equal(t, "force call", fake.calls[len(fake.calls)-1], `Restart("demo", true)`)
 
-	req = httptest.NewRequest(http.MethodGet, "/projects", nil)
-	rec = httptest.NewRecorder()
-	h.Projects(rec, req)
-	testhelp.Equal(t, "projects status", rec.Code, 200)
-	testhelp.Equal(t, "projects body", rec.Body.String(), `{"projects":[]}`+"\n")
+	req4 := httptest.NewRequest(http.MethodGet, "/projects", nil)
+	rec4 := httptest.NewRecorder()
+	h.Projects(rec4, req4)
+	testhelp.Equal(t, "projects status", rec4.Code, http.StatusOK)
+	testhelp.Equal(t, "projects body", rec4.Body.String(), `{"projects":[]}`+"\n")
 
 	broken := &hhFake{statusErr: errors.New("disk full")}
 	hb := Handlers{Control: broken}
-	req = httptest.NewRequest(http.MethodGet, "/projects/demo/status", nil)
-	req.SetPathValue("project", "demo")
-	rec = httptest.NewRecorder()
-	hb.Status(rec, req)
-	testhelp.Equal(t, "internal status", rec.Code, 500)
-	testhelp.Equal(t, "internal body", rec.Body.String(), `{"error":{"code":"internal","message":"internal"}}`+"\n")
+	req5 := httptest.NewRequest(http.MethodGet, "/projects/demo/status", nil)
+	req5.SetPathValue("project", "demo")
+	rec5 := httptest.NewRecorder()
+	hb.Status(rec5, req5)
+	testhelp.Equal(t, "broken status", rec5.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "broken body", rec5.Body.String(),
+		`{"error":{"code":"internal","message":"internal"}}`+"\n")
+}
+
+// HTTP Handlers example 9: AdoptProject reaches a Control that implements
+// Adopter, carries the four fields, and reports what the Control answered.
+func TestHTTPHandlersExample9(t *testing.T) {
+	a := &hhAdopter{
+		hhFake: &hhFake{},
+		adoptView: control.ProjectView{
+			Name:      "studio",
+			Language:  "go",
+			RepoURL:   "https://github.com/VasyaLutiy/MorphStudio",
+			State:     "idle",
+			CreatedAt: time.Date(2026, 10, 10, 18, 0, 0, 0, time.UTC),
+		},
+	}
+	h := Handlers{Control: a}
+
+	body1 := `{"name":"studio","dir":"/home/morph/MorphStudio","repo_url":"https://github.com/VasyaLutiy/MorphStudio","language":"go"}`
+	req := httptest.NewRequest(http.MethodPost, "/projects/adopt", strings.NewReader(body1))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.AdoptProject(rec, req)
+	testhelp.Equal(t, "status", rec.Code, http.StatusCreated)
+	testhelp.Equal(t, "body", rec.Body.String(),
+		`{"name":"studio","language":"go","repo_url":"https://github.com/VasyaLutiy/MorphStudio","state":"idle","created_at":"2026-10-10T18:00:00Z"}`+"\n")
+	testhelp.Equal(t, "args", a.adoptArgs,
+		[]string{"studio", "/home/morph/MorphStudio", "https://github.com/VasyaLutiy/MorphStudio", "go"})
+
+	a.adoptErr = fmt.Errorf("%w: bootstrap: refused: not a git repository: /home/morph/nowhere", control.ErrBadInput)
+	req2 := httptest.NewRequest(http.MethodPost, "/projects/adopt", strings.NewReader(body1))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	h.AdoptProject(rec2, req2)
+	testhelp.Equal(t, "status 400", rec2.Code, http.StatusBadRequest)
+	testhelp.Equal(t, "body 400", rec2.Body.String(),
+		`{"error":{"code":"bad_input","message":"bad input: bootstrap: refused: not a git repository: /home/morph/nowhere"}}`+"\n")
+
+	a.adoptErr = control.ErrExists
+	req3 := httptest.NewRequest(http.MethodPost, "/projects/adopt", strings.NewReader(body1))
+	req3.Header.Set("Content-Type", "application/json")
+	rec3 := httptest.NewRecorder()
+	h.AdoptProject(rec3, req3)
+	testhelp.Equal(t, "status 409", rec3.Code, http.StatusConflict)
+	testhelp.Equal(t, "body 409", rec3.Body.String(),
+		`{"error":{"code":"exists","message":"project exists"}}`+"\n")
+
+	a.adoptErr = fmt.Errorf("%w: bootstrap: refused: github: not a github repository url: ", control.ErrBadInput)
+	body4 := `{"name":"studio","dir":"/x"}`
+	req4 := httptest.NewRequest(http.MethodPost, "/projects/adopt", strings.NewReader(body4))
+	req4.Header.Set("Content-Type", "application/json")
+	rec4 := httptest.NewRecorder()
+	h.AdoptProject(rec4, req4)
+	testhelp.Equal(t, "status 400 blank", rec4.Code, http.StatusBadRequest)
+	testhelp.Equal(t, "code 400 blank", strings.Contains(rec4.Body.String(), `"code":"bad_input"`), true)
+	testhelp.Equal(t, "args blank", a.adoptArgs[len(a.adoptArgs)-4:], []string{"studio", "/x", "", ""})
+
+	a.adoptErr = nil
+	body5 := `{"name":"studio","extra":1}`
+	req5 := httptest.NewRequest(http.MethodPost, "/projects/adopt", strings.NewReader(body5))
+	req5.Header.Set("Content-Type", "application/json")
+	rec5 := httptest.NewRecorder()
+	h.AdoptProject(rec5, req5)
+	testhelp.Equal(t, "status unknown", rec5.Code, http.StatusBadRequest)
+	testhelp.Equal(t, "body unknown", rec5.Body.String(),
+		`{"error":{"code":"bad_json","message":"bad json"}}`+"\n")
+	testhelp.Equal(t, "no further call", len(a.adoptArgs), 16)
+
+	plain := &hhFake{}
+	h2 := Handlers{Control: plain}
+	req6 := httptest.NewRequest(http.MethodPost, "/projects/adopt", strings.NewReader(body1))
+	req6.Header.Set("Content-Type", "application/json")
+	rec6 := httptest.NewRecorder()
+	h2.AdoptProject(rec6, req6)
+	testhelp.Equal(t, "status unsupported", rec6.Code, http.StatusInternalServerError)
+	testhelp.Equal(t, "body unsupported", rec6.Body.String(),
+		`{"error":{"code":"internal","message":"internal"}}`+"\n")
+	testhelp.Equal(t, "unsupported calls", len(plain.calls), 0)
 }

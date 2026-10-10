@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 	"morphstudio/session"
 )
 
-// QueueView describes the walking plan of a project.
+// QueueView is the outward view of a project's queue.
 type QueueView struct {
 	State    string `json:"state"`
 	Approved string `json:"approved"`
@@ -21,7 +22,7 @@ type QueueView struct {
 	Reason   string `json:"reason"`
 }
 
-// Stop describes why the daemon stopped a walk.
+// Stop records why a project's queue stopped.
 type Stop struct {
 	Kind     string    `json:"kind"`
 	Phase    string    `json:"phase"`
@@ -30,21 +31,68 @@ type Stop struct {
 	At       time.Time `json:"at"`
 }
 
-// Status is the answer of a status call.
-type Status struct {
-	State     string        `json:"state"`
-	Phase     string        `json:"phase"`
-	Minutes   int           `json:"minutes"`
-	CostUSD   float64       `json:"cost_usd"`
-	FiveHour  int           `json:"five_hour"`
-	SevenDay  int           `json:"seven_day"`
-	SessionID string        `json:"session_id"`
-	Queue     QueueView     `json:"queue"`
-	Repo      github.Access `json:"repo"`
-	Stop      *Stop         `json:"stop,omitempty"`
+// Exit records the last exit of a project's session: the exit code, when it
+// happened, the first stderr line, and the guard's restarts within that hour.
+type Exit struct {
+	Code     int       `json:"code"`
+	At       time.Time `json:"at"`
+	Stderr   string    `json:"stderr"`
+	Restarts int       `json:"restarts"`
 }
 
-// Question is a pending AskUserQuestion request.
+// Status is the answer of `status`.
+type Status struct {
+	State         string        `json:"state"`
+	Phase         string        `json:"phase"`
+	Minutes       int           `json:"minutes"`
+	CostUSD       float64       `json:"cost_usd"`
+	FiveHour      int           `json:"five_hour"`
+	SevenDay      int           `json:"seven_day"`
+	LimitsUnknown bool          `json:"-"`
+	SessionID     string        `json:"session_id"`
+	Queue         QueueView     `json:"queue"`
+	Repo          github.Access `json:"repo"`
+	Stop          *Stop         `json:"stop,omitempty"`
+	LastExit      *Exit         `json:"last_exit,omitempty"`
+}
+
+// MarshalJSON writes the fields in declaration order, with five_hour and
+// seven_day written as null while no rate_limit_event has been seen.
+func (s Status) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		State     string        `json:"state"`
+		Phase     string        `json:"phase"`
+		Minutes   int           `json:"minutes"`
+		CostUSD   float64       `json:"cost_usd"`
+		FiveHour  *int          `json:"five_hour"`
+		SevenDay  *int          `json:"seven_day"`
+		SessionID string        `json:"session_id"`
+		Queue     QueueView     `json:"queue"`
+		Repo      github.Access `json:"repo"`
+		Stop      *Stop         `json:"stop,omitempty"`
+		LastExit  *Exit         `json:"last_exit,omitempty"`
+	}
+	var fh, sd *int
+	if !s.LimitsUnknown {
+		fh = &s.FiveHour
+		sd = &s.SevenDay
+	}
+	return json.Marshal(wire{
+		State:     s.State,
+		Phase:     s.Phase,
+		Minutes:   s.Minutes,
+		CostUSD:   s.CostUSD,
+		FiveHour:  fh,
+		SevenDay:  sd,
+		SessionID: s.SessionID,
+		Queue:     s.Queue,
+		Repo:      s.Repo,
+		Stop:      s.Stop,
+		LastExit:  s.LastExit,
+	})
+}
+
+// Question is a pending AskUserQuestion.
 type Question struct {
 	RequestID string    `json:"request_id"`
 	Text      string    `json:"text"`
@@ -53,7 +101,7 @@ type Question struct {
 	AskedAt   time.Time `json:"asked_at"`
 }
 
-// Usage reports the Claude limits and spend.
+// Usage reports rate-limit utilization and session spend.
 type Usage struct {
 	FiveHour         int       `json:"five_hour"`
 	SevenDay         int       `json:"seven_day"`
@@ -64,13 +112,46 @@ type Usage struct {
 	LimitsAt         time.Time `json:"limits_at"`
 }
 
-// Events is a page of event log entries.
+// MarshalJSON writes the fields in declaration order, with the limit fields
+// written as null while no rate_limit_event has been seen.
+func (u Usage) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		FiveHour         *int       `json:"five_hour"`
+		SevenDay         *int       `json:"seven_day"`
+		FiveHourResetsAt *int64     `json:"five_hour_resets_at"`
+		SevenDayResetsAt *int64     `json:"seven_day_resets_at"`
+		SessionCostUSD   float64    `json:"session_cost_usd"`
+		StretchCostUSD   float64    `json:"stretch_cost_usd"`
+		LimitsAt         *time.Time `json:"limits_at"`
+	}
+	var fh, sd *int
+	var fhr, sdr *int64
+	var la *time.Time
+	if !u.LimitsAt.IsZero() {
+		fh = &u.FiveHour
+		sd = &u.SevenDay
+		fhr = &u.FiveHourResetsAt
+		sdr = &u.SevenDayResetsAt
+		la = &u.LimitsAt
+	}
+	return json.Marshal(wire{
+		FiveHour:         fh,
+		SevenDay:         sd,
+		FiveHourResetsAt: fhr,
+		SevenDayResetsAt: sdr,
+		SessionCostUSD:   u.SessionCostUSD,
+		StretchCostUSD:   u.StretchCostUSD,
+		LimitsAt:         la,
+	})
+}
+
+// Events is a window over a project's event log.
 type Events struct {
 	Entries []eventlog.Entry `json:"entries"`
 	Last    int64            `json:"last"`
 }
 
-// ProjectView is the summary of a project.
+// ProjectView is the outward view of a project.
 type ProjectView struct {
 	Name      string    `json:"name"`
 	Language  string    `json:"language"`
@@ -79,21 +160,21 @@ type ProjectView struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// Milestone is a progress point reported by a session.
+// Milestone is a progress report a session files.
 type Milestone struct {
 	Kind     string `json:"kind"`
 	Headline string `json:"headline"`
 	Numbers  string `json:"numbers"`
 }
 
-// TokenResult is the outcome of storing a GitHub token.
+// TokenResult reports the outcome of storing a GitHub token.
 type TokenResult struct {
 	Access    github.Access `json:"access"`
 	Pushed    bool          `json:"pushed"`
 	PushError string        `json:"push_error,omitempty"`
 }
 
-// Control is the daemon's view and command surface.
+// Control is the daemon's outward surface.
 type Control interface {
 	Projects() []ProjectView
 	CreateProject(ctx context.Context, name, language, repoURL string) (ProjectView, error)
@@ -114,6 +195,7 @@ type Control interface {
 	Milestone(project, sessionToken string, m Milestone) error
 }
 
+// The control-layer errors.
 var (
 	ErrUnknownProject = errors.New("unknown project")
 	ErrNoSession      = errors.New("no session running")
@@ -124,25 +206,27 @@ var (
 	ErrExists         = errors.New("project exists")
 )
 
+// Session errors are re-exported so callers share one identity.
 var (
 	ErrNoQuestion = session.ErrNoQuestion
 	ErrBadOption  = session.ErrBadOption
 	ErrNotBusy    = session.ErrNotBusy
 )
 
-// Percent rounds a utilization to a whole percent clamped to 0..100.
+// Percent converts a utilization fraction to a whole percent, clamped to
+// 0..100.
 func Percent(utilization float64) int {
-	p := int(utilization*100 + 0.5)
-	if p < 0 {
+	n := int(utilization*100 + 0.5)
+	if n < 0 {
 		return 0
 	}
-	if p > 100 {
+	if n > 100 {
 		return 100
 	}
-	return p
+	return n
 }
 
-// Code maps an error to an HTTP status and a stable code string.
+// Code maps an error to an HTTP status and a stable code.
 func Code(err error) (int, string) {
 	if err == nil {
 		return 200, ""
@@ -168,7 +252,6 @@ func Code(err error) (int, string) {
 		return 409, "not_busy"
 	case errors.Is(err, ErrNotWaiting):
 		return 409, "not_waiting"
-	default:
-		return 500, "internal"
 	}
+	return 500, "internal"
 }

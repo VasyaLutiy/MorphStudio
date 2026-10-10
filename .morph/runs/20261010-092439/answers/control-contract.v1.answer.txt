@@ -1,0 +1,259 @@
+```
+package control
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"morphstudio/eventlog"
+	"morphstudio/github"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+// QueueView is the outward view of a project's queue.
+type QueueView struct {
+	State    string `json:"state"`
+	Approved string `json:"approved"`
+	Index    int    `json:"index"`
+	Phases   int    `json:"phases"`
+	Current  string `json:"current"`
+	Reason   string `json:"reason"`
+}
+
+// Stop records why a project's queue stopped.
+type Stop struct {
+	Kind     string    `json:"kind"`
+	Phase    string    `json:"phase"`
+	Reason   string    `json:"reason"`
+	IssueURL string    `json:"issue_url,omitempty"`
+	At       time.Time `json:"at"`
+}
+
+// Exit records the last exit of a project's session: the exit code, when it
+// happened, the first stderr line, and the guard's restarts within that hour.
+type Exit struct {
+	Code     int       `json:"code"`
+	At       time.Time `json:"at"`
+	Stderr   string    `json:"stderr"`
+	Restarts int       `json:"restarts"`
+}
+
+// Status is the answer of `status`.
+type Status struct {
+	State         string        `json:"state"`
+	Phase         string        `json:"phase"`
+	Minutes       int           `json:"minutes"`
+	CostUSD       float64       `json:"cost_usd"`
+	FiveHour      int           `json:"five_hour"`
+	SevenDay      int           `json:"seven_day"`
+	LimitsUnknown bool          `json:"-"`
+	SessionID     string        `json:"session_id"`
+	Queue         QueueView     `json:"queue"`
+	Repo          github.Access `json:"repo"`
+	Stop          *Stop         `json:"stop,omitempty"`
+	LastExit      *Exit         `json:"last_exit,omitempty"`
+}
+
+// MarshalJSON writes the fields in declaration order, with five_hour and
+// seven_day written as null while no rate_limit_event has been seen.
+func (s Status) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		State     string        `json:"state"`
+		Phase     string        `json:"phase"`
+		Minutes   int           `json:"minutes"`
+		CostUSD   float64       `json:"cost_usd"`
+		FiveHour  *int          `json:"five_hour"`
+		SevenDay  *int          `json:"seven_day"`
+		SessionID string        `json:"session_id"`
+		Queue     QueueView     `json:"queue"`
+		Repo      github.Access `json:"repo"`
+		Stop      *Stop         `json:"stop,omitempty"`
+		LastExit  *Exit         `json:"last_exit,omitempty"`
+	}
+	var fh, sd *int
+	if !s.LimitsUnknown {
+		fh = &s.FiveHour
+		sd = &s.SevenDay
+	}
+	return json.Marshal(wire{
+		State:     s.State,
+		Phase:     s.Phase,
+		Minutes:   s.Minutes,
+		CostUSD:   s.CostUSD,
+		FiveHour:  fh,
+		SevenDay:  sd,
+		SessionID: s.SessionID,
+		Queue:     s.Queue,
+		Repo:      s.Repo,
+		Stop:      s.Stop,
+		LastExit:  s.LastExit,
+	})
+}
+
+// Question is a pending AskUserQuestion.
+type Question struct {
+	RequestID string    `json:"request_id"`
+	Text      string    `json:"text"`
+	Header    string    `json:"header"`
+	Options   []string  `json:"options"`
+	AskedAt   time.Time `json:"asked_at"`
+}
+
+// Usage reports rate-limit utilization and session spend.
+type Usage struct {
+	FiveHour         int       `json:"five_hour"`
+	SevenDay         int       `json:"seven_day"`
+	FiveHourResetsAt int64     `json:"five_hour_resets_at"`
+	SevenDayResetsAt int64     `json:"seven_day_resets_at"`
+	SessionCostUSD   float64   `json:"session_cost_usd"`
+	StretchCostUSD   float64   `json:"stretch_cost_usd"`
+	LimitsAt         time.Time `json:"limits_at"`
+}
+
+// MarshalJSON writes the fields in declaration order, with the limit fields
+// written as null while no rate_limit_event has been seen.
+func (u Usage) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		FiveHour         *int       `json:"five_hour"`
+		SevenDay         *int       `json:"seven_day"`
+		FiveHourResetsAt *int64     `json:"five_hour_resets_at"`
+		SevenDayResetsAt *int64     `json:"seven_day_resets_at"`
+		SessionCostUSD   float64    `json:"session_cost_usd"`
+		StretchCostUSD   float64    `json:"stretch_cost_usd"`
+		LimitsAt         *time.Time `json:"limits_at"`
+	}
+	var fh, sd *int
+	var fhr, sdr *int64
+	var la *time.Time
+	if !u.LimitsAt.IsZero() {
+		fh = &u.FiveHour
+		sd = &u.SevenDay
+		fhr = &u.FiveHourResetsAt
+		sdr = &u.SevenDayResetsAt
+		la = &u.LimitsAt
+	}
+	return json.Marshal(wire{
+		FiveHour:         fh,
+		SevenDay:         sd,
+		FiveHourResetsAt: fhr,
+		SevenDayResetsAt: sdr,
+		SessionCostUSD:   u.SessionCostUSD,
+		StretchCostUSD:   u.StretchCostUSD,
+		LimitsAt:         la,
+	})
+}
+
+// Events is a window over a project's event log.
+type Events struct {
+	Entries []eventlog.Entry `json:"entries"`
+	Last    int64            `json:"last"`
+}
+
+// ProjectView is the outward view of a project.
+type ProjectView struct {
+	Name      string    `json:"name"`
+	Language  string    `json:"language"`
+	RepoURL   string    `json:"repo_url"`
+	State     string    `json:"state"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Milestone is a progress report a session files.
+type Milestone struct {
+	Kind     string `json:"kind"`
+	Headline string `json:"headline"`
+	Numbers  string `json:"numbers"`
+}
+
+// TokenResult reports the outcome of storing a GitHub token.
+type TokenResult struct {
+	Access    github.Access `json:"access"`
+	Pushed    bool          `json:"pushed"`
+	PushError string        `json:"push_error,omitempty"`
+}
+
+// Control is the daemon's outward surface.
+type Control interface {
+	Projects() []ProjectView
+	CreateProject(ctx context.Context, name, language, repoURL string) (ProjectView, error)
+	Status(project string) (Status, error)
+	Events(project string, since int64, max int) (Events, error)
+	Order(project, text string) (session.OrderResult, error)
+	Pending(project string) (*Question, error)
+	Answer(project string, option int) error
+	Interrupt(project string) error
+	Usage(project string) (Usage, error)
+	Restart(project string, force bool) error
+	PlanLoad(project string, plan queue.Plan) (QueueView, error)
+	Continue(project string) error
+	StopCheck(project string) (*Stop, error)
+	PutGithubToken(ctx context.Context, project, token string) (TokenResult, error)
+	PhaseDone(project, sessionToken, phase, next string) error
+	WaitOperator(project, sessionToken, kind, reason, issueURL string) error
+	Milestone(project, sessionToken string, m Milestone) error
+}
+
+// The control-layer errors.
+var (
+	ErrUnknownProject = errors.New("unknown project")
+	ErrNoSession      = errors.New("no session running")
+	ErrBusy           = errors.New("session is busy")
+	ErrNotWaiting     = errors.New("not waiting")
+	ErrBadToken       = errors.New("session token mismatch")
+	ErrBadInput       = errors.New("bad input")
+	ErrExists         = errors.New("project exists")
+)
+
+// Session errors are re-exported so callers share one identity.
+var (
+	ErrNoQuestion = session.ErrNoQuestion
+	ErrBadOption  = session.ErrBadOption
+	ErrNotBusy    = session.ErrNotBusy
+)
+
+// Percent converts a utilization fraction to a whole percent, clamped to
+// 0..100.
+func Percent(utilization float64) int {
+	n := int(utilization*100 + 0.5)
+	if n < 0 {
+		return 0
+	}
+	if n > 100 {
+		return 100
+	}
+	return n
+}
+
+// Code maps an error to an HTTP status and a stable code.
+func Code(err error) (int, string) {
+	if err == nil {
+		return 200, ""
+	}
+	switch {
+	case errors.Is(err, ErrUnknownProject):
+		return 404, "unknown_project"
+	case errors.Is(err, ErrBadInput):
+		return 400, "bad_input"
+	case errors.Is(err, ErrBadOption):
+		return 400, "bad_option"
+	case errors.Is(err, ErrBadToken):
+		return 401, "bad_session_token"
+	case errors.Is(err, ErrExists):
+		return 409, "exists"
+	case errors.Is(err, ErrNoSession):
+		return 409, "no_session"
+	case errors.Is(err, ErrBusy):
+		return 409, "busy"
+	case errors.Is(err, ErrNoQuestion):
+		return 409, "no_question"
+	case errors.Is(err, ErrNotBusy):
+		return 409, "not_busy"
+	case errors.Is(err, ErrNotWaiting):
+		return 409, "not_waiting"
+	}
+	return 500, "internal"
+}
+```

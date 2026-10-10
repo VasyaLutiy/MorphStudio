@@ -1,0 +1,780 @@
+```go
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"morphstudio/claude"
+	"morphstudio/control"
+	"morphstudio/github"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/registry"
+	"morphstudio/runner"
+	"morphstudio/session"
+	"morphstudio/stream"
+	"morphstudio/supervisor"
+	"morphstudio/telegram"
+)
+
+// dcHarness is the one test harness of this file: a daemon with a fake
+// registry, runner, spawn, post, clock and id generator.
+type dcHarness struct {
+	t      *testing.T
+	tmp    string
+	reg    *registry.Registry
+	runner *runner.Fake
+	config Config
+	ctx    context.Context
+
+	mu       sync.Mutex
+	clock    time.Time
+	idNum    int
+	spawns   []claude.Launch
+	procs    []*claude.Fake
+	spawnErr error
+	posts    [][4]string
+	ghDo     func(*http.Request) (*http.Response, error)
+}
+
+func dcNew(t *testing.T) *dcHarness {
+	t.Helper()
+	tmp := t.TempDir()
+	reg, err := registry.Open(filepath.Join(tmp, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &dcHarness{
+		t:     t,
+		tmp:   tmp,
+		reg:   reg,
+		ctx:   context.Background(),
+		clock: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
+		runner: &runner.Fake{Script: map[string]runner.Result{
+			"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"},
+			"git rev-parse HEAD":              {Stdout: "aaa111\n"},
+			"git rev-parse origin/main":       {Stdout: "aaa111\n"},
+			"git status --porcelain":          {Stdout: ""},
+		}},
+		config: Config{
+			ClaudeBin:   "/opt/claude/bin/claude",
+			MorphBin:    "/usr/local/bin/morph",
+			ProjectsDir: filepath.Join(tmp, "projects"),
+			MCPBaseURL:  "http://127.0.0.1:7181",
+			Defaults:    queue.Caps{ClaudeUSD: 25, Hours: 2, ExecutorUSD: 4},
+			MaxParallel: 1,
+			Loop: supervisor.Config{
+				MaxResumesPerHour: 3,
+				StallMinutes:      30,
+				StretchUSD:        30,
+				UsageAlertPercent: 50,
+			},
+		},
+	}
+}
+
+func dcWriteMeasure(t *testing.T, dir string) {
+	t.Helper()
+	b, err := os.ReadFile("../tests/fixtures/git/measure.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "docs", "MEASURE.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (h *dcHarness) addProject(name, language, repoURL string) {
+	h.t.Helper()
+	dir := filepath.Join(h.tmp, "projects", name)
+	if err := h.reg.Add(registry.Project{
+		Name:      name,
+		Language:  language,
+		RepoURL:   repoURL,
+		Dir:       dir,
+		Caps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},
+		CreatedAt: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC),
+	}); err != nil {
+		h.t.Fatal(err)
+	}
+	dcWriteMeasure(h.t, dir)
+}
+
+func (h *dcHarness) addDemo() {
+	h.addProject("demo", "go", "https://github.com/acme/demo")
+}
+
+func (h *dcHarness) spawn(ctx context.Context, l claude.Launch) (claude.Process, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.spawns = append(h.spawns, l)
+	if h.spawnErr != nil {
+		return nil, h.spawnErr
+	}
+	fp := claude.NewFake()
+	h.procs = append(h.procs, fp)
+	return fp, nil
+}
+
+func (h *dcHarness) post(ctx context.Context, project, kind, headline, numbers string) (telegram.Status, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.posts = append(h.posts, [4]string{project, kind, headline, numbers})
+	return telegram.Status{}, nil
+}
+
+func (h *dcHarness) now() time.Time {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	n := h.clock
+	h.clock = h.clock.Add(time.Second)
+	return n
+}
+
+func (h *dcHarness) newID() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.idNum++
+	return fmt.Sprintf("id-%d", h.idNum)
+}
+
+func (h *dcHarness) deps() Deps {
+	return Deps{
+		Registry: h.reg,
+		Runner:   h.runner,
+		Spawn:    h.spawn,
+		Post:     h.post,
+		GitHubDo: h.ghDo,
+		Now:      h.now,
+		NewID:    h.newID,
+		Config:   h.config,
+	}
+}
+
+func (h *dcHarness) open() (*Daemon, error) {
+	return Open(h.ctx, h.deps())
+}
+
+func dcPlan(t *testing.T) queue.Plan {
+	t.Helper()
+	b, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan queue.Plan
+	if err := json.Unmarshal(b, &plan); err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
+func dcRunning(t *testing.T) (*dcHarness, *Daemon, *claude.Fake) {
+	t.Helper()
+	h := dcNew(t)
+	h.addDemo()
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.PlanLoad("demo", dcPlan(t)); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.procs) != 1 {
+		t.Fatalf("procs: got %d, want 1", len(h.procs))
+	}
+	return h, d, h.procs[0]
+}
+
+func dcStop(t *testing.T, what string, got *control.Stop, want control.Stop) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("%s: got nil, want %#v", what, want)
+	}
+	if got.At.IsZero() {
+		t.Errorf("%s: At is zero", what)
+	}
+	cp := *got
+	cp.At = time.Time{}
+	testhelp.Equal(t, what, cp, want)
+}
+
+func dcAccess(t *testing.T, what string, got github.Access, want github.Access) {
+	t.Helper()
+	if got.CheckedAt.IsZero() {
+		t.Errorf("%s: CheckedAt is zero", what)
+	}
+	cp := got
+	cp.CheckedAt = time.Time{}
+	testhelp.Equal(t, what, cp, want)
+}
+
+// Example 1: Open, Projects, Status, StopCheck, Usage on a quiet project.
+func TestDaemonCoreExample1(t *testing.T) {
+	h := dcNew(t)
+	h.addDemo()
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testhelp.Equal(t, "projects", d.Projects(), []control.ProjectView{{
+		Name:      "demo",
+		Language:  "go",
+		RepoURL:   "https://github.com/acme/demo",
+		State:     "idle",
+		CreatedAt: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC),
+	}})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "status", st, control.Status{State: "idle", LimitsUnknown: true})
+	b, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"five_hour":null,"seven_day":null`) {
+		t.Errorf("status json: got %s", b)
+	}
+
+	got, err := d.Status("nope")
+	testhelp.Equal(t, "nope status", got, control.Status{})
+	testhelp.Equal(t, "nope err", errors.Is(err, control.ErrUnknownProject), true)
+
+	stop, err := d.StopCheck("demo")
+	testhelp.Equal(t, "stopcheck err", err, nil)
+	testhelp.Equal(t, "stopcheck", stop, (*control.Stop)(nil))
+
+	u, err := d.Usage("demo")
+	testhelp.Equal(t, "usage err", err, nil)
+	testhelp.Equal(t, "usage", u, control.Usage{})
+	ub, err := json.Marshal(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "usage json", string(ub), `{"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0,"stretch_cost_usd":0,"limits_at":null}`)
+
+	testhelp.Equal(t, "no spawn", len(h.spawns), 0)
+}
+
+// Example 2: PlanLoad starts P17, spawns the session and writes the first line.
+func TestDaemonCoreExample2(t *testing.T) {
+	h := dcNew(t)
+	h.addDemo()
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	qv, err := d.PlanLoad("demo", dcPlan(t))
+	testhelp.Equal(t, "planload err", err, nil)
+	testhelp.Equal(t, "planload", qv, control.QueueView{
+		State: "running", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17",
+	})
+
+	testhelp.Equal(t, "spawns", len(h.spawns), 1)
+	testhelp.Equal(t, "launch", h.spawns[0], claude.Launch{
+		Bin:           "/opt/claude/bin/claude",
+		Dir:           filepath.Join(h.tmp, "projects", "demo"),
+		SessionID:     "id-1",
+		Resume:        false,
+		BudgetUSD:     30,
+		MCPConfigPath: filepath.Join(h.tmp, "state", "demo", "morphd-mcp.json"),
+	})
+
+	mcp, err := os.ReadFile(filepath.Join(h.tmp, "state", "demo", "morphd-mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "mcp file", mcp, claude.MCPConfigJSON("http://127.0.0.1:7181/mcp/demo/session", "id-2"))
+
+	tok, err := h.reg.ReadSecret("demo", "session-token")
+	testhelp.Equal(t, "token err", err, nil)
+	testhelp.Equal(t, "token", tok, "id-2")
+
+	testhelp.Equal(t, "written", h.procs[0].Written(), [][]byte{stream.User("/morph-orchestrator P17")})
+
+	testhelp.Equal(t, "posts", h.posts, [][4]string{
+		{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"},
+	})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "status state", st.State, "busy")
+	testhelp.Equal(t, "status phase", st.Phase, "P17")
+	testhelp.Equal(t, "status sid", st.SessionID, "id-1")
+
+	lb, err := os.ReadFile(filepath.Join(h.tmp, "state", "demo", "sessions", "id-1.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(lb), "\n"), "\n")
+	testhelp.Equal(t, "log lines", len(lines), 1)
+	if !strings.Contains(lines[0], `"in"`) {
+		t.Errorf("log line: got %s", lines[0])
+	}
+}
+
+// Example 3: Order queues while busy, Pending is empty, Interrupt writes.
+func TestDaemonCoreExample3(t *testing.T) {
+	h, d, fp := dcRunning(t)
+
+	res, err := d.Order("demo", "smoke checked green")
+	testhelp.Equal(t, "order err", err, nil)
+	testhelp.Equal(t, "order", res, session.OrderResult{Queued: 1})
+	testhelp.Equal(t, "written len", len(fp.Written()), 1)
+
+	pg, err := d.Pending("demo")
+	testhelp.Equal(t, "pending err", err, nil)
+	testhelp.Equal(t, "pending", pg, (*control.Question)(nil))
+
+	err = d.Answer("demo", 1)
+	testhelp.Equal(t, "answer err", errors.Is(err, control.ErrNoQuestion), true)
+
+	err = d.Interrupt("demo")
+	testhelp.Equal(t, "interrupt err", err, nil)
+
+	w := fp.Written()
+	testhelp.Equal(t, "written len", len(w), 2)
+	testhelp.Equal(t, "interrupt line", w[1], stream.Interrupt("int-id-3"))
+
+	ev, err := d.Events("demo", 0, 10)
+	testhelp.Equal(t, "events err", err, nil)
+	testhelp.Equal(t, "events last", ev.Last, int64(2))
+	testhelp.Equal(t, "events entries", len(ev.Entries), 2)
+}
+
+// Example 4: PlanLoad and Restart false are busy; Restart force restarts P17.
+func TestDaemonCoreExample4(t *testing.T) {
+	h, d, fp := dcRunning(t)
+
+	_, err := d.PlanLoad("demo", dcPlan(t))
+	testhelp.Equal(t, "planload err", errors.Is(err, control.ErrBusy), true)
+
+	err = d.Restart("demo", false)
+	testhelp.Equal(t, "restart noforce err", errors.Is(err, control.ErrBusy), true)
+
+	err = d.Restart("demo", true)
+	testhelp.Equal(t, "restart force err", err, nil)
+
+	testhelp.Equal(t, "killed", fp.Killed(), true)
+	testhelp.Equal(t, "spawns", len(h.spawns), 2)
+	testhelp.Equal(t, "second sid", h.spawns[1].SessionID, "id-3")
+	testhelp.Equal(t, "second resume", h.spawns[1].Resume, false)
+	testhelp.Equal(t, "second budget", h.spawns[1].BudgetUSD, 30)
+
+	testhelp.Equal(t, "posts", h.posts, [][4]string{
+		{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"},
+		{"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"},
+	})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "status sid", st.SessionID, "id-3")
+}
+
+// Example 5: PhaseDone with a bad token is refused; with the right token P17
+// passes the end check and P18 starts.
+func TestDaemonCoreExample5(t *testing.T) {
+	h, d, fp := dcRunning(t)
+
+	err := d.PhaseDone("demo", "wrong", "P17", "P18")
+	testhelp.Equal(t, "bad token", errors.Is(err, control.ErrBadToken), true)
+
+	err = d.PhaseDone("demo", "id-2", "P17", "P18")
+	testhelp.Equal(t, "phase done err", err, nil)
+
+	testhelp.Equal(t, "killed", fp.Killed(), true)
+	testhelp.Equal(t, "spawns", len(h.spawns), 2)
+	testhelp.Equal(t, "second sid", h.spawns[1].SessionID, "id-3")
+	testhelp.Equal(t, "second resume", h.spawns[1].Resume, false)
+	testhelp.Equal(t, "second budget", h.spawns[1].BudgetUSD, 12)
+
+	tok, err := h.reg.ReadSecret("demo", "session-token")
+	testhelp.Equal(t, "token err", err, nil)
+	testhelp.Equal(t, "token", tok, "id-4")
+
+	testhelp.Equal(t, "last post", h.posts[len(h.posts)-1], [4]string{"demo", "start", "P18 started", "session id-3 · cap $12 · 3 h"})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "phase", st.Phase, "P18")
+	testhelp.Equal(t, "index", st.Queue.Index, 1)
+	testhelp.Equal(t, "current", st.Queue.Current, "P18")
+}
+
+// Example 6: a diverged HEAD stops P17 as not pushed; Continue with the fixed
+// runner script re-runs the end check and moves on to P18.
+func TestDaemonCoreExample6(t *testing.T) {
+	h, d, fp := dcRunning(t)
+
+	h.runner.Script["git rev-parse HEAD"] = runner.Result{Stdout: "bbb222\n"}
+	err := d.PhaseDone("demo", "id-2", "P17", "P18")
+	testhelp.Equal(t, "phase done err", err, nil)
+
+	testhelp.Equal(t, "spawns", len(h.spawns), 1)
+	testhelp.Equal(t, "killed", fp.Killed(), false)
+
+	testhelp.Equal(t, "last post", h.posts[len(h.posts)-1], [4]string{"demo", "stop", "P17 not pushed", "not pushed: HEAD bbb222, origin/main aaa111"})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "state", st.State, "waiting")
+
+	stop, err := d.StopCheck("demo")
+	testhelp.Equal(t, "stopcheck err", err, nil)
+	dcStop(t, "stop", stop, control.Stop{Kind: "not_pushed", Phase: "P17", Reason: "not pushed: HEAD bbb222, origin/main aaa111"})
+
+	h.runner.Script["git rev-parse HEAD"] = runner.Result{Stdout: "aaa111\n"}
+	err = d.Continue("demo")
+	testhelp.Equal(t, "continue err", err, nil)
+
+	testhelp.Equal(t, "killed after", fp.Killed(), true)
+	testhelp.Equal(t, "spawns after", len(h.spawns), 2)
+	testhelp.Equal(t, "second sid", h.spawns[1].SessionID, "id-3")
+	testhelp.Equal(t, "second budget", h.spawns[1].BudgetUSD, 12)
+
+	st, err = d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "phase", st.Phase, "P18")
+}
+
+// Example 7: WaitOperator keeps the process, Milestone posts, bad token is
+// refused, Continue restarts P17.
+func TestDaemonCoreExample7(t *testing.T) {
+	h, d, fp := dcRunning(t)
+
+	err := d.WaitOperator("demo", "id-2", "smoke", "P17 smoke: run morphd status", "")
+	testhelp.Equal(t, "wait err", err, nil)
+
+	err = d.Milestone("demo", "id-2", control.Milestone{Kind: "gate", Headline: "P17 gate passed", Numbers: "10 cards · $0.12"})
+	testhelp.Equal(t, "milestone err", err, nil)
+
+	err = d.Milestone("demo", "bad", control.Milestone{Kind: "gate", Headline: "x", Numbers: "y"})
+	testhelp.Equal(t, "bad milestone err", errors.Is(err, control.ErrBadToken), true)
+
+	testhelp.Equal(t, "posts", h.posts[1:], [][4]string{
+		{"demo", "stop", "P17: wait_operator smoke", "P17 smoke: run morphd status"},
+		{"demo", "gate", "P17 gate passed", "10 cards · $0.12"},
+	})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "state", st.State, "waiting")
+	testhelp.Equal(t, "killed", fp.Killed(), false)
+
+	err = d.Continue("demo")
+	testhelp.Equal(t, "continue err", err, nil)
+
+	testhelp.Equal(t, "killed after", fp.Killed(), true)
+	testhelp.Equal(t, "spawns", len(h.spawns), 2)
+	testhelp.Equal(t, "second sid", h.spawns[1].SessionID, "id-3")
+	testhelp.Equal(t, "second resume", h.spawns[1].Resume, false)
+
+	st, err = d.Status("demo")
+	testhelp.Equal(t, "status2 err", err, nil)
+	testhelp.Equal(t, "state after", st.State, "busy")
+}
+
+// Example 8: PutGithubToken stores the secrets, pushes, and records access.
+func TestDaemonCoreExample8(t *testing.T) {
+	h := dcNew(t)
+	h.addDemo()
+	h.runner.Script["git rev-parse --verify -q origin/main"] = runner.Result{Code: 1}
+	h.runner.Script["git push -q -u origin main"] = runner.Result{Code: 0}
+
+	calls := 0
+	h.ghDo = func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls == 1 {
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader(`{"permissions":{"push":true}}`)),
+				Header:     http.Header{},
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: 401,
+			Body:       io.NopCloser(strings.NewReader(`{"message":"Bad credentials"}`)),
+			Header:     http.Header{},
+		}, nil
+	}
+
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := d.PutGithubToken(h.ctx, "demo", "ghp_abc")
+	testhelp.Equal(t, "token1 err", err, nil)
+	testhelp.Equal(t, "token1 pushed", res.Pushed, true)
+	testhelp.Equal(t, "token1 pusherr", res.PushError, "")
+	dcAccess(t, "token1 access", res.Access, github.Access{Checked: true, Reachable: true, Push: true, Reason: ""})
+
+	gt, err := h.reg.ReadSecret("demo", "github-token")
+	testhelp.Equal(t, "github token err", err, nil)
+	testhelp.Equal(t, "github token", gt, "ghp_abc")
+	gc, err := h.reg.ReadSecret("demo", "git-credentials")
+	testhelp.Equal(t, "creds err", err, nil)
+	testhelp.Equal(t, "creds", gc, "https://x-access-token:ghp_abc@github.com\n")
+
+	fi, err := os.Stat(h.reg.SecretPath("demo", "github-token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "token mode", fi.Mode().Perm(), os.FileMode(0o600))
+	fi, err = os.Stat(h.reg.SecretPath("demo", "git-credentials"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "creds mode", fi.Mode().Perm(), os.FileMode(0o600))
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	dcAccess(t, "status repo", st.Repo, github.Access{Checked: true, Reachable: true, Push: true, Reason: ""})
+
+	testhelp.Equal(t, "runner calls", h.runner.Calls, []runner.Call{
+		{Dir: filepath.Join(h.tmp, "projects", "demo"), Name: "git", Args: []string{"rev-parse", "--verify", "-q", "origin/main"}},
+		{Dir: filepath.Join(h.tmp, "projects", "demo"), Name: "git", Args: []string{"push", "-q", "-u", "origin", "main"}},
+	})
+
+	res, err = d.PutGithubToken(h.ctx, "demo", "ghp_abc")
+	testhelp.Equal(t, "token2 err", err, nil)
+	testhelp.Equal(t, "token2 pushed", res.Pushed, false)
+	dcAccess(t, "token2 access", res.Access, github.Access{Checked: true, Reachable: false, Push: false, Reason: "401 bad credentials"})
+	testhelp.Equal(t, "runner calls 2", len(h.runner.Calls), 2)
+
+	_, err = d.PutGithubToken(h.ctx, "demo", "")
+	testhelp.Equal(t, "empty token", errors.Is(err, control.ErrBadInput), true)
+
+	_, err = d.PutGithubToken(h.ctx, "nope", "x")
+	testhelp.Equal(t, "unknown project", errors.Is(err, control.ErrUnknownProject), true)
+}
+
+// Example 9: a queued project waits for a slot; Tick starts it.
+func TestDaemonCoreExample9(t *testing.T) {
+	h := dcNew(t)
+	h.addProject("demo", "go", "https://github.com/acme/demo")
+	h.addProject("beta", "go", "https://github.com/acme/beta")
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan := dcPlan(t)
+
+	qv, err := d.PlanLoad("demo", plan)
+	testhelp.Equal(t, "demo planload err", err, nil)
+	testhelp.Equal(t, "demo planload state", qv.State, "running")
+	testhelp.Equal(t, "spawns", len(h.spawns), 1)
+
+	qv, err = d.PlanLoad("beta", plan)
+	testhelp.Equal(t, "beta planload err", err, nil)
+	testhelp.Equal(t, "beta planload", qv, control.QueueView{
+		State: "queued", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17",
+	})
+	testhelp.Equal(t, "spawns2", len(h.spawns), 1)
+	stb, err := d.Status("beta")
+	testhelp.Equal(t, "beta status err", err, nil)
+	testhelp.Equal(t, "beta state", stb.State, "idle")
+	testhelp.Equal(t, "beta queue", stb.Queue.State, "queued")
+
+	err = d.WaitOperator("demo", "id-2", "smoke", "stop", "")
+	testhelp.Equal(t, "wait err", err, nil)
+
+	d.Tick(h.ctx)
+
+	testhelp.Equal(t, "spawns3", len(h.spawns), 2)
+	testhelp.Equal(t, "second dir", h.spawns[1].Dir, filepath.Join(h.tmp, "projects", "beta"))
+	testhelp.Equal(t, "second sid", h.spawns[1].SessionID, "id-3")
+
+	stb, err = d.Status("beta")
+	testhelp.Equal(t, "beta status2 err", err, nil)
+	testhelp.Equal(t, "beta state2", stb.State, "busy")
+	testhelp.Equal(t, "beta phase", stb.Phase, "P17")
+}
+
+// Example 10: CreateProject bootstraps through morph init; duplicates and a
+// bad language are refused.
+func TestDaemonCoreExample10(t *testing.T) {
+	h := dcNew(t)
+	h.addDemo()
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = d.CreateProject(h.ctx, "demo", "go", "https://github.com/acme/demo")
+	testhelp.Equal(t, "demo err", errors.Is(err, control.ErrExists), true)
+	testhelp.Equal(t, "no runner call", len(h.runner.Calls), 0)
+
+	pv, err := d.CreateProject(h.ctx, "gamma", "python", "https://github.com/acme/gamma")
+	testhelp.Equal(t, "gamma err", err, nil)
+	if pv.CreatedAt.IsZero() {
+		t.Errorf("gamma CreatedAt is zero")
+	}
+	cpv := pv
+	cpv.CreatedAt = time.Time{}
+	testhelp.Equal(t, "gamma view", cpv, control.ProjectView{
+		Name: "gamma", Language: "python", RepoURL: "https://github.com/acme/gamma", State: "idle",
+	})
+
+	regp, err := h.reg.Get("gamma")
+	testhelp.Equal(t, "gamma get err", err, nil)
+	testhelp.Equal(t, "gamma dir", regp.Dir, filepath.Join(h.tmp, "projects", "gamma"))
+	testhelp.Equal(t, "gamma caps", regp.Caps, queue.Caps{ClaudeUSD: 25, Hours: 2, ExecutorUSD: 4})
+
+	calls := h.runner.Calls
+	if len(calls) == 0 {
+		t.Fatal("no runner call")
+	}
+	testhelp.Equal(t, "first call", calls[0], runner.Call{
+		Dir:  filepath.Join(h.tmp, "projects"),
+		Name: "/usr/local/bin/morph",
+		Args: []string{"init", "--root", filepath.Join(h.tmp, "projects", "gamma"), "--name", "gamma", "--language", "python"},
+	})
+
+	var names []string
+	for _, p := range d.Projects() {
+		names = append(names, p.Name, p.State)
+	}
+	testhelp.Equal(t, "projects", names, []string{"demo", "idle", "gamma", "idle"})
+
+	_, err = d.CreateProject(h.ctx, "delta", "cobol", "https://github.com/acme/delta")
+	testhelp.Equal(t, "delta err is", errors.Is(err, control.ErrBadInput), true)
+	testhelp.Equal(t, "delta err text", err.Error(), `bad input: bootstrap: unknown language "cobol"`)
+}
+
+// Example 11: a spawn that always fails drives the loop into a crash stop; a
+// Continue resets the restart budget and tries again.
+func TestDaemonCoreExample11(t *testing.T) {
+	h := dcNew(t)
+	h.addDemo()
+	h.spawnErr = errors.New("claude: start fork/exec /opt/claude/bin/claude: no such file or directory")
+	d, err := h.open()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	qv, err := d.PlanLoad("demo", dcPlan(t))
+	testhelp.Equal(t, "planload err", err, nil)
+	testhelp.Equal(t, "planload", qv, control.QueueView{
+		State: "stopped", Approved: "7b31dfe", Index: 0, Phases: 3, Current: "P17", Reason: "crash",
+	})
+
+	h.mu.Lock()
+	var sids []string
+	resumes := []bool{}
+	for _, l := range h.spawns {
+		sids = append(sids, l.SessionID)
+		resumes = append(resumes, l.Resume)
+	}
+	ns := len(h.spawns)
+	posts := append([][4]string(nil), h.posts...)
+	h.mu.Unlock()
+
+	testhelp.Equal(t, "sids", sids, []string{"id-1", "id-3", "id-5", "id-7"})
+	testhelp.Equal(t, "resumes", resumes, []bool{false, false, false, false})
+	testhelp.Equal(t, "spawns", ns, 4)
+
+	tok, err := h.reg.ReadSecret("demo", "session-token")
+	testhelp.Equal(t, "token err", err, nil)
+	testhelp.Equal(t, "token", tok, "id-8")
+
+	testhelp.Equal(t, "posts", posts, [][4]string{
+		{"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 1 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"},
+		{"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 2 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"},
+		{"demo", "watchdog", "P17: session exited (code -3), restarting", "restart 3 of 3 this hour · claude: start fork/exec /opt/claude/bin/claude: no such file or directory"},
+		{"demo", "stop", "P17: session keeps exiting", "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory"},
+	})
+
+	st, err := d.Status("demo")
+	testhelp.Equal(t, "status err", err, nil)
+	testhelp.Equal(t, "state", st.State, "waiting")
+	testhelp.Equal(t, "phase", st.Phase, "P17")
+	testhelp.Equal(t, "sid", st.SessionID, "id-7")
+	testhelp.Equal(t, "limits", st.LimitsUnknown, true)
+	if st.Stop == nil {
+		t.Fatalf("status stop nil")
+	}
+	testhelp.Equal(t, "stop kind", st.Stop.Kind, "crash")
+	testhelp.Equal(t, "stop reason", st.Stop.Reason, "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory")
+	if st.LastExit == nil {
+		t.Fatalf("status last exit nil")
+	}
+	if st.LastExit.At.IsZero() {
+		t.Errorf("last exit At is zero")
+	}
+	le := *st.LastExit
+	le.At = time.Time{}
+	testhelp.Equal(t, "last exit", le, control.Exit{
+		Code:     -3,
+		Stderr:   "claude: start fork/exec /opt/claude/bin/claude: no such file or directory",
+		Restarts: 3,
+	})
+
+	stop, err := d.StopCheck("demo")
+	testhelp.Equal(t, "stopcheck err", err, nil)
+	dcStop(t, "stopcheck", stop, control.Stop{
+		Kind:   "crash",
+		Phase:  "P17",
+		Reason: "exited 4 times within an hour (last code -3): claude: start fork/exec /opt/claude/bin/claude: no such file or directory",
+	})
+
+	ev, err := d.Events("demo", 0, 10)
+	testhelp.Equal(t, "events err", err, nil)
+	if len(ev.Entries) != 0 {
+		t.Errorf("events entries: got %d, want 0", len(ev.Entries))
+	}
+	testhelp.Equal(t, "events last", ev.Last, int64(0))
+
+	data, err := os.ReadFile(filepath.Join(h.tmp, "state", "demo", "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stt State
+	if err := json.Unmarshal(data, &stt); err != nil {
+		t.Fatal(err)
+	}
+	testhelp.Equal(t, "state loop state", stt.Loop.State, "waiting")
+	testhelp.Equal(t, "state restarts", len(stt.Loop.Restarts), 3)
+
+	err = d.Continue("demo")
+	testhelp.Equal(t, "continue err", err, nil)
+
+	h.mu.Lock()
+	var sids2 []string
+	for i := 4; i < len(h.spawns); i++ {
+		sids2 = append(sids2, h.spawns[i].SessionID)
+	}
+	ntot := len(h.spawns)
+	nposts := len(h.posts)
+	h.mu.Unlock()
+
+	testhelp.Equal(t, "continue sids", sids2, []string{"id-9", "id-11", "id-13", "id-15"})
+	testhelp.Equal(t, "spawns total", ntot, 8)
+
+	st, err = d.Status("demo")
+	testhelp.Equal(t, "status2 err", err, nil)
+	testhelp.Equal(t, "state2", st.State, "waiting")
+	if st.Stop == nil {
+		t.Fatalf("status2 stop nil")
+	}
+	testhelp.Equal(t, "stop2 kind", st.Stop.Kind, "crash")
+	testhelp.Equal(t, "posts total", nposts, 8)
+}
+```

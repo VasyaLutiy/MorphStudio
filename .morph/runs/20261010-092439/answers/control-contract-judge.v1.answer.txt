@@ -1,0 +1,210 @@
+```
+package control
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/github"
+	"morphstudio/internal/testhelp"
+	"morphstudio/session"
+)
+
+// ccMarshal marshals v and returns the JSON as a string, failing the test on error.
+func ccMarshal(t testing.TB, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
+}
+
+// TestControlContractExample1 covers example 1.
+func TestControlContractExample1(t *testing.T) {
+	st := Status{
+		State:     "busy",
+		Phase:     "P18",
+		Minutes:   37,
+		CostUSD:   1.92,
+		FiveHour:  22,
+		SevenDay:  60,
+		SessionID: "s-1",
+		Queue:     QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"},
+		Repo: github.Access{
+			Checked:   true,
+			Reachable: true,
+			Push:      true,
+			CheckedAt: time.Date(2026, time.October, 8, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	got := ccMarshal(t, st)
+	want := `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`
+	testhelp.Equal(t, "Status", got, want)
+	testhelp.Equal(t, "no stop key", strings.Contains(got, "stop"), false)
+}
+
+// TestControlContractExample2 covers example 2.
+func TestControlContractExample2(t *testing.T) {
+	st := Status{
+		State: "waiting",
+		Stop: &Stop{
+			Kind:   "not_pushed",
+			Phase:  "P17",
+			Reason: "not pushed: HEAD bbb222, origin/main aaa111",
+			At:     time.Date(2026, time.October, 8, 16, 0, 0, 0, time.UTC),
+		},
+	}
+	got := ccMarshal(t, st)
+	suffix := `,"stop":{"kind":"not_pushed","phase":"P17","reason":"not pushed: HEAD bbb222, origin/main aaa111","at":"2026-10-08T16:00:00Z"}}`
+	testhelp.Equal(t, "ends with stop", strings.HasSuffix(got, suffix), true)
+	testhelp.Equal(t, "no issue_url", strings.Contains(got, "issue_url"), false)
+}
+
+// TestControlContractExample3 covers example 3.
+func TestControlContractExample3(t *testing.T) {
+	q := Question{
+		RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+		Text:      "Which option do you want: A or B?",
+		Header:    "A or B",
+		Options:   []string{"Option A", "Option B"},
+		AskedAt:   time.Date(2026, time.October, 8, 13, 9, 8, 0, time.UTC),
+	}
+	got := ccMarshal(t, q)
+	want := `{"request_id":"9f4ffa22-2676-4391-bfd9-bd7d16c3866c","text":"Which option do you want: A or B?","header":"A or B","options":["Option A","Option B"],"asked_at":"2026-10-08T13:09:08Z"}`
+	testhelp.Equal(t, "Question", got, want)
+}
+
+// TestControlContractExample4 covers example 4.
+func TestControlContractExample4(t *testing.T) {
+	got := []int{Percent(0.22), Percent(0.6), Percent(0.005), Percent(1.3), Percent(-0.1), Percent(0.995)}
+	testhelp.Equal(t, "Percent", got, []int{22, 60, 1, 100, 0, 100})
+}
+
+// TestControlContractExample5 covers example 5.
+func TestControlContractExample5(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		code int
+		text string
+	}{
+		{"nil", nil, 200, ""},
+		{"unknown_project", ErrUnknownProject, 404, "unknown_project"},
+		{"bad_option wrapped", fmt.Errorf("wrap: %w", ErrBadOption), 400, "bad_option"},
+		{"bad_token", ErrBadToken, 401, "bad_session_token"},
+		{"exists", ErrExists, 409, "exists"},
+		{"no_session", ErrNoSession, 409, "no_session"},
+		{"busy", ErrBusy, 409, "busy"},
+		{"no_question", ErrNoQuestion, 409, "no_question"},
+		{"not_busy", ErrNotBusy, 409, "not_busy"},
+		{"not_waiting", ErrNotWaiting, 409, "not_waiting"},
+		{"bad_input", ErrBadInput, 400, "bad_input"},
+		{"other", errors.New("disk full"), 500, "internal"},
+	}
+	for _, c := range cases {
+		code, text := Code(c.err)
+		testhelp.Equal(t, "Code "+c.name, []any{code, text}, []any{c.code, c.text})
+	}
+}
+
+// TestControlContractExample6 covers example 6.
+func TestControlContractExample6(t *testing.T) {
+	testhelp.Equal(t, "ErrNoQuestion identity", ErrNoQuestion == session.ErrNoQuestion, true)
+	testhelp.Equal(t, "ErrBadOption identity", ErrBadOption == session.ErrBadOption, true)
+	testhelp.Equal(t, "ErrNotBusy identity", ErrNotBusy == session.ErrNotBusy, true)
+	testhelp.Equal(t, "Control method count", reflect.TypeOf((*Control)(nil)).Elem().NumMethod(), 17)
+}
+
+// TestControlContractExample7 covers example 7.
+func TestControlContractExample7(t *testing.T) {
+	u := Usage{
+		FiveHour:         22,
+		SevenDay:         60,
+		FiveHourResetsAt: 1791469200,
+		SevenDayResetsAt: 1791853200,
+		SessionCostUSD:   0.0064,
+		StretchCostUSD:   5.2609,
+		LimitsAt:         time.Date(2026, time.October, 8, 13, 9, 3, 0, time.UTC),
+	}
+	got := ccMarshal(t, u)
+	want := `{"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}`
+	testhelp.Equal(t, "Usage", got, want)
+}
+
+// TestControlContractExample8 covers example 8.
+func TestControlContractExample8(t *testing.T) {
+	idle := ccMarshal(t, Status{State: "idle", LimitsUnknown: true})
+	wantIdle := `{"state":"idle","phase":"","minutes":0,"cost_usd":0,"five_hour":null,"seven_day":null,"session_id":"","queue":{"state":"","approved":"","index":0,"phases":0,"current":"","reason":""},"repo":{"checked":false,"reachable":false,"push":false,"reason":"","checked_at":"0001-01-01T00:00:00Z"}}`
+	testhelp.Equal(t, "idle Status", idle, wantIdle)
+
+	busy := ccMarshal(t, Status{
+		State:         "busy",
+		Phase:         "S1",
+		Minutes:       2,
+		CostUSD:       0.03,
+		FiveHour:      77,
+		SevenDay:      72,
+		LimitsUnknown: true,
+		SessionID:     "s-9",
+	})
+	testhelp.Equal(t, "busy Status holds nulls", strings.Contains(busy, `,"five_hour":null,"seven_day":null,"session_id":"s-9",`), true)
+	testhelp.Equal(t, "busy Status begins", strings.HasPrefix(busy, `{"state":"busy","phase":"S1","minutes":2,"cost_usd":0.03,`), true)
+	testhelp.Equal(t, "busy Status hides 77", strings.Contains(busy, "77"), false)
+	testhelp.Equal(t, "busy Status hides 72", strings.Contains(busy, "72"), false)
+	testhelp.Equal(t, "busy Status no stop", strings.Contains(busy, `"stop"`), false)
+	testhelp.Equal(t, "busy Status no last_exit", strings.Contains(busy, `"last_exit"`), false)
+	testhelp.Equal(t, "busy Status no limits_unknown", strings.Contains(busy, "limits_unknown"), false)
+}
+
+// TestControlContractExample9 covers example 9.
+func TestControlContractExample9(t *testing.T) {
+	zero := ccMarshal(t, Usage{})
+	wantZero := `{"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0,"stretch_cost_usd":0,"limits_at":null}`
+	testhelp.Equal(t, "zero Usage", zero, wantZero)
+
+	cost := ccMarshal(t, Usage{SessionCostUSD: 0.5, StretchCostUSD: 1.25})
+	wantCost := `{"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0.5,"stretch_cost_usd":1.25,"limits_at":null}`
+	testhelp.Equal(t, "cost Usage", cost, wantCost)
+}
+
+// TestControlContractExample10 covers example 10.
+func TestControlContractExample10(t *testing.T) {
+	exit := Exit{
+		Code:     1,
+		At:       time.Date(2026, time.October, 9, 8, 14, 2, 0, time.UTC),
+		Stderr:   "Error: Invalid session ID. Must be a valid UUID.",
+		Restarts: 3,
+	}
+	gotExit := ccMarshal(t, exit)
+	wantExit := `{"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}`
+	testhelp.Equal(t, "Exit", gotExit, wantExit)
+
+	st := Status{
+		State:         "waiting",
+		Phase:         "S1",
+		LimitsUnknown: true,
+		Stop: &Stop{
+			Kind:   "crash",
+			Phase:  "S1",
+			Reason: "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.",
+			At:     time.Date(2026, time.October, 9, 8, 14, 2, 0, time.UTC),
+		},
+		LastExit: &Exit{
+			Code:     1,
+			At:       time.Date(2026, time.October, 9, 8, 14, 2, 0, time.UTC),
+			Stderr:   "Error: Invalid session ID. Must be a valid UUID.",
+			Restarts: 3,
+		},
+	}
+	got := ccMarshal(t, st)
+	suffix := `,"stop":{"kind":"crash","phase":"S1","reason":"exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.","at":"2026-10-09T08:14:02Z"},"last_exit":{"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}}`
+	testhelp.Equal(t, "Status ends with stop and last_exit", strings.HasSuffix(got, suffix), true)
+	testhelp.Equal(t, "Status holds null limits", strings.Contains(got, `"five_hour":null`), true)
+}
+```

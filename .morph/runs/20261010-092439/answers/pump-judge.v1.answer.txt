@@ -1,0 +1,863 @@
+```go
+package daemon
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"morphstudio/claude"
+	"morphstudio/control"
+	"morphstudio/eventlog"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/registry"
+	"morphstudio/runner"
+	"morphstudio/session"
+	"morphstudio/stream"
+	"morphstudio/supervisor"
+	"morphstudio/telegram"
+)
+
+// puProbe is the recorded claude stream the examples replay.
+const puProbe = "../tests/fixtures/stream/probe.jsonl"
+
+// puFailScript is the sh script of example 7: a claude that refuses its
+// session id, with no stdout, two stderr lines and exit 1 at once.
+const puFailScript = "#!/bin/sh\n" +
+	"echo 'Error: Invalid session ID. Must be a valid UUID.' >&2\n" +
+	"echo 'second line' >&2\n" +
+	"exit 1\n"
+
+// puHarness drives the daemon the examples describe: a registry with one
+// project, a scripted runner, a fake (or custom) spawn, a post recorder, a
+// clock and an id counter.
+type puHarness struct {
+	tmp   string
+	reg   *registry.Registry
+	rf    *runner.Fake
+	d     *Daemon
+	clock time.Time
+
+	mu       sync.Mutex
+	ids      int
+	launches []claude.Launch
+	procs    []*claude.Fake
+	posts    [][4]string
+}
+
+// puNewHarness builds the harness of example 1.
+func puNewHarness(t *testing.T) *puHarness {
+	t.Helper()
+	return puNewHarnessSpawn(t, nil)
+}
+
+// puNewHarnessSpawn builds the harness of example 1, with a custom spawn when
+// spawn is not nil (the launch is recorded either way).
+func puNewHarnessSpawn(t *testing.T, spawn func(context.Context, claude.Launch) (claude.Process, error)) *puHarness {
+	t.Helper()
+	h := &puHarness{
+		tmp:   t.TempDir(),
+		clock: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
+		ids:   1,
+	}
+	reg, err := registry.Open(filepath.Join(h.tmp, "state"))
+	if err != nil {
+		t.Fatalf("registry.Open: %v", err)
+	}
+	h.reg = reg
+	projectDir := filepath.Join(h.tmp, "projects", "demo")
+	measure, err := os.ReadFile("../tests/fixtures/git/measure.md")
+	if err != nil {
+		t.Fatalf("read measure: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectDir, "docs"), 0o755); err != nil {
+		t.Fatalf("mkdir docs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "docs", "MEASURE.md"), measure, 0o644); err != nil {
+		t.Fatalf("write measure: %v", err)
+	}
+	err = reg.Add(registry.Project{
+		Name:      "demo",
+		Language:  "go",
+		RepoURL:   "https://github.com/acme/demo",
+		Dir:       projectDir,
+		Caps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},
+		CreatedAt: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("registry.Add: %v", err)
+	}
+	h.rf = &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --abbrev-ref HEAD": {Stdout: "main\n"},
+		"git rev-parse HEAD":              {Stdout: "aaa111\n"},
+		"git rev-parse origin/main":       {Stdout: "aaa111\n"},
+		"git status --porcelain":          {Stdout: ""},
+	}}
+	deps := Deps{
+		Registry: h.reg,
+		Runner:   h.rf,
+		Spawn: func(ctx context.Context, l claude.Launch) (claude.Process, error) {
+			h.mu.Lock()
+			h.launches = append(h.launches, l)
+			h.mu.Unlock()
+			if spawn != nil {
+				return spawn(ctx, l)
+			}
+			p := claude.NewFake()
+			h.mu.Lock()
+			h.procs = append(h.procs, p)
+			h.mu.Unlock()
+			return p, nil
+		},
+		Post: func(ctx context.Context, project, kind, headline, numbers string) (telegram.Status, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.posts = append(h.posts, [4]string{project, kind, headline, numbers})
+			return telegram.Status{}, nil
+		},
+		GitHubDo: func(*http.Request) (*http.Response, error) { return nil, errors.New("no network") },
+		Now:      h.now,
+		NewID:    h.newID,
+		Config: Config{
+			ClaudeBin:   "/opt/claude/bin/claude",
+			MorphBin:    "/usr/local/bin/morph",
+			ProjectsDir: filepath.Join(h.tmp, "projects"),
+			MCPBaseURL:  "http://127.0.0.1:7181",
+			Defaults:    queue.Caps{ClaudeUSD: 25, Hours: 2, ExecutorUSD: 4},
+			MaxParallel: 1,
+			Loop: supervisor.Config{
+				MaxResumesPerHour: 3,
+				StallMinutes:      30,
+				StretchUSD:        30,
+				UsageAlertPercent: 50,
+			},
+		},
+	}
+	d, err := Open(context.Background(), deps)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	h.d = d
+	return h
+}
+
+// now is the harness clock: 2026-10-08T15:00:00Z, one second per call.
+func (h *puHarness) now() time.Time {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := h.clock
+	h.clock = h.clock.Add(time.Second)
+	return now
+}
+
+// newID returns id-1, id-2, ...
+func (h *puHarness) newID() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	id := fmt.Sprintf("id-%d", h.ids)
+	h.ids++
+	return id
+}
+
+func (h *puHarness) launchCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.launches)
+}
+
+func (h *puHarness) launchAt(i int) claude.Launch {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.launches[i]
+}
+
+func (h *puHarness) launchList() []claude.Launch {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]claude.Launch, len(h.launches))
+	copy(out, h.launches)
+	return out
+}
+
+func (h *puHarness) procAt(i int) *claude.Fake {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.procs[i]
+}
+
+// postsSince returns the posts recorded from index n on.
+func (h *puHarness) postsSince(n int) [][4]string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := [][4]string{}
+	for i := n; i < len(h.posts); i++ {
+		out = append(out, h.posts[i])
+	}
+	return out
+}
+
+// puPlan reads the three-phase plan.
+func puPlan(t *testing.T) queue.Plan {
+	t.Helper()
+	data, err := os.ReadFile("../tests/fixtures/plan/queue-3.json")
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	var p queue.Plan
+	if err := json.Unmarshal(data, &p); err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	return p
+}
+
+// puPoll runs f every 10 ms until it reports true or timeout passes.
+func puPoll(t *testing.T, what string, timeout time.Duration, f func() (any, bool)) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		last, ok := f()
+		if ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: timed out; last value %#v", what, last)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// puCompact returns the compacted bytes of b.
+func puCompact(t *testing.T, b []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, b); err != nil {
+		t.Fatalf("compact %q: %v", b, err)
+	}
+	return buf.Bytes()
+}
+
+// puCheckEntry compares one log entry's seq, dir and msg.
+func puCheckEntry(t *testing.T, what string, e eventlog.Entry, seq int, dir, msg string) {
+	t.Helper()
+	testhelp.Equal(t, what+" seq", int(e.Seq), seq)
+	testhelp.Equal(t, what+" dir", e.Dir, dir)
+	testhelp.Equal(t, what+" msg", string(e.Msg), msg)
+}
+
+// puReadLog decodes every line of a JSONL log file.
+func puReadLog(t *testing.T, path string) []eventlog.Entry {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	text := strings.TrimSuffix(string(data), "\n")
+	if text == "" {
+		return []eventlog.Entry{}
+	}
+	entries := []eventlog.Entry{}
+	for _, line := range strings.Split(text, "\n") {
+		var e eventlog.Entry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+// puExample1Setup performs the steps of example 1: plan load, the four emitted
+// lines 4..7 of the probe, and the wait for the turn's cost.
+func puExample1Setup(t *testing.T) *puHarness {
+	t.Helper()
+	h := puNewHarness(t)
+	if _, err := h.d.PlanLoad("demo", puPlan(t)); err != nil {
+		t.Fatalf("PlanLoad: %v", err)
+	}
+	fp := h.procAt(0)
+	for _, n := range []int{4, 5, 6, 7} {
+		_, msg := testhelp.ProbeLine(t, puProbe, n)
+		fp.Emit(msg)
+	}
+	puPoll(t, "example 1 turn", 2*time.Second, func() (any, bool) {
+		st, err := h.d.Status("demo")
+		if err != nil {
+			return err, false
+		}
+		return st.CostUSD, st.CostUSD > 0
+	})
+	return h
+}
+
+// TestPumpExample1 is pump example 1: the first turn of P17 is folded into the
+// log, the machine, the loop and the outward status.
+func TestPumpExample1(t *testing.T) {
+	h := puNewHarness(t)
+	d := h.d
+	qv, err := d.PlanLoad("demo", puPlan(t))
+	if err != nil {
+		t.Fatalf("PlanLoad: %v", err)
+	}
+	testhelp.Equal(t, "queue view", qv, control.QueueView{
+		State:    "running",
+		Approved: "7b31dfe",
+		Index:    0,
+		Phases:   3,
+		Current:  "P17",
+	})
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "phase after PlanLoad", st.Phase, "P17")
+	testhelp.Equal(t, "session after PlanLoad", st.SessionID, "id-1")
+	token, err := h.reg.ReadSecret("demo", "session-token")
+	if err != nil {
+		t.Fatalf("ReadSecret: %v", err)
+	}
+	testhelp.Equal(t, "session token", token, "id-2")
+	testhelp.Equal(t, "posts after PlanLoad", h.postsSince(0), [][4]string{
+		{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"},
+	})
+
+	fp := h.procAt(0)
+	for _, n := range []int{4, 5, 6, 7} {
+		_, msg := testhelp.ProbeLine(t, puProbe, n)
+		fp.Emit(msg)
+	}
+	puPoll(t, "turn cost", 2*time.Second, func() (any, bool) {
+		st, err := d.Status("demo")
+		if err != nil {
+			return err, false
+		}
+		return st.CostUSD, st.CostUSD > 0
+	})
+
+	st, err = d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "ready")
+	testhelp.Equal(t, "phase", st.Phase, "P17")
+	testhelp.Equal(t, "cost", st.CostUSD, 0.0021784900000000004)
+	testhelp.Equal(t, "five hour", st.FiveHour, 22)
+	testhelp.Equal(t, "seven day", st.SevenDay, 60)
+	testhelp.Equal(t, "session id", st.SessionID, "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e")
+
+	evs, err := d.Events("demo", 0, 10)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	testhelp.Equal(t, "events last", evs.Last, int64(5))
+	if !testhelp.Equal(t, "event count", len(evs.Entries), 5) {
+		t.Fatal("event count")
+	}
+	puCheckEntry(t, "entry 1", evs.Entries[0], 1, "in",
+		string(puCompact(t, stream.User("/morph-orchestrator P17"))))
+	for i, n := range []int{4, 5, 6, 7} {
+		_, msg := testhelp.ProbeLine(t, puProbe, n)
+		puCheckEntry(t, fmt.Sprintf("entry %d", i+2), evs.Entries[i+1], i+2, "out",
+			string(puCompact(t, msg)))
+	}
+
+	testhelp.Equal(t, "posts after the start", h.postsSince(1), [][4]string{
+		{"demo", "info", "P17: weekly usage 60%", "resets 2026-10-13T01:00:00Z"},
+		{"demo", "idle", "P17 turn ended: PONG", "success · turns 1 · $0.0022"},
+	})
+
+	u, err := d.Usage("demo")
+	if err != nil {
+		t.Fatalf("Usage: %v", err)
+	}
+	if u.LimitsAt.IsZero() {
+		t.Errorf("usage limits_at is zero")
+	}
+	testhelp.Equal(t, "usage", u, control.Usage{
+		FiveHour:         22,
+		SevenDay:         60,
+		FiveHourResetsAt: 1791469200,
+		SevenDayResetsAt: 1791853200,
+		SessionCostUSD:   0.0021784900000000004,
+		StretchCostUSD:   0.0021784900000000004,
+		LimitsAt:         u.LimitsAt,
+	})
+}
+
+// TestPumpExample2 is pump example 2: an AskUserQuestion is pending, the
+// operator answers it, and the answer line goes back to claude.
+func TestPumpExample2(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	_, msg := testhelp.ProbeLine(t, puProbe, 27)
+	fp.Emit(msg)
+
+	var q *control.Question
+	puPoll(t, "pending question", 2*time.Second, func() (any, bool) {
+		v, err := d.Pending("demo")
+		if err != nil {
+			return err, false
+		}
+		q = v
+		return v, v != nil
+	})
+	if q == nil {
+		t.Fatal("no pending question")
+	}
+	testhelp.Equal(t, "request id", q.RequestID, "9f4ffa22-2676-4391-bfd9-bd7d16c3866c")
+	testhelp.Equal(t, "question text", q.Text, "Which option do you want: A or B?")
+	testhelp.Equal(t, "question header", q.Header, "A or B")
+	testhelp.Equal(t, "question options", q.Options, []string{"Option A", "Option B"})
+	if q.AskedAt.IsZero() {
+		t.Errorf("question asked at is zero")
+	}
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "question")
+	testhelp.Equal(t, "posts", h.postsSince(3), [][4]string{
+		{"demo", "ask", "Which option do you want: A or B?", "1 Option A · 2 Option B"},
+	})
+
+	if err := d.Answer("demo", 2); err != nil {
+		t.Fatalf("Answer: %v", err)
+	}
+	written := fp.Written()
+	if len(written) == 0 {
+		t.Fatal("nothing written")
+	}
+	_, wantMsg := testhelp.ProbeLine(t, puProbe, 28)
+	var gotAny, wantAny any
+	if err := json.Unmarshal(written[len(written)-1], &gotAny); err != nil {
+		t.Fatalf("answer line: %v", err)
+	}
+	if err := json.Unmarshal(wantMsg, &wantAny); err != nil {
+		t.Fatalf("probe line 28: %v", err)
+	}
+	testhelp.Equal(t, "answer line", gotAny, wantAny)
+
+	evs, err := d.Events("demo", 0, 100)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if len(evs.Entries) == 0 {
+		t.Fatal("no events")
+	}
+	testhelp.Equal(t, "last entry dir", evs.Entries[len(evs.Entries)-1].Dir, "in")
+
+	st, err = d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state after answer", st.State, "busy")
+}
+
+// TestPumpExample3 is pump example 3: an order lands in the session, and a
+// can_use_tool request for a tool other than AskUserQuestion is allowed.
+func TestPumpExample3(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	res, err := d.Order("demo", "next step")
+	testhelp.Equal(t, "order result", res, session.OrderResult{Sent: true})
+	testhelp.Equal(t, "order error", err, nil)
+
+	fp.Emit([]byte(`{"type":"control_request","request_id":"r-7","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_x"}}`))
+	puPoll(t, "allowed line", 2*time.Second, func() (any, bool) {
+		evs, err := d.Events("demo", 0, 100)
+		if err != nil {
+			return err, false
+		}
+		return evs.Last, evs.Last == 8
+	})
+
+	wantAllow, err := stream.Allow("r-7", json.RawMessage(`{"command":"ls"}`))
+	if err != nil {
+		t.Fatalf("stream.Allow: %v", err)
+	}
+	written := fp.Written()
+	if len(written) == 0 {
+		t.Fatal("nothing written")
+	}
+	testhelp.Equal(t, "allow line", written[len(written)-1], wantAllow)
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "busy")
+}
+
+// TestPumpExample4 is pump example 4: a line that is not JSON and a system
+// line are logged without moving the machine.
+func TestPumpExample4(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	fp.Emit([]byte("not json"))
+	_, msg := testhelp.ProbeLine(t, puProbe, 10)
+	fp.Emit(msg)
+
+	puPoll(t, "two log lines", 2*time.Second, func() (any, bool) {
+		evs, err := d.Events("demo", 5, 100)
+		if err != nil {
+			return err, false
+		}
+		return evs.Last, evs.Last == 7
+	})
+
+	evs, err := d.Events("demo", 5, 100)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if !testhelp.Equal(t, "new entries", len(evs.Entries), 2) {
+		t.Fatal("new entry count")
+	}
+	puCheckEntry(t, "entry 6", evs.Entries[0], 6, "out", `"not json"`)
+	puCheckEntry(t, "entry 7", evs.Entries[1], 7, "out", string(puCompact(t, msg)))
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "ready")
+	testhelp.Equal(t, "posts", h.postsSince(3), [][4]string{})
+}
+
+// TestPumpExample5 is pump example 5: the session exits 4 on a dirty tree and
+// the guard resumes it in place.
+func TestPumpExample5(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	h.rf.Script["git status --porcelain"] = runner.Result{Stdout: " M notes.md\n"}
+	fp.Finish(4)
+
+	puPoll(t, "resume spawn", 2*time.Second, func() (any, bool) {
+		n := h.launchCount()
+		return n, n == 2
+	})
+	d.Wait("demo")
+
+	testhelp.Equal(t, "posts", h.postsSince(3), [][4]string{
+		{"demo", "watchdog", "P17: session exited (code 4), restarting", "restart 1 of 3 this hour"},
+		{"demo", "start", "P17 resumed", "session id-1 · dirty tree (1 paths)"},
+	})
+
+	l := h.launchAt(1)
+	testhelp.Equal(t, "resume session", l.SessionID, "id-1")
+	testhelp.Equal(t, "resume", l.Resume, true)
+	testhelp.Equal(t, "resume budget", l.BudgetUSD, 30.0)
+	testhelp.Equal(t, "resume mcp config", l.MCPConfigPath, filepath.Join(h.tmp, "state", "demo", "morphd-mcp.json"))
+
+	token, err := h.reg.ReadSecret("demo", "session-token")
+	if err != nil {
+		t.Fatalf("ReadSecret: %v", err)
+	}
+	testhelp.Equal(t, "session token", token, "id-3")
+
+	var state State
+	if err := h.reg.LoadState("demo", &state); err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	testhelp.Equal(t, "restarts", len(state.Loop.Restarts), 1)
+	testhelp.Equal(t, "loop state", state.Loop.State, "running")
+	if state.Loop.LastExit == nil {
+		t.Fatal("state has no last exit")
+	}
+	le := *state.Loop.LastExit
+	if le.At.IsZero() {
+		t.Errorf("state last exit at is zero")
+	}
+	testhelp.Equal(t, "last exit", le, control.Exit{Code: 4, Stderr: "", Restarts: 1, At: le.At})
+
+	entries := puReadLog(t, filepath.Join(h.tmp, "state", "demo", "sessions", "id-1.jsonl"))
+	if !testhelp.Equal(t, "log lines", len(entries), 6) {
+		t.Fatal("log line count")
+	}
+	puCheckEntry(t, "exit entry", entries[5], 6, "exit", `{"code":4,"stderr":""}`)
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "ready")
+	testhelp.Equal(t, "session id", st.SessionID, "id-1")
+	if st.LastExit == nil {
+		t.Fatal("status has no last exit")
+	}
+	le2 := *st.LastExit
+	if le2.At.IsZero() {
+		t.Errorf("status last exit at is zero")
+	}
+	testhelp.Equal(t, "status last exit", le2, control.Exit{Code: 4, Stderr: "", Restarts: 1, At: le2.At})
+}
+
+// TestPumpExample6 is pump example 6: a forced restart kills the session and
+// starts its phase fresh, and the killed process's exit changes nothing.
+func TestPumpExample6(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	if err := d.Restart("demo", true); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	fp.Finish(0)
+	d.Wait("demo")
+
+	testhelp.Equal(t, "posts", h.postsSince(3), [][4]string{
+		{"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"},
+	})
+
+	l := h.launchAt(1)
+	testhelp.Equal(t, "restart session", l.SessionID, "id-3")
+	testhelp.Equal(t, "restart resume", l.Resume, false)
+	testhelp.Equal(t, "spawn count", h.launchCount(), 2)
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "session id", st.SessionID, "id-3")
+	testhelp.Equal(t, "state", st.State, "busy")
+	if st.LastExit != nil {
+		t.Errorf("last exit is %#v, want nil", st.LastExit)
+	}
+
+	entries := puReadLog(t, filepath.Join(h.tmp, "state", "demo", "sessions", "id-1.jsonl"))
+	if !testhelp.Equal(t, "old log lines", len(entries), 6) {
+		t.Fatal("old log line count")
+	}
+	puCheckEntry(t, "old exit entry", entries[5], 6, "exit", `{"code":-1,"stderr":""}`)
+
+	evs, err := d.Events("demo", 0, 10)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if !testhelp.Equal(t, "new log entries", len(evs.Entries), 1) {
+		t.Fatal("new log entry count")
+	}
+	testhelp.Equal(t, "new entry dir", evs.Entries[0].Dir, "in")
+}
+
+// TestPumpExample7 is pump example 7: a real claude that refuses its session id
+// exits at once, the guard restarts three times and then stops the phase.
+func TestPumpExample7(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "claude.sh")
+	if err := os.WriteFile(script, []byte(puFailScript), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	h := puNewHarnessSpawn(t, func(ctx context.Context, l claude.Launch) (claude.Process, error) {
+		return claude.Start(ctx, script, claude.Args(l), l.Dir, nil)
+	})
+	d := h.d
+	if _, err := d.PlanLoad("demo", puPlan(t)); err != nil {
+		t.Fatalf("PlanLoad: %v", err)
+	}
+
+	puPoll(t, "waiting after crashes", 5*time.Second, func() (any, bool) {
+		st, err := d.Status("demo")
+		if err != nil {
+			return err, false
+		}
+		return st.State, st.State == "waiting"
+	})
+	d.Wait("demo")
+
+	launches := h.launchList()
+	if !testhelp.Equal(t, "launch count", len(launches), 4) {
+		t.Fatal("launch count")
+	}
+	for i, want := range []string{"id-1", "id-3", "id-5", "id-7"} {
+		testhelp.Equal(t, fmt.Sprintf("launch %d session", i+1), launches[i].SessionID, want)
+		testhelp.Equal(t, fmt.Sprintf("launch %d resume", i+1), launches[i].Resume, false)
+	}
+	time.Sleep(200 * time.Millisecond)
+	testhelp.Equal(t, "launch count after sleep", h.launchCount(), 4)
+
+	testhelp.Equal(t, "posts", h.postsSince(0), [][4]string{
+		{"demo", "start", "P17 started", "session id-1 · cap $30 · 3 h"},
+		{"demo", "watchdog", "P17: session exited (code 1), restarting", "restart 1 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."},
+		{"demo", "start", "P17 started", "session id-3 · cap $30 · 3 h"},
+		{"demo", "watchdog", "P17: session exited (code 1), restarting", "restart 2 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."},
+		{"demo", "start", "P17 started", "session id-5 · cap $30 · 3 h"},
+		{"demo", "watchdog", "P17: session exited (code 1), restarting", "restart 3 of 3 this hour · Error: Invalid session ID. Must be a valid UUID."},
+		{"demo", "start", "P17 started", "session id-7 · cap $30 · 3 h"},
+		{"demo", "stop", "P17: session keeps exiting", "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID."},
+	})
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "waiting")
+	testhelp.Equal(t, "phase", st.Phase, "P17")
+	testhelp.Equal(t, "session id", st.SessionID, "id-7")
+	testhelp.Equal(t, "limits unknown", st.LimitsUnknown, true)
+	if st.Stop == nil {
+		t.Fatal("no stop")
+	}
+	testhelp.Equal(t, "stop kind", st.Stop.Kind, "crash")
+	testhelp.Equal(t, "stop reason", st.Stop.Reason, "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.")
+	if st.LastExit == nil {
+		t.Fatal("status has no last exit")
+	}
+	le := *st.LastExit
+	if le.At.IsZero() {
+		t.Errorf("last exit at is zero")
+	}
+	testhelp.Equal(t, "last exit", le, control.Exit{
+		Code:     1,
+		Stderr:   "Error: Invalid session ID. Must be a valid UUID.",
+		Restarts: 3,
+		At:       le.At,
+	})
+
+	evs, err := d.Events("demo", 0, 10)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if !testhelp.Equal(t, "entries", len(evs.Entries), 2) {
+		t.Fatal("entry count")
+	}
+	testhelp.Equal(t, "entry 1 dir", evs.Entries[0].Dir, "in")
+	puCheckEntry(t, "entry 2", evs.Entries[1], 2, "exit",
+		`{"code":1,"stderr":"Error: Invalid session ID. Must be a valid UUID.\nsecond line"}`)
+
+	for _, name := range []string{"id-1.jsonl", "id-3.jsonl", "id-5.jsonl"} {
+		entries := puReadLog(t, filepath.Join(h.tmp, "state", "demo", "sessions", name))
+		testhelp.Equal(t, name+" lines", len(entries), 2)
+	}
+
+	if _, err := d.Order("demo", "x"); !errors.Is(err, control.ErrNoSession) {
+		t.Errorf("Order: got %v, want ErrNoSession", err)
+	}
+}
+
+// TestPumpExample8 is pump example 8: a session waiting for the operator exits
+// and the operator continues the plan.
+func TestPumpExample8(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	err := d.WaitOperator("demo", "id-2", "smoke", "P17 smoke: run morphd status", "")
+	testhelp.Equal(t, "wait_operator error", err, nil)
+
+	fp.Finish(0)
+	puPoll(t, "exit line", 2*time.Second, func() (any, bool) {
+		evs, err := d.Events("demo", 0, 100)
+		if err != nil {
+			return err, false
+		}
+		return evs.Last, evs.Last == 6
+	})
+	d.Wait("demo")
+
+	testhelp.Equal(t, "posts", h.postsSince(3), [][4]string{
+		{"demo", "stop", "P17: wait_operator smoke", "P17 smoke: run morphd status"},
+	})
+	testhelp.Equal(t, "spawn count", h.launchCount(), 1)
+
+	evs, err := d.Events("demo", 0, 100)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	if len(evs.Entries) == 0 {
+		t.Fatal("no events")
+	}
+	puCheckEntry(t, "exit entry", evs.Entries[len(evs.Entries)-1], 6, "exit", `{"code":0,"stderr":""}`)
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "waiting")
+	if st.Stop == nil {
+		t.Fatal("no stop")
+	}
+	testhelp.Equal(t, "stop kind", st.Stop.Kind, "smoke")
+	if st.LastExit != nil {
+		t.Errorf("last exit is %#v, want nil", st.LastExit)
+	}
+
+	var state State
+	if err := h.reg.LoadState("demo", &state); err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	testhelp.Equal(t, "restarts", len(state.Loop.Restarts), 0)
+
+	if _, err := d.Order("demo", "x"); !errors.Is(err, control.ErrNoSession) {
+		t.Errorf("Order: got %v, want ErrNoSession", err)
+	}
+
+	if err := d.Continue("demo"); err != nil {
+		t.Fatalf("Continue: %v", err)
+	}
+	if !testhelp.Equal(t, "spawn count after continue", h.launchCount(), 2) {
+		t.Fatal("spawn count")
+	}
+	l := h.launchAt(1)
+	testhelp.Equal(t, "continue session", l.SessionID, "id-3")
+
+	st, err = d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state after continue", st.State, "busy")
+}
+
+// TestPumpExample9 is pump example 9: a spent usage window pauses the loop and
+// the next tick resumes it.
+func TestPumpExample9(t *testing.T) {
+	h := puExample1Setup(t)
+	d := h.d
+	fp := h.procAt(0)
+
+	fp.Emit([]byte(`{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"five_hour":{"utilization":1.0,"resetsAt":1791469200},"seven_day":{"utilization":0.6,"resetsAt":1791853200}}}}`))
+	puPoll(t, "paused", 2*time.Second, func() (any, bool) {
+		st, err := d.Status("demo")
+		if err != nil {
+			return err, false
+		}
+		return st.State, st.State == "paused"
+	})
+
+	d.Tick(context.Background())
+
+	written := fp.Written()
+	if len(written) == 0 {
+		t.Fatal("nothing written")
+	}
+	testhelp.Equal(t, "continue line", written[len(written)-1],
+		stream.User("Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."))
+
+	st, err := d.Status("demo")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	testhelp.Equal(t, "state", st.State, "busy")
+
+	testhelp.Equal(t, "posts", h.postsSince(3), [][4]string{
+		{"demo", "watchdog", "P17: usage limit, paused", "until 2026-10-08T14:20:00Z"},
+		{"demo", "watchdog", "P17: resumed after the limit", ""},
+	})
+}
+```

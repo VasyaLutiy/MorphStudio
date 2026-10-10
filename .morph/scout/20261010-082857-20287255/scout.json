@@ -1,0 +1,394 @@
+{
+  "schema": 1,
+  "scoutId": "20261010-082857-20287255",
+  "createdAt": "2026-10-10T08:28:57.524Z",
+  "root": "/home/john/Documents/Work2026/MorphStudio",
+  "ref": "c23dc29b0c0bc3d03707fc7869ab1d9d39e2b6a9",
+  "question": "Fix smoke-2 defects D1-D3 by re-generating 6 built Functions from the record (contour.yaml at cc46ed1): Control Contract (control/control.go: Status gains LimitsUnknown and LastExit *Exit; five_hour/seven_day marshal null until the first rate_limit_event), Phase Loop and Runtime Guard (supervisor/loop.go, supervisor/guard.go: Loop.Resumes renamed Restarts; Exited(code, stderr, now, cfg) counts every exit before phase_done/wait_operator as a crash, <= N per hour then a \"crash\" stop), Daemon Core (daemon/daemon.go), Pump (daemon/pump.go: log the exit with stderr, no restart storm), Config And Main (cmd/morphd: newID is a UUID v4).\nThe contract is the record's groups control, supervisor, daemon, pump, cmd. Packages outside control, supervisor, daemon and cmd/morphd do not change.\nOut of scope: api, mcpserver, every other package; the record itself.\nName every test and caller that relies on the old behaviour: Loop.Resumes, Exited(code, now, cfg) with no stderr, Status.FiveHour/SevenDay marshalled as 0, the 32-hex session id.\n",
+  "questionSha256": "2028725523c24a27d06cccd5984819ca4bfefa4925137993b1f6ffdb4a5d9ba7",
+  "protocolSha256": "9732611e1757d7319ab0c9e29a5235622796da57d618e080e6c13864d2a6accc",
+  "processor": "ds",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "seed": {
+    "source": "primer",
+    "path": null,
+    "files": [
+      "cmd/morphd/config.go",
+      "cmd/morphd/main.go",
+      "daemon/pump.go",
+      "daemon/daemon.go",
+      "mcpserver/mount.go",
+      "mcpserver/session.go"
+    ],
+    "chars": 680
+  },
+  "budgets": {
+    "calls": 30,
+    "reads": 12,
+    "chars": 120000,
+    "rounds": 40,
+    "deadlineMs": 1800000
+  },
+  "caps": {
+    "readLines": 400,
+    "grepHits": 200,
+    "grepLineChars": 300,
+    "listEntries": 300,
+    "grepSkip": [
+      ".morph",
+      "decks"
+    ]
+  },
+  "status": "no_answer",
+  "answer": null,
+  "stopReason": "no answer: the model did not answer after the budget closed: the character budget is spent (120043 of 120000 chars)",
+  "spent": {
+    "calls": 18,
+    "reads": 7,
+    "chars": 120086,
+    "rounds": 26
+  },
+  "elapsedMs": 198101,
+  "usage": {
+    "requests": 26,
+    "inputTokens": 493688,
+    "outputTokens": 7882,
+    "cost": 0.03650112
+  },
+  "journal": [
+    {
+      "round": 1,
+      "turn": "malformed",
+      "action": null,
+      "chars": 203,
+      "error": "6 actions in one turn (LIST, LIST, LIST, LIST, LIST, READ): send one per turn",
+      "inputTokens": 1027,
+      "outputTokens": 159,
+      "cost": 0.0004989
+    },
+    {
+      "round": 2,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "cmd"
+      },
+      "chars": 36,
+      "error": null,
+      "inputTokens": 1124,
+      "outputTokens": 90,
+      "cost": 0.00016872
+    },
+    {
+      "round": 3,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "cmd/morphd"
+      },
+      "chars": 69,
+      "error": null,
+      "inputTokens": 1145,
+      "outputTokens": 11,
+      "cost": 0.00008022
+    },
+    {
+      "round": 4,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 1,
+        "to": 120
+      },
+      "chars": 11050,
+      "error": null,
+      "inputTokens": 1175,
+      "outputTokens": 26,
+      "cost": 0.00010722
+    },
+    {
+      "round": 5,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "Resumes",
+        "path": "."
+      },
+      "chars": 9015,
+      "error": null,
+      "inputTokens": 4239,
+      "outputTokens": 362,
+      "cost": 0.00142962
+    },
+    {
+      "round": 6,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "supervisor"
+      },
+      "chars": 89,
+      "error": null,
+      "inputTokens": 7098,
+      "outputTokens": 154,
+      "cost": 0.00120828
+    },
+    {
+      "round": 7,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 900,
+        "to": 1000
+      },
+      "chars": 13941,
+      "error": null,
+      "inputTokens": 7128,
+      "outputTokens": 76,
+      "cost": 0.00057072
+    },
+    {
+      "round": 8,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, LIST): send one per turn",
+      "inputTokens": 11278,
+      "outputTokens": 481,
+      "cost": 0.0020598
+    },
+    {
+      "round": 9,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "/Exited\\(/",
+        "path": ""
+      },
+      "chars": 51,
+      "error": null,
+      "inputTokens": 11352,
+      "outputTokens": 32,
+      "cost": 0.00040272
+    },
+    {
+      "round": 10,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 11381,
+      "outputTokens": 48,
+      "cost": 0.00043062
+    },
+    {
+      "round": 11,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "/Exited/",
+        "path": ""
+      },
+      "chars": 49,
+      "error": null,
+      "inputTokens": 11471,
+      "outputTokens": 7,
+      "cost": 0.00040842
+    },
+    {
+      "round": 12,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "Exited",
+        "path": ""
+      },
+      "chars": 11795,
+      "error": null,
+      "inputTokens": 11498,
+      "outputTokens": 41,
+      "cost": 0.00042276
+    },
+    {
+      "round": 13,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (LIST, READ): send one per turn",
+      "inputTokens": 15166,
+      "outputTokens": 980,
+      "cost": 0.00268452
+    },
+    {
+      "round": 14,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 1040,
+        "to": 1135
+      },
+      "chars": 16440,
+      "error": null,
+      "inputTokens": 15241,
+      "outputTokens": 257,
+      "cost": 0.00080262
+    },
+    {
+      "round": 15,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/control.go",
+        "from": 1,
+        "to": 200
+      },
+      "chars": 5980,
+      "error": null,
+      "inputTokens": 20311,
+      "outputTokens": 101,
+      "cost": 0.00234378
+    },
+    {
+      "round": 16,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (READ, READ): send one per turn",
+      "inputTokens": 22217,
+      "outputTokens": 66,
+      "cost": 0.00149118
+    },
+    {
+      "round": 17,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 1130,
+        "to": 1320
+      },
+      "chars": 33367,
+      "error": null,
+      "inputTokens": 22297,
+      "outputTokens": 10,
+      "cost": 0.00089502
+    },
+    {
+      "round": 18,
+      "turn": "malformed",
+      "action": null,
+      "chars": 234,
+      "error": "11 actions in one turn (LIST, READ, READ, GREP, READ, READ, LIST, LIST, GREP, GREP, GREP): send one per turn",
+      "inputTokens": 32033,
+      "outputTokens": 1141,
+      "cost": 0.00517302
+    },
+    {
+      "round": 19,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "control"
+      },
+      "chars": 60,
+      "error": null,
+      "inputTokens": 32476,
+      "outputTokens": 3,
+      "cost": 0.00117552
+    },
+    {
+      "round": 20,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/main.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3411,
+      "error": null,
+      "inputTokens": 32497,
+      "outputTokens": 38,
+      "cost": 0.0011547
+    },
+    {
+      "round": 21,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 1590,
+        "to": 1683
+      },
+      "chars": 10927,
+      "error": null,
+      "inputTokens": 33795,
+      "outputTokens": 92,
+      "cost": 0.00150522
+    },
+    {
+      "round": 22,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "daemon"
+      },
+      "chars": 87,
+      "error": null,
+      "inputTokens": 37304,
+      "outputTokens": 789,
+      "cost": 0.00301416
+    },
+    {
+      "round": 23,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 37340,
+      "outputTokens": 857,
+      "cost": 0.00217344
+    },
+    {
+      "round": 24,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "/LimitsUnknown/",
+        "path": ""
+      },
+      "chars": 56,
+      "error": null,
+      "inputTokens": 37438,
+      "outputTokens": 21,
+      "cost": 0.00130332
+    },
+    {
+      "round": 25,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "LimitsUnknown",
+        "path": ""
+      },
+      "chars": 2288,
+      "error": null,
+      "inputTokens": 37467,
+      "outputTokens": 21,
+      "cost": 0.00120834
+    },
+    {
+      "round": 26,
+      "turn": "malformed",
+      "action": null,
+      "chars": 0,
+      "error": "ANSWER: the JSON does not parse",
+      "inputTokens": 38190,
+      "outputTokens": 2019,
+      "cost": 0.00378828
+    }
+  ]
+}

@@ -1,0 +1,309 @@
+{
+  "schema": 1,
+  "scoutId": "20261010-083437-3f8f2867",
+  "createdAt": "2026-10-10T08:34:37.528Z",
+  "root": "/home/john/Documents/Work2026/MorphStudio",
+  "ref": "c23dc29b0c0bc3d03707fc7869ab1d9d39e2b6a9",
+  "question": "Re-generate 6 built Go files for smoke-2 defects (contract known, do not read contour.yaml): control/control.go (Status gains LimitsUnknown + LastExit *Exit, five_hour/seven_day marshal null while LimitsUnknown; Usage limits null while LimitsAt zero), supervisor/loop.go + supervisor/guard.go (Loop.Resumes renamed Restarts; Exited(code, stderr, now, cfg) counts every exit before phase_done/wait_operator, then a \"crash\" stop), daemon/daemon.go and daemon/pump.go (pass stderr to Exited, log the exit, no restart storm), cmd/morphd/main.go (newID returns a UUID v4).\nPackages outside control, supervisor, daemon, cmd/morphd do not change. Out of scope: api, mcpserver, every other package.\nName every test and caller that relies on the old behaviour: Loop.Resumes, Exited(code, now, cfg) with no stderr, Status.FiveHour/SevenDay marshalled as 0, the 32-hex session id.\n",
+  "questionSha256": "3f8f2867cfbaa9656953f2ada2eb9916b1bd9294ebbb50b75195c18d9d261c85",
+  "protocolSha256": "9732611e1757d7319ab0c9e29a5235622796da57d618e080e6c13864d2a6accc",
+  "processor": "ds",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "seed": {
+    "source": "file",
+    "path": "/tmp/P7b/seed.json",
+    "files": [
+      "supervisor/guard.go",
+      "supervisor/loop.go",
+      "daemon/pump.go",
+      "control/control.go",
+      "cmd/morphd/main.go"
+    ],
+    "chars": 415
+  },
+  "budgets": {
+    "calls": 30,
+    "reads": 12,
+    "chars": 120000,
+    "rounds": 40,
+    "deadlineMs": 1800000
+  },
+  "caps": {
+    "readLines": 400,
+    "grepHits": 200,
+    "grepLineChars": 300,
+    "listEntries": 300,
+    "grepSkip": [
+      ".morph",
+      "decks"
+    ]
+  },
+  "status": "ok",
+  "answer": {
+    "targets": [
+      "control/control.go",
+      "supervisor/loop.go",
+      "supervisor/guard.go",
+      "daemon/daemon.go",
+      "daemon/pump.go",
+      "cmd/morphd/main.go",
+      "supervisor/guard_examples_test.go",
+      "supervisor/loop_examples_test.go",
+      "daemon/daemon_examples_test.go",
+      "daemon/pump_examples_test.go",
+      "control/control_examples_test.go",
+      "cmd/morphd/config_examples_test.go"
+    ],
+    "context_slice": [
+      "stream/parse.go"
+    ],
+    "reasoning": "The six built files carry the API change: control.Status gains LimitsUnknown/LastExit and Usage must marshal limits null while LimitsAt is zero (control/control.go), supervisor.Loop.Resumes becomes Restarts with json \"restarts\" in loop.go/guard.go and Exited widens to (code, stderr, now, cfg) counting every exit before phase_done/wait_operator and then taking the crash stop, daemon/daemon.go and daemon/pump.go are its callers (pump passes the exit's stderr, logs the exit and must not restart storm, daemon.go supplies LimitsUnknown and LastExit for Status), and cmd/morphd/main.go's newID must return a UUID v4 instead of 32 hex chars. The tests pinning the old behaviour must be regenerated as well: supervisor/guard_examples_test.go reads l.Resumes and calls the 3-arg Exited, supervisor/loop_examples_test.go asserts the old \"resumes\" tag, daemon/daemon_examples_test.go and daemon/pump_examples_test.go use Exited(code, now, cfg) (pump_examples_test.go line 496 reads state.Loop.Resumes), control/control_examples_test.go builds Status/Usage expecting five_hour/seven_day as plain non-null ints with no LimitsUnknown/LastExit, and cmd/morphd/config_examples_test.go exercises the main.go newID/Config wiring that must now mint UUID v4. stream/parse.go is only read: it defines stream.Result/Limits that Exited and Limits consume and it does not change."
+  },
+  "stopReason": "the model answered on its own",
+  "spent": {
+    "calls": 11,
+    "reads": 7,
+    "chars": 71376,
+    "rounds": 18
+  },
+  "elapsedMs": 153028,
+  "usage": {
+    "requests": 18,
+    "inputTokens": 286666,
+    "outputTokens": 6511,
+    "cost": 0.025937159999999997
+  },
+  "journal": [
+    {
+      "round": 1,
+      "turn": "malformed",
+      "action": null,
+      "chars": 197,
+      "error": "5 actions in one turn (READ, READ, READ, READ, READ): send one per turn",
+      "inputTokens": 860,
+      "outputTokens": 68,
+      "cost": 0.0003396
+    },
+    {
+      "round": 2,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "control/control.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5980,
+      "error": null,
+      "inputTokens": 961,
+      "outputTokens": 6,
+      "cost": 0.0002955
+    },
+    {
+      "round": 3,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "supervisor/loop.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 8969,
+      "error": null,
+      "inputTokens": 2863,
+      "outputTokens": 53,
+      "cost": 0.0009225
+    },
+    {
+      "round": 4,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "supervisor/guard.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 5808,
+      "error": null,
+      "inputTokens": 5993,
+      "outputTokens": 100,
+      "cost": 0.00136494
+    },
+    {
+      "round": 5,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/pump.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3594,
+      "error": null,
+      "inputTokens": 8008,
+      "outputTokens": 45,
+      "cost": 0.00086664
+    },
+    {
+      "round": 6,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/main.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3411,
+      "error": null,
+      "inputTokens": 9305,
+      "outputTokens": 24,
+      "cost": 0.00088494
+    },
+    {
+      "round": 7,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 11788,
+      "error": null,
+      "inputTokens": 10603,
+      "outputTokens": 8,
+      "cost": 0.00070218
+    },
+    {
+      "round": 8,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": 401,
+        "to": 721
+      },
+      "chars": 10163,
+      "error": null,
+      "inputTokens": 14717,
+      "outputTokens": 22,
+      "cost": 0.0016767
+    },
+    {
+      "round": 9,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "Resumes",
+        "path": ""
+      },
+      "chars": 9015,
+      "error": null,
+      "inputTokens": 18256,
+      "outputTokens": 427,
+      "cost": 0.00211848
+    },
+    {
+      "round": 10,
+      "turn": "malformed",
+      "action": null,
+      "chars": 179,
+      "error": "2 actions in one turn (GREP, GREP): send one per turn",
+      "inputTokens": 21113,
+      "outputTokens": 316,
+      "cost": 0.00201294
+    },
+    {
+      "round": 11,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "/\\.Exited\\(/",
+        "path": ""
+      },
+      "chars": 53,
+      "error": null,
+      "inputTokens": 21481,
+      "outputTokens": 42,
+      "cost": 0.0009651
+    },
+    {
+      "round": 12,
+      "turn": "malformed",
+      "action": null,
+      "chars": 197,
+      "error": "5 actions in one turn (GREP, GREP, GREP, GREP, GREP): send one per turn",
+      "inputTokens": 21512,
+      "outputTokens": 226,
+      "cost": 0.00105696
+    },
+    {
+      "round": 13,
+      "turn": "malformed",
+      "action": null,
+      "chars": 402,
+      "error": "39 actions in one turn (GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP, GREP): send one per turn",
+      "inputTokens": 21800,
+      "outputTokens": 929,
+      "cost": 0.00184872
+    },
+    {
+      "round": 14,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "newID",
+        "path": ""
+      },
+      "chars": 2786,
+      "error": null,
+      "inputTokens": 22895,
+      "outputTokens": 912,
+      "cost": 0.0020877
+    },
+    {
+      "round": 15,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "FiveHour",
+        "path": ""
+      },
+      "chars": 8409,
+      "error": null,
+      "inputTokens": 23803,
+      "outputTokens": 163,
+      "cost": 0.00125394
+    },
+    {
+      "round": 16,
+      "turn": "malformed",
+      "action": null,
+      "chars": 270,
+      "error": "17 actions in one turn (GREP, GREP, LIST, LIST, LIST, LIST, LIST, LIST, LIST, LIST, LIST, LIST, LIST, GREP, LIST, LIST, LIST): send one per turn",
+      "inputTokens": 26590,
+      "outputTokens": 1152,
+      "cost": 0.0029658
+    },
+    {
+      "round": 17,
+      "turn": "answer",
+      "action": null,
+      "chars": 155,
+      "error": "context_slice: not in the tree (missing, ignored or a directory): gitrules/gitrules.go",
+      "inputTokens": 27725,
+      "outputTokens": 1376,
+      "cost": 0.00281478
+    },
+    {
+      "round": 18,
+      "turn": "answer",
+      "action": null,
+      "chars": 0,
+      "error": null,
+      "inputTokens": 28181,
+      "outputTokens": 642,
+      "cost": 0.00175974
+    }
+  ]
+}

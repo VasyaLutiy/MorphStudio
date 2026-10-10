@@ -1,6 +1,6 @@
 # Primer: MorphStudio
 
-generated 2026-10-08T21:38:23.838Z · 486 files in the tree · no model call, no network
+generated 2026-10-10T08:26:15.035Z · 488 files in the tree · no model call, no network
 missing: docs/PLAN.md
 
 ## Tests
@@ -69,11 +69,11 @@ missing: docs/PLAN.md
 
 ## Last decisions (docs/DECISIONS.md)
 
-- 08.10 · P7 · run 20261008-211009 · 6/6 written on ds, $0.1401, ≈ 22.7 min, 2 retries (config-and-main v1 `== listen`: no "127.0.0.1:" literal in main.go; daemon-core-judge v1 vet unused import "morphstudio/github" + gofmt); no failure class, 0 burned.
-- 08.10 · P7 · Daemon Core · read defects, not fixed by hand, none pinned by an example: PlanLoad drops Begin's error (daemon.go:433, §2.2 → ErrBadInput; unreachable on a fresh queue); a spawn whose later step fails leaves the killed process as pr.proc (daemon.go:604–642), so its exit is counted agai…
-- 08.10 · P7 · Daemon Core, Pump · known risk for smoke 2 (record design, P5 line 135 undecided by P7 §2.2): a failing Spawn or a claude that dies at once loops without bound (Exited → start check "fresh" → Resumes nil → spawn again; synchronously under d.mu on a Spawn error: a TG post per round, the…
-- 08.10 · P7 · tests · daemon example 2's "phase 2" assertion re-checks launch(1) instead of the second Spawn for P17 (daemon_examples_test.go:525); example 3 does not check the events' Msg · known risk: those parts are pinned by the probes only.
-- 08.10 · P7 · smoke 2 · PLAN's "POST order while idle → {"sent":true}" may meet no live session once S1's phase_done ends it (Order → 409 ErrNoSession) · for the PM: order before phase_done, or a two-turn S1.
+- 09.10 · P7b · gate · STOPPED AT GATE (no run, $0): `morph plan --only` (12 cards, gens [1,2,2,2,1,3,1], exit 0) is cut fine, but the record's two breaking API changes land in different generations and every acceptance builds the real tree: phase-loop (gen 2) red at `== build` — `supervisor/guard.go…
+- 09.10 · P7b gate stop · operator chose option (1): record keeps the old Go names (Loop.Resumes json "restarts", Exited unchanged) + new Crashed(code, stderr, …) for daemon/pump; back to the architect; new approval after. Option (3), a MorphV2 feature for API-breaking re-cuts, noted for MorphV2.
+- 09.10 · P7b path · operator changed the choice: path A — MorphV2 is fixed first (the request docs/MORPHV2_REQUEST_breaking-recut.md, in work), then P7b runs as approved at cc46ed1 (Restarts, Exited with stderr), its re-cut being the acceptance of the MorphV2 fix; the compat option (1) is dropped, i…
+- 09.10 · P7b path · MorphV2 P21a (01498f5, hiding = direction A) failed issue #12's live smoke on go-p7b (2/8): a judge retry ran `== full` after phase-loop wrote the new loop.go next to the old guard.go; hiding guard.go breaks mcp/session.go outside the subset · operator: fix MorphV2 properly, no w…
+- 10.10 · P7b · resumed · MorphV2 stopped at ec56481 (P21c subset transaction, P22b `morph gate`; dist rebuilt by the operator, $7.11 of $30 spent on MorphV2) · PM pre-flight in scratch /tmp/p7b-pre (no checks, $0): the cc46ed1 record cut with the 12-card `--only` is exit 0, generations [1,2,2,2,1,3,…
 
 ## Open issues (.morph/issues.json)
 

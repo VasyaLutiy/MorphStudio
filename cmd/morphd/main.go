@@ -1,3 +1,4 @@
+// Package main is the morphd daemon and its configuration.
 package main
 
 import (
@@ -6,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"morphstudio/api"
@@ -20,23 +20,22 @@ import (
 	"morphstudio/telegram"
 )
 
-// newID mints a fresh version 4 UUID. The claude CLI refuses any other session
-// id shape, and the daemon cannot run without ids, so a read failure panics.
+// newID returns a fresh version 4 UUID as a 36-character lower-case string.
+// It panics when the system random source fails: the daemon cannot run
+// without session ids, tokens or interrupt request ids.
 func newID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
+		panic("morphd: cannot read random bytes: " + err.Error())
 	}
 	return UUIDv4(b)
 }
 
-// Build assembles the HTTP surface: the bearer-guarded API router plus the
-// three MCP mounts.
+// Build wires the control surface, the MCP mount and the bearer token into
+// one HTTP handler.
 func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler {
-	return api.NewRouter(api.Handlers{Control: d}, token, mcpserver.Handler(d, known, mcpserver.Tokens{
-		API:     token,
-		Session: session,
-	}))
+	mcp := mcpserver.Handler(d, known, mcpserver.Tokens{API: token, Session: session})
+	return api.NewRouter(api.Handlers{Control: d}, token, mcp)
 }
 
 func main() {
@@ -58,7 +57,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	baseURL := "http://127.0.0.1:" + strconv.Itoa(cfg.Port)
+	tg := telegram.Client{Token: cfg.TGToken, ChatID: cfg.TGChatID, Do: http.DefaultClient.Do}
 
 	deps := daemon.Deps{
 		Registry: reg,
@@ -66,11 +65,7 @@ func main() {
 		Spawn: func(ctx context.Context, l claude.Launch) (claude.Process, error) {
 			return claude.Start(ctx, l.Bin, claude.Args(l), l.Dir, claude.Env(l))
 		},
-		Post: telegram.Client{
-			Token:  cfg.TGToken,
-			ChatID: cfg.TGChatID,
-			Do:     http.DefaultClient.Do,
-		}.Post,
+		Post:     tg.Post,
 		GitHubDo: http.DefaultClient.Do,
 		Now:      time.Now,
 		NewID:    newID,
@@ -78,11 +73,12 @@ func main() {
 			ClaudeBin:   cfg.ClaudeBin,
 			MorphBin:    cfg.MorphBin,
 			ProjectsDir: cfg.ProjectsDir,
-			MCPBaseURL:  baseURL,
+			MCPBaseURL:  fmt.Sprintf("http://127.0.0.1:%d", cfg.Port),
 			Model:       cfg.Model,
 			ExtraArgs:   cfg.ExtraArgs,
 			Defaults:    cfg.Defaults,
 			MaxParallel: cfg.MaxParallel,
+			DoneWait:    time.Duration(cfg.DoneWait) * time.Second,
 			Loop: supervisor.Config{
 				MaxResumesPerHour: cfg.ResumesPerHour,
 				StallMinutes:      cfg.StallMinutes,
@@ -98,29 +94,28 @@ func main() {
 		os.Exit(2)
 	}
 
-	known := func(project string) bool {
-		_, err := reg.Get(project)
-		return err == nil
-	}
-	session := func(project string) (string, bool) {
-		tok, err := reg.ReadSecret(project, "session-token")
-		if err != nil {
-			return "", false
-		}
-		return tok, true
-	}
-
-	handler := Build(d, known, session, cfg.Token)
-
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
 	go func() {
-		for range ticker.C {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
 			d.Tick(ctx)
 		}
 	}()
 
-	addr := "127.0.0.1:" + strconv.Itoa(cfg.Port)
+	known := func(p string) bool {
+		_, err := reg.Get(p)
+		return err == nil
+	}
+	session := func(p string) (string, bool) {
+		token, err := reg.ReadSecret(p, "session-token")
+		if err != nil {
+			return "", false
+		}
+		return token, true
+	}
+
+	handler := Build(d, known, session, cfg.Token)
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 	fmt.Println("morphd listening on " + addr)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		fmt.Fprintln(os.Stderr, err)

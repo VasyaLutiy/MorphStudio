@@ -1,0 +1,361 @@
+{
+  "runId": "20261010-084526",
+  "completedAt": 1791624069432,
+  "branch": "morph/20261010-084526",
+  "processor": "ds",
+  "generations": 7,
+  "outcomes": [
+    {
+      "customId": "control-contract",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.010s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.010s\nok  \tmorphstudio/runner\t0.711s\nok  \tmorphstudio/session\t0.016s\nok  \tmorphstudio/stream\t0.014s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.012s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.007s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.028s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.018s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nok  \tmorphstudio/api\t0.006s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.031s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.010s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.020s\nok  \tmorphstudio/stream\t0.014s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "control-contract-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.003s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nok  \tmorphstudio/cmd/morphd\t0.008s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.016s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.008s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.006s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.029s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.015s\nok  \tmorphstudio/stream\t0.013s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.004s\nFAIL\n",
+        "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.005s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.010s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.034s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.018s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "phase-loop",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.004s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nok  \tmorphstudio/cmd/morphd\t0.006s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.016s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.010s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.015s\nok  \tmorphstudio/stream\t0.012s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.006s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.015s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.006s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.029s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.018s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.005s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.014s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.029s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.007s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.020s\nok  \tmorphstudio/stream\t0.014s\nok  \tmorphstudio/supervisor\t0.005s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "phase-loop-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nok  \tmorphstudio/cmd/morphd\t0.009s\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.012s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.031s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.015s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nok  \tmorphstudio/api\t0.004s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.013s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.016s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.033s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.014s\nok  \tmorphstudio/stream\t0.011s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+        "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.012s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.012s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.002s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.707s\nok  \tmorphstudio/session\t0.019s\nok  \tmorphstudio/stream\t0.011s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "runtime-guard",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.012s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.011s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.003s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.007s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.024s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.006s\nok  \tmorphstudio/claude\t0.012s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.011s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.006s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.035s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.014s\nok  \tmorphstudio/stream\t0.013s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.003s\nok  \tmorphstudio/claude\t0.011s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.002s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.033s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.017s\nok  \tmorphstudio/stream\t0.012s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "daemon-core",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 3,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard\n== probe\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\n",
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "runtime-guard-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.003s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.028s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.012s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.021s\nok  \tmorphstudio/stream\t0.012s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.010s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.031s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.017s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n",
+        "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nok  \tmorphstudio/api\t0.004s\nok  \tmorphstudio/bootstrap\t0.005s\nok  \tmorphstudio/claude\t0.010s\nFAIL\tmorphstudio/cmd/morphd [build failed]\nok  \tmorphstudio/control\t0.005s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.011s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.018s\nok  \tmorphstudio/stream\t0.012s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "pump",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard\n== probe\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\n",
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "config-and-main",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\nlisten: cmd/morphd/main.go has no \"127.0.0.1:\" address literal (morphd listens on 127.0.0.1 only)\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\n",
+        "== build\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "daemon-core-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\ngofmt -l lists: daemon/daemon_examples_test.go\ndiff daemon/daemon_examples_test.go.orig daemon/daemon_examples_test.go\n--- daemon/daemon_examples_test.go.orig\n+++ daemon/daemon_examples_test.go\n@@ -27,10 +27,10 @@\n )\n \n type dcHarness struct {\n-\tt   *testing.T\n-\ttmp string\n-\treg *registry.Registry\n-\trun *runner.Fake\n+\tt    *testing.T\n+\ttmp  string\n+\treg  *registry.Registry\n+\trun  *runner.Fake\n \tdeps Deps\n \td    *Daemon\n \n@@ -109,11 +109,11 @@\n \t\th.t.Fatal(err)\n \t}\n \terr = h.reg.Add(registry.Project{\n-\t\tName:     name,\n-\t\tLanguage: language,\n-\t\tRepoURL:  repoURL,\n-\t\tDir:      dir,\n-\t\tCaps:     queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},\n+\t\tName:      name,\n+\t\tLanguage:  language,\n+\t\tRepoURL:   repoURL,\n+\t\tDir:       dir,\n+\t\tCaps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},\n \t\tCreatedAt: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC),\n \t})\n \tif err != nil {\n== guard daemon/daemon_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon.go:572:2: declared and not used: p\n== gofmt\ngofmt -l lists: daemon/daemon_examples_test.go\ndiff daemon/daemon_examples_test.go.orig daemon/daemon_examples_test.go\n--- daemon/daemon_examples_test.go.orig\n+++ daemon/daemon_examples_test.go\n@@ -27,10 +27,10 @@\n )\n \n type dcHarness struct {\n-\tt   *testing.T\n-\ttmp string\n-\treg *registry.Registry\n-\trun *runner.Fake\n+\tt    *testing.T\n+\ttmp  string\n+\treg  *registry.Registry\n+\trun  *runner.Fake\n \tdeps Deps\n \td    *Daemon\n \n@@ -109,11 +109,11 @@\n \t\th.t.Fatal(err)\n \t}\n \terr = h.reg.Add(registry.Project{\n-\t\tName:     name,\n-\t\tLanguage: language,\n-\t\tRepoURL:  repoURL,\n-\t\tDir:      dir,\n-\t\tCaps:     queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},\n+\t\tName:      name,\n+\t\tLanguage:  language,\n+\t\tRepoURL:   repoURL,\n+\t\tDir:       dir,\n+\t\tCaps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},\n \t\tCreatedAt: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC),\n \t})\n \tif err != nil {\n== guard daemon/daemon_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon.go:538:2: declared and not used: p\n== gofmt\ngofmt -l lists: daemon/daemon_examples_test.go\ndiff daemon/daemon_examples_test.go.orig daemon/daemon_examples_test.go\n--- daemon/daemon_examples_test.go.orig\n+++ daemon/daemon_examples_test.go\n@@ -27,10 +27,10 @@\n )\n \n type dcHarness struct {\n-\tt   *testing.T\n-\ttmp string\n-\treg *registry.Registry\n-\trun *runner.Fake\n+\tt    *testing.T\n+\ttmp  string\n+\treg  *registry.Registry\n+\trun  *runner.Fake\n \tdeps Deps\n \td    *Daemon\n \n@@ -109,11 +109,11 @@\n \t\th.t.Fatal(err)\n \t}\n \terr = h.reg.Add(registry.Project{\n-\t\tName:     name,\n-\t\tLanguage: language,\n-\t\tRepoURL:  repoURL,\n-\t\tDir:      dir,\n-\t\tCaps:     queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},\n+\t\tName:      name,\n+\t\tLanguage:  language,\n+\t\tRepoURL:   repoURL,\n+\t\tDir:       dir,\n+\t\tCaps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},\n \t\tCreatedAt: time.Date(2026, 10, 8, 14, 0, 0, 0, time.UTC),\n \t})\n \tif err != nil {\n== guard daemon/daemon_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon.go:538:2: declared and not used: p\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "pump-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard daemon/pump_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon.go:572:2: declared and not used: p\n== gofmt\n== guard daemon/pump_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon.go:538:2: declared and not used: p\n== gofmt\n== guard daemon/pump_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon.go:538:2: declared and not used: p\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "config-and-main-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.004s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.010s\nok  \tmorphstudio/cmd/morphd\t0.006s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.011s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.003s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.031s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.010s\nok  \tmorphstudio/runner\t0.712s\nok  \tmorphstudio/session\t0.019s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n# morphstudio/daemon\ndaemon/daemon.go:572:2: declared and not used: p\ndaemon/daemon.go:692:13: log.Close undefined (type *eventlog.Log has no field or method Close)\nFAIL\tmorphstudio/cmd/morphd [build failed]\nFAIL\n",
+        "== vet\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n# morphstudio/daemon\ndaemon/daemon.go:538:2: declared and not used: p\nFAIL\tmorphstudio/cmd/morphd [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 423439,
+    "outputTokens": 396801,
+    "cost": 0.5981471399999999,
+    "requests": 16
+  },
+  "requests": [
+    {
+      "customId": "control-contract.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791621928-1py8H2FXNCXS1ZOOZSs0",
+      "inputTokens": 9690,
+      "outputTokens": 3291,
+      "cost": 0.0068562,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791621943-91k37f7E7DSAgggAM0Z1",
+      "inputTokens": 10519,
+      "outputTokens": 6064,
+      "cost": 0.0104325,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791621944-Ojc3WgUw1Vo2ZfV1puJI",
+      "inputTokens": 10368,
+      "outputTokens": 15957,
+      "cost": 0.02170584,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622068-jpgTUe8hAAQ0MKi26tfZ",
+      "inputTokens": 11420,
+      "outputTokens": 13930,
+      "cost": 0.01958904,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622068-3HL995v4peepHQqAhms6",
+      "inputTokens": 11646,
+      "outputTokens": 7413,
+      "cost": 0.0123894,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622194-Hb5jzj1uC28DJ3mvKIUA",
+      "inputTokens": 31962,
+      "outputTokens": 37652,
+      "cost": 0.054771,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622194-vaPcsqCPw7USv35jp88w",
+      "inputTokens": 17037,
+      "outputTokens": 23244,
+      "cost": 0.03238182,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622532-St0xMlC6uSpm9lwsUfBD",
+      "inputTokens": 22503,
+      "outputTokens": 12565,
+      "cost": 0.0218289,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622654-UvmSo9ZzikZUMN9qhVp1",
+      "inputTokens": 27290,
+      "outputTokens": 5960,
+      "cost": 0.015339,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622654-cDidglTn96Wd1ZsZxVqc",
+      "inputTokens": 29498,
+      "outputTokens": 38899,
+      "cost": 0.0555282,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791622654-WkT10Hozk0e1wDdc4SFz",
+      "inputTokens": 56279,
+      "outputTokens": 53065,
+      "cost": 0.07724394,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791623150-jVDoneZWO1GRE2t1SzLo",
+      "inputTokens": 11532,
+      "outputTokens": 14417,
+      "cost": 0.02076,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791623285-NVmBoJqS6TeTy8GY0oKl",
+      "inputTokens": 50959,
+      "outputTokens": 29807,
+      "cost": 0.0510561,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791623285-mipLOyihwAX8nMVk60Ox",
+      "inputTokens": 36206,
+      "outputTokens": 55667,
+      "cost": 0.0776622,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791623630-h8tMOVZJvjcxPlo6NXrd",
+      "inputTokens": 50620,
+      "outputTokens": 29458,
+      "cost": 0.0505356,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791623630-L33eLNJJJsmJXK8rSniB",
+      "inputTokens": 35910,
+      "outputTokens": 49412,
+      "cost": 0.0700674,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

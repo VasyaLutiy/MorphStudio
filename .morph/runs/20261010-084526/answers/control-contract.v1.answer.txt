@@ -1,0 +1,260 @@
+```
+package control
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"morphstudio/eventlog"
+	"morphstudio/github"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+// QueueView is the serialized view of a project's queue state.
+type QueueView struct {
+	State    string `json:"state"`
+	Approved string `json:"approved"`
+	Index    int    `json:"index"`
+	Phases   int    `json:"phases"`
+	Current  string `json:"current"`
+	Reason   string `json:"reason"`
+}
+
+// Stop describes why a project's queue stopped.
+type Stop struct {
+	Kind     string    `json:"kind"`
+	Phase    string    `json:"phase"`
+	Reason   string    `json:"reason"`
+	IssueURL string    `json:"issue_url,omitempty"`
+	At       time.Time `json:"at"`
+}
+
+// Exit is the last exit of a project's session.
+type Exit struct {
+	Code     int       `json:"code"`
+	At       time.Time `json:"at"`
+	Stderr   string    `json:"stderr"`
+	Restarts int       `json:"restarts"`
+}
+
+// Status is the answer of `status`.
+type Status struct {
+	State         string        `json:"state"`
+	Phase         string        `json:"phase"`
+	Minutes       int           `json:"minutes"`
+	CostUSD       float64       `json:"cost_usd"`
+	FiveHour      int           `json:"five_hour"`
+	SevenDay      int           `json:"seven_day"`
+	LimitsUnknown bool          `json:"-"`
+	SessionID     string        `json:"session_id"`
+	Queue         QueueView     `json:"queue"`
+	Repo          github.Access `json:"repo"`
+	Stop          *Stop         `json:"stop,omitempty"`
+	LastExit      *Exit         `json:"last_exit,omitempty"`
+}
+
+// MarshalJSON writes five_hour and seven_day as null when no rate_limit_event
+// has been seen yet.
+func (s Status) MarshalJSON() ([]byte, error) {
+	var fh, sd any
+	if s.LimitsUnknown {
+		fh = nil
+		sd = nil
+	} else {
+		fh = s.FiveHour
+		sd = s.SevenDay
+	}
+	return json.Marshal(struct {
+		State     string        `json:"state"`
+		Phase     string        `json:"phase"`
+		Minutes   int           `json:"minutes"`
+		CostUSD   float64       `json:"cost_usd"`
+		FiveHour  any           `json:"five_hour"`
+		SevenDay  any           `json:"seven_day"`
+		SessionID string        `json:"session_id"`
+		Queue     QueueView     `json:"queue"`
+		Repo      github.Access `json:"repo"`
+		Stop      *Stop         `json:"stop,omitempty"`
+		LastExit  *Exit         `json:"last_exit,omitempty"`
+	}{
+		State:     s.State,
+		Phase:     s.Phase,
+		Minutes:   s.Minutes,
+		CostUSD:   s.CostUSD,
+		FiveHour:  fh,
+		SevenDay:  sd,
+		SessionID: s.SessionID,
+		Queue:     s.Queue,
+		Repo:      s.Repo,
+		Stop:      s.Stop,
+		LastExit:  s.LastExit,
+	})
+}
+
+// Question is a pending AskUserQuestion request.
+type Question struct {
+	RequestID string    `json:"request_id"`
+	Text      string    `json:"text"`
+	Header    string    `json:"header"`
+	Options   []string  `json:"options"`
+	AskedAt   time.Time `json:"asked_at"`
+}
+
+// Usage is the answer of `usage`.
+type Usage struct {
+	FiveHour         int       `json:"five_hour"`
+	SevenDay         int       `json:"seven_day"`
+	FiveHourResetsAt int64     `json:"five_hour_resets_at"`
+	SevenDayResetsAt int64     `json:"seven_day_resets_at"`
+	SessionCostUSD   float64   `json:"session_cost_usd"`
+	StretchCostUSD   float64   `json:"stretch_cost_usd"`
+	LimitsAt         time.Time `json:"limits_at"`
+}
+
+// MarshalJSON writes the rate limit fields as null when no rate_limit_event
+// has been seen yet.
+func (u Usage) MarshalJSON() ([]byte, error) {
+	if u.LimitsAt.IsZero() {
+		return json.Marshal(struct {
+			FiveHour         any     `json:"five_hour"`
+			SevenDay         any     `json:"seven_day"`
+			FiveHourResetsAt any     `json:"five_hour_resets_at"`
+			SevenDayResetsAt any     `json:"seven_day_resets_at"`
+			SessionCostUSD   float64 `json:"session_cost_usd"`
+			StretchCostUSD   float64 `json:"stretch_cost_usd"`
+			LimitsAt         any     `json:"limits_at"`
+		}{
+			SessionCostUSD: u.SessionCostUSD,
+			StretchCostUSD: u.StretchCostUSD,
+		})
+	}
+	return json.Marshal(struct {
+		FiveHour         int       `json:"five_hour"`
+		SevenDay         int       `json:"seven_day"`
+		FiveHourResetsAt int64     `json:"five_hour_resets_at"`
+		SevenDayResetsAt int64     `json:"seven_day_resets_at"`
+		SessionCostUSD   float64   `json:"session_cost_usd"`
+		StretchCostUSD   float64   `json:"stretch_cost_usd"`
+		LimitsAt         time.Time `json:"limits_at"`
+	}{
+		FiveHour:         u.FiveHour,
+		SevenDay:         u.SevenDay,
+		FiveHourResetsAt: u.FiveHourResetsAt,
+		SevenDayResetsAt: u.SevenDayResetsAt,
+		SessionCostUSD:   u.SessionCostUSD,
+		StretchCostUSD:   u.StretchCostUSD,
+		LimitsAt:         u.LimitsAt,
+	})
+}
+
+// Events is a page of event log entries.
+type Events struct {
+	Entries []eventlog.Entry `json:"entries"`
+	Last    int64            `json:"last"`
+}
+
+// ProjectView describes one project.
+type ProjectView struct {
+	Name      string    `json:"name"`
+	Language  string    `json:"language"`
+	RepoURL   string    `json:"repo_url"`
+	State     string    `json:"state"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Milestone is a progress milestone reported by a session.
+type Milestone struct {
+	Kind     string `json:"kind"`
+	Headline string `json:"headline"`
+	Numbers  string `json:"numbers"`
+}
+
+// TokenResult reports the outcome of pushing a GitHub token.
+type TokenResult struct {
+	Access    github.Access `json:"access"`
+	Pushed    bool          `json:"pushed"`
+	PushError string        `json:"push_error,omitempty"`
+}
+
+// Errors returned by Control implementations.
+var (
+	ErrUnknownProject = errors.New("unknown project")
+	ErrNoSession      = errors.New("no session running")
+	ErrBusy           = errors.New("session is busy")
+	ErrNotWaiting     = errors.New("not waiting")
+	ErrBadToken       = errors.New("session token mismatch")
+	ErrBadInput       = errors.New("bad input")
+	ErrExists         = errors.New("project exists")
+
+	ErrNoQuestion = session.ErrNoQuestion
+	ErrBadOption  = session.ErrBadOption
+	ErrNotBusy    = session.ErrNotBusy
+)
+
+// Control is everything the HTTP and MCP layers can ask of the daemon.
+type Control interface {
+	Projects() []ProjectView
+	CreateProject(ctx context.Context, name, language, repoURL string) (ProjectView, error)
+	Status(project string) (Status, error)
+	Events(project string, since int64, max int) (Events, error)
+	Order(project, text string) (session.OrderResult, error)
+	Pending(project string) (*Question, error)
+	Answer(project string, option int) error
+	Interrupt(project string) error
+	Usage(project string) (Usage, error)
+	Restart(project string, force bool) error
+	PlanLoad(project string, plan queue.Plan) (QueueView, error)
+	Continue(project string) error
+	StopCheck(project string) (*Stop, error)
+	PutGithubToken(ctx context.Context, project, token string) (TokenResult, error)
+	PhaseDone(project, sessionToken, phase, next string) error
+	WaitOperator(project, sessionToken, kind, reason, issueURL string) error
+	Milestone(project, sessionToken string, m Milestone) error
+}
+
+// Percent turns a utilization ratio into a clamped 0..100 percentage.
+func Percent(utilization float64) int {
+	p := int(utilization*100 + 0.5)
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return p
+}
+
+// Code maps an error to an HTTP status and a machine-readable code.
+func Code(err error) (int, string) {
+	if err == nil {
+		return 200, ""
+	}
+	switch {
+	case errors.Is(err, ErrUnknownProject):
+		return 404, "unknown_project"
+	case errors.Is(err, ErrBadInput):
+		return 400, "bad_input"
+	case errors.Is(err, ErrBadOption):
+		return 400, "bad_option"
+	case errors.Is(err, ErrBadToken):
+		return 401, "bad_session_token"
+	case errors.Is(err, ErrExists):
+		return 409, "exists"
+	case errors.Is(err, ErrNoSession):
+		return 409, "no_session"
+	case errors.Is(err, ErrBusy):
+		return 409, "busy"
+	case errors.Is(err, ErrNoQuestion):
+		return 409, "no_question"
+	case errors.Is(err, ErrNotBusy):
+		return 409, "not_busy"
+	case errors.Is(err, ErrNotWaiting):
+		return 409, "not_waiting"
+	default:
+		return 500, "internal"
+	}
+}
+```

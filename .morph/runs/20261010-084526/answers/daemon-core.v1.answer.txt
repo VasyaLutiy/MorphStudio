@@ -1,0 +1,768 @@
+```go
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"sort"
+	"sync"
+	"time"
+
+	"morphstudio/bootstrap"
+	"morphstudio/claude"
+	"morphstudio/control"
+	"morphstudio/eventlog"
+	"morphstudio/github"
+	"morphstudio/gitrules"
+	"morphstudio/queue"
+	"morphstudio/registry"
+	"morphstudio/runner"
+	"morphstudio/session"
+	"morphstudio/supervisor"
+	"morphstudio/telegram"
+)
+
+// Deps are the daemon's dependencies.
+type Deps struct {
+	Registry *registry.Registry
+	Runner   runner.Runner
+	Spawn    func(ctx context.Context, l claude.Launch) (claude.Process, error)
+	Post     func(ctx context.Context, project, kind, headline, numbers string) (telegram.Status, error)
+	GitHubDo func(*http.Request) (*http.Response, error)
+	Now      func() time.Time
+	NewID    func() string
+	Config   Config
+}
+
+// Config bounds the daemon's behaviour.
+type Config struct {
+	ClaudeBin   string
+	MorphBin    string
+	ProjectsDir string
+	MCPBaseURL  string
+	Model       string
+	ExtraArgs   []string
+	Defaults    queue.Caps
+	MaxParallel int
+	Loop        supervisor.Config
+}
+
+// State is the persisted state of one project.
+type State struct {
+	Loop supervisor.Loop `json:"loop"`
+	Repo github.Access   `json:"repo"`
+}
+
+type proj struct {
+	reg      registry.Project
+	state    State
+	machine  *session.Machine
+	proc     claude.Process
+	log      *eventlog.Log
+	queuedAt time.Time
+	pumps    map[claude.Process]chan struct{}
+}
+
+// Daemon is the core of morphd.
+type Daemon struct {
+	deps     Deps
+	ctx      context.Context
+	mu       sync.Mutex
+	projects map[string]*proj
+}
+
+// startPump is set by pump.go.
+var startPump func(d *Daemon, ctx context.Context, project string, p claude.Process, l *eventlog.Log)
+
+var _ control.Control = (*Daemon)(nil)
+
+// Open builds a Daemon from deps, loading all registered projects.
+func Open(ctx context.Context, deps Deps) (*Daemon, error) {
+	d := &Daemon{
+		deps:     deps,
+		ctx:      ctx,
+		projects: map[string]*proj{},
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	list := deps.Registry.List()
+	for _, rp := range list {
+		p := &proj{reg: rp, pumps: map[claude.Process]chan struct{}{}}
+		var st State
+		err := deps.Registry.LoadState(rp.Name, &st)
+		if errors.Is(err, registry.ErrNoState) {
+			st = State{Loop: *supervisor.New(rp.Name, queue.Queue{})}
+		} else if err != nil {
+			return nil, err
+		}
+		p.state = st
+		d.projects[rp.Name] = p
+	}
+
+	for _, rp := range list {
+		p := d.projects[rp.Name]
+		switch p.state.Loop.State {
+		case "running", "starting", "paused":
+			acts := p.state.Loop.Exited(-2, "", deps.Now(), deps.Config.Loop)
+			d.execute(ctx, rp.Name, acts)
+		}
+	}
+
+	return d, nil
+}
+
+// Projects returns a view of every project.
+func (d *Daemon) Projects() []control.ProjectView {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	names := d.sortedNames()
+	out := make([]control.ProjectView, 0, len(names))
+	for _, name := range names {
+		p := d.projects[name]
+		out = append(out, control.ProjectView{
+			Name:      p.reg.Name,
+			Language:  p.reg.Language,
+			RepoURL:   p.reg.RepoURL,
+			State:     p.state.Loop.State,
+			CreatedAt: p.reg.CreatedAt,
+		})
+	}
+	return out
+}
+
+// CreateProject runs the bootstrap sequence and registers a new project.
+func (d *Daemon) CreateProject(ctx context.Context, name, language, repoURL string) (control.ProjectView, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if _, ok := d.projects[name]; ok {
+		return control.ProjectView{}, control.ErrExists
+	}
+
+	spec := bootstrap.Spec{
+		Name:            name,
+		Language:        language,
+		RepoURL:         repoURL,
+		ProjectsDir:     d.deps.Config.ProjectsDir,
+		CredentialsFile: d.deps.Registry.SecretPath(name, "git-credentials"),
+		MorphBin:        d.deps.Config.MorphBin,
+	}
+	rep, err := bootstrap.Create(ctx, d.deps.Runner, spec)
+	if err != nil {
+		if len(rep.Steps) == 0 {
+			return control.ProjectView{}, fmt.Errorf("%w: %v", control.ErrBadInput, err)
+		}
+		return control.ProjectView{}, err
+	}
+
+	created := d.deps.Now()
+	rp := registry.Project{
+		Name:      name,
+		Language:  language,
+		RepoURL:   repoURL,
+		Dir:       rep.Dir,
+		Caps:      d.deps.Config.Defaults,
+		CreatedAt: created,
+	}
+	if err := d.deps.Registry.Add(rp); err != nil {
+		if errors.Is(err, registry.ErrExists) {
+			return control.ProjectView{}, control.ErrExists
+		}
+		if errors.Is(err, registry.ErrBadName) {
+			return control.ProjectView{}, fmt.Errorf("%w: %v", control.ErrBadInput, err)
+		}
+		return control.ProjectView{}, err
+	}
+
+	p := &proj{
+		reg:   rp,
+		pumps: map[claude.Process]chan struct{}{},
+	}
+	p.state = State{Loop: *supervisor.New(name, queue.Queue{})}
+	d.projects[name] = p
+
+	return control.ProjectView{
+		Name:      name,
+		Language:  language,
+		RepoURL:   repoURL,
+		State:     "idle",
+		CreatedAt: created,
+	}, nil
+}
+
+// Status returns the daemon's view of a project.
+func (d *Daemon) Status(project string) (control.Status, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.Status{}, control.ErrUnknownProject
+	}
+
+	loop := &p.state.Loop
+	st := control.Status{
+		State:    loop.State,
+		Phase:    loop.Phase,
+		Repo:     p.state.Repo,
+		Stop:     loop.Stop,
+		LastExit: loop.LastExit,
+	}
+
+	if p.machine != nil {
+		st.CostUSD = p.machine.CostUSD
+		if p.machine.SessionID != "" {
+			st.SessionID = p.machine.SessionID
+		} else {
+			st.SessionID = loop.SessionID
+		}
+		if p.machine.Limits != nil {
+			st.FiveHour = control.Percent(p.machine.Limits.FiveHour.Utilization)
+			st.SevenDay = control.Percent(p.machine.Limits.SevenDay.Utilization)
+		} else {
+			st.LimitsUnknown = true
+		}
+	} else {
+		st.LimitsUnknown = true
+		st.SessionID = loop.SessionID
+	}
+
+	if loop.State == "running" && p.proc != nil {
+		st.State = p.machine.State
+	}
+	if loop.State == "running" || loop.State == "paused" {
+		st.Minutes = int(d.deps.Now().Sub(loop.PhaseStartedAt).Minutes())
+	}
+
+	q := &loop.Queue
+	qv := control.QueueView{
+		State:    q.State,
+		Approved: q.Approved,
+		Index:    q.Index,
+		Phases:   len(q.Phases),
+		Reason:   q.Reason,
+	}
+	if cur, ok := q.Current(); ok {
+		qv.Current = cur.ID
+	}
+	st.Queue = qv
+
+	return st, nil
+}
+
+// Events returns a page of event log entries.
+func (d *Daemon) Events(project string, since int64, max int) (control.Events, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.Events{}, control.ErrUnknownProject
+	}
+	if p.log == nil {
+		return control.Events{Entries: []eventlog.Entry{}, Last: 0}, nil
+	}
+	return control.Events{Entries: p.log.Since(since, max), Last: p.log.Last()}, nil
+}
+
+// Order routes text to a ready session or queues it.
+func (d *Daemon) Order(project, text string) (session.OrderResult, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return session.OrderResult{}, control.ErrUnknownProject
+	}
+	if p.proc == nil || p.machine == nil {
+		return session.OrderResult{}, control.ErrNoSession
+	}
+
+	res, acts := p.machine.Order(text, d.deps.Now())
+	for _, a := range acts {
+		if a.Kind == "write" {
+			d.writeLine(project, a.Line)
+		}
+	}
+	return res, nil
+}
+
+// Pending returns the pending AskUserQuestion, if any.
+func (d *Daemon) Pending(project string) (*control.Question, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return nil, control.ErrUnknownProject
+	}
+	if p.machine == nil || p.machine.Pending == nil {
+		return nil, nil
+	}
+	pd := p.machine.Pending
+	return &control.Question{
+		RequestID: pd.RequestID,
+		Text:      pd.Question.Text,
+		Header:    pd.Question.Header,
+		Options:   pd.Question.Options,
+		AskedAt:   pd.AskedAt,
+	}, nil
+}
+
+// Answer grants the pending question with the chosen option.
+func (d *Daemon) Answer(project string, option int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	if p.proc == nil || p.machine == nil {
+		return control.ErrNoSession
+	}
+
+	acts, err := p.machine.Answer(option, d.deps.Now())
+	if err != nil {
+		return err
+	}
+	for _, a := range acts {
+		if a.Kind == "write" {
+			d.writeLine(project, a.Line)
+		}
+	}
+	return nil
+}
+
+// Interrupt asks the session to stop the turn in flight.
+func (d *Daemon) Interrupt(project string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	if p.proc == nil || p.machine == nil {
+		return control.ErrNoSession
+	}
+
+	id := "int-" + d.deps.NewID()
+	acts, err := p.machine.Interrupt(id)
+	if err != nil {
+		return err
+	}
+	for _, a := range acts {
+		if a.Kind == "write" {
+			d.writeLine(project, a.Line)
+		}
+	}
+	return nil
+}
+
+// Usage returns the session's usage and limits.
+func (d *Daemon) Usage(project string) (control.Usage, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.Usage{}, control.ErrUnknownProject
+	}
+
+	loop := &p.state.Loop
+	var u control.Usage
+	if p.machine != nil {
+		if p.machine.Limits != nil {
+			u.FiveHour = control.Percent(p.machine.Limits.FiveHour.Utilization)
+			u.SevenDay = control.Percent(p.machine.Limits.SevenDay.Utilization)
+			u.FiveHourResetsAt = p.machine.Limits.FiveHour.ResetsAt
+			u.SevenDayResetsAt = p.machine.Limits.SevenDay.ResetsAt
+		}
+		u.SessionCostUSD = p.machine.CostUSD
+		u.LimitsAt = p.machine.LimitsAt
+	}
+	u.StretchCostUSD = loop.StretchUSD + loop.SessionUSD
+	return u, nil
+}
+
+// Restart kills the current session and starts a fresh one.
+func (d *Daemon) Restart(project string, force bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	if p.proc != nil && p.machine != nil && p.machine.State != "ready" && !force {
+		return control.ErrBusy
+	}
+	acts, err := p.state.Loop.Restart(d.deps.Now())
+	if err != nil {
+		return err
+	}
+	d.execute(d.ctx, project, acts)
+	return nil
+}
+
+// PlanLoad loads a plan into the project's queue.
+func (d *Daemon) PlanLoad(project string, plan queue.Plan) (control.QueueView, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.QueueView{}, control.ErrUnknownProject
+	}
+	loop := &p.state.Loop
+	if loop.State != "idle" && loop.State != "waiting" {
+		return control.QueueView{}, control.ErrBusy
+	}
+
+	q, err := queue.Load(plan, p.reg.Caps)
+	if err != nil {
+		return control.QueueView{}, fmt.Errorf("%w: %v", control.ErrBadInput, err)
+	}
+	p.state.Loop = *supervisor.New(project, q)
+	p.queuedAt = d.deps.Now()
+	loop = &p.state.Loop
+
+	running := 0
+	for _, other := range d.projects {
+		switch other.state.Loop.State {
+		case "running", "starting", "paused":
+			running++
+		}
+	}
+	if running < d.deps.Config.MaxParallel {
+		acts, err := loop.Begin(d.deps.Now())
+		if err != nil {
+			return control.QueueView{}, err
+		}
+		d.execute(d.ctx, project, acts)
+	}
+	_ = d.deps.Registry.SaveState(project, p.state)
+
+	return d.queueView(project), nil
+}
+
+// Continue resumes a stopped loop.
+func (d *Daemon) Continue(project string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	acts, err := p.state.Loop.Continue(d.deps.Now())
+	if err != nil {
+		if errors.Is(err, control.ErrNotWaiting) {
+			return err
+		}
+		return fmt.Errorf("%w: %v", control.ErrNotWaiting, err)
+	}
+	d.execute(d.ctx, project, acts)
+	return nil
+}
+
+// StopCheck reports why the loop stopped, if it did.
+func (d *Daemon) StopCheck(project string) (*control.Stop, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return nil, control.ErrUnknownProject
+	}
+	st := p.state.Loop.Stop
+	if st == nil {
+		return nil, nil
+	}
+	cp := *st
+	return &cp, nil
+}
+
+// PutGithubToken stores a GitHub token and checks push access.
+func (d *Daemon) PutGithubToken(ctx context.Context, project, token string) (control.TokenResult, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.TokenResult{}, control.ErrUnknownProject
+	}
+	if token == "" {
+		return control.TokenResult{}, control.ErrBadInput
+	}
+
+	if err := d.deps.Registry.PutSecret(project, "github-token", token); err != nil {
+		return control.TokenResult{}, err
+	}
+	if err := d.deps.Registry.PutSecret(project, "git-credentials", github.CredentialLine(token)); err != nil {
+		return control.TokenResult{}, err
+	}
+
+	acc := github.Check(ctx, d.deps.GitHubDo, token, p.reg.RepoURL, d.deps.Now())
+	p.state.Repo = acc
+
+	res := control.TokenResult{Access: acc}
+	if acc.Push {
+		pushed, err := bootstrap.FirstPush(ctx, d.deps.Runner, p.reg.Dir)
+		res.Pushed = pushed
+		if err != nil {
+			res.PushError = err.Error()
+		}
+	}
+	_ = d.deps.Registry.SaveState(project, p.state)
+	return res, nil
+}
+
+// PhaseDone records a finished phase from its session.
+func (d *Daemon) PhaseDone(project, sessionToken, phase, next string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	tok, err := d.deps.Registry.ReadSecret(project, "session-token")
+	if err != nil || tok != sessionToken {
+		return control.ErrBadToken
+	}
+
+	acts, err := p.state.Loop.PhaseDone(phase, next)
+	if err != nil {
+		return err
+	}
+	d.execute(d.ctx, project, acts)
+	return nil
+}
+
+// WaitOperator records that the session is waiting for the operator.
+func (d *Daemon) WaitOperator(project, sessionToken, kind, reason, issueURL string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	tok, err := d.deps.Registry.ReadSecret(project, "session-token")
+	if err != nil || tok != sessionToken {
+		return control.ErrBadToken
+	}
+
+	acts := p.state.Loop.WaitOperator(kind, reason, issueURL, d.deps.Now())
+	d.execute(d.ctx, project, acts)
+	return nil
+}
+
+// Milestone posts a milestone line from the session.
+func (d *Daemon) Milestone(project, sessionToken string, m control.Milestone) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	p, ok := d.projects[project]
+	if !ok {
+		return control.ErrUnknownProject
+	}
+	tok, err := d.deps.Registry.ReadSecret(project, "session-token")
+	if err != nil || tok != sessionToken {
+		return control.ErrBadToken
+	}
+
+	_, _ = d.deps.Post(d.ctx, project, m.Kind, m.Headline, m.Numbers)
+	return nil
+}
+
+// Execute runs a batch of actions for a project under the daemon lock.
+func (d *Daemon) Execute(ctx context.Context, project string, acts []supervisor.Action) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.execute(ctx, project, acts)
+}
+
+// Tick drives every project's timers and starts queued projects.
+func (d *Daemon) Tick(ctx context.Context) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for _, name := range d.sortedNames() {
+		p := d.projects[name]
+		acts := p.state.Loop.Tick(d.deps.Now(), d.deps.Config.Loop)
+		if len(acts) > 0 {
+			d.execute(ctx, name, acts)
+		}
+	}
+
+	for {
+		running := 0
+		for _, p := range d.projects {
+			switch p.state.Loop.State {
+			case "running", "starting", "paused":
+				running++
+			}
+		}
+		if running >= d.deps.Config.MaxParallel {
+			break
+		}
+
+		var best *proj
+		var bestName string
+		for _, name := range d.sortedNames() {
+			p := d.projects[name]
+			if p.state.Loop.State == "idle" && p.state.Loop.Queue.State == "queued" {
+				if best == nil || p.queuedAt.Before(best.queuedAt) {
+					best = p
+					bestName = name
+				}
+			}
+		}
+		if best == nil {
+			break
+		}
+
+		acts, err := best.state.Loop.Begin(d.deps.Now())
+		if err != nil {
+			break
+		}
+		d.execute(ctx, bestName, acts)
+	}
+}
+
+// execute is the internal action dispatcher; d.mu must be held.
+func (d *Daemon) execute(ctx context.Context, project string, acts []supervisor.Action) {
+	p, ok := d.projects[project]
+	if !ok {
+		return
+	}
+
+	for _, a := range acts {
+		switch a.Kind {
+		case "start_check":
+			start := gitrules.StartCheck(ctx, d.deps.Runner, p.reg.Dir)
+			d.execute(ctx, project, p.state.Loop.StartChecked(start, d.deps.NewID, d.deps.Now()))
+
+		case "spawn":
+			if p.proc != nil {
+				_ = p.proc.Kill()
+				p.proc = nil
+				p.machine = nil
+				p.log = nil
+			}
+
+			token := d.deps.NewID()
+			if err := d.deps.Registry.PutSecret(project, "session-token", token); err != nil {
+				d.execute(ctx, project, p.state.Loop.Exited(-3, err.Error(), d.deps.Now(), d.deps.Config.Loop))
+				return
+			}
+			path, err := claude.WriteMCPConfig(
+				filepath.Join(d.deps.Registry.Base(), project),
+				"morphd",
+				d.deps.Config.MCPBaseURL+"/mcp/"+project+"/session",
+				token,
+			)
+			if err != nil {
+				d.execute(ctx, project, p.state.Loop.Exited(-3, err.Error(), d.deps.Now(), d.deps.Config.Loop))
+				return
+			}
+			log, err := eventlog.Open(filepath.Join(d.deps.Registry.Base(), project, "sessions", a.SessionID+".jsonl"))
+			if err != nil {
+				d.execute(ctx, project, p.state.Loop.Exited(-3, err.Error(), d.deps.Now(), d.deps.Config.Loop))
+				return
+			}
+			proc, err := d.deps.Spawn(ctx, claude.Launch{
+				Bin:           d.deps.Config.ClaudeBin,
+				Dir:           p.reg.Dir,
+				SessionID:     a.SessionID,
+				Resume:        a.Resume,
+				BudgetUSD:     a.BudgetUSD,
+				Model:         d.deps.Config.Model,
+				MCPConfigPath: path,
+				Extra:         d.deps.Config.ExtraArgs,
+			})
+			if err != nil {
+				_ = log.Close()
+				d.execute(ctx, project, p.state.Loop.Exited(-3, err.Error(), d.deps.Now(), d.deps.Config.Loop))
+				return
+			}
+			p.machine = session.New()
+			p.proc = proc
+			p.log = log
+			if startPump != nil {
+				startPump(d, ctx, project, proc, log)
+			}
+
+		case "first_line", "write":
+			if p.machine != nil {
+				_, acts := p.machine.Order(a.Line, d.deps.Now())
+				for _, wa := range acts {
+					if wa.Kind == "write" {
+						d.writeLine(project, wa.Line)
+					}
+				}
+			}
+
+		case "end_check":
+			end := gitrules.EndCheck(ctx, d.deps.Runner, p.reg.Dir, p.state.Loop.Phase)
+			d.execute(ctx, project, p.state.Loop.EndChecked(end, d.deps.Now()))
+
+		case "kill":
+			if p.proc != nil {
+				_ = p.proc.Kill()
+			}
+
+		case "post":
+			_, _ = d.deps.Post(ctx, project, a.Milestone.Kind, a.Milestone.Headline, a.Milestone.Numbers)
+		}
+	}
+	_ = d.deps.Registry.SaveState(project, p.state)
+}
+
+// writeLine writes a line to the current process and logs it; d.mu must be held.
+func (d *Daemon) writeLine(project string, line []byte) {
+	p, ok := d.projects[project]
+	if !ok || p.proc == nil {
+		return
+	}
+	_ = p.proc.Write(line)
+	if p.log != nil {
+		_, _ = p.log.Append("in", json.RawMessage(line), d.deps.Now())
+	}
+}
+
+// sortedNames returns the project names in sorted order; d.mu must be held.
+func (d *Daemon) sortedNames() []string {
+	names := make([]string, 0, len(d.projects))
+	for n := range d.projects {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// queueView returns the queue view for a project; d.mu must be held.
+func (d *Daemon) queueView(project string) control.QueueView {
+	p := d.projects[project]
+	q := &p.state.Loop.Queue
+	qv := control.QueueView{
+		State:    q.State,
+		Approved: q.Approved,
+		Index:    q.Index,
+		Phases:   len(q.Phases),
+		Reason:   q.Reason,
+	}
+	if cur, ok := q.Current(); ok {
+		qv.Current = cur.ID
+	}
+	return qv
+}
+```

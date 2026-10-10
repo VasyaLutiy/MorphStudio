@@ -1,0 +1,276 @@
+```
+package supervisor
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/gitrules"
+	"morphstudio/queue"
+)
+
+// Action is what the daemon must do after a loop input.
+type Action struct {
+	Kind      string
+	Phase     string
+	SessionID string
+	Resume    bool
+	BudgetUSD float64
+	Line      string
+	Milestone control.Milestone
+}
+
+// Config bounds the phase loop's guard behaviour.
+type Config struct {
+	MaxResumesPerHour int
+	StallMinutes      int
+	StretchUSD        float64
+	UsageAlertPercent int
+}
+
+// ErrPhaseMismatch reports a phase_done for a phase the loop is not running.
+var ErrPhaseMismatch = errors.New("phase mismatch")
+
+// Loop is the state of one project's phase loop.
+type Loop struct {
+	Project        string        `json:"project"`
+	Queue          queue.Queue   `json:"queue"`
+	State          string        `json:"state"`
+	Phase          string        `json:"phase"`
+	SessionID      string        `json:"session_id"`
+	PhaseStartedAt time.Time     `json:"phase_started_at"`
+	Restarts       []time.Time   `json:"restarts"`
+	Stop           *control.Stop `json:"stop,omitempty"`
+	PausedUntil    time.Time     `json:"paused_until"`
+	StretchUSD     float64       `json:"stretch_usd"`
+	SessionUSD     float64       `json:"session_usd"`
+	LastEventAt    time.Time     `json:"last_event_at"`
+	Nudged         bool          `json:"nudged"`
+	Alerted        bool          `json:"alerted"`
+	LastExit       *control.Exit `json:"last_exit,omitempty"`
+}
+
+// New returns an idle loop for the project over the given queue.
+func New(project string, q queue.Queue) *Loop {
+	return &Loop{Project: project, Queue: q, State: "idle"}
+}
+
+// Begin starts the queue's current phase and asks for a git start check.
+func (l *Loop) Begin(now time.Time) ([]Action, error) {
+	ph, err := l.Queue.Start()
+	if err != nil {
+		return nil, err
+	}
+	l.Phase = ph.ID
+	l.State = "starting"
+	l.Stop = nil
+	l.Nudged = false
+	l.Alerted = false
+	l.SessionUSD = 0
+	l.Restarts = nil
+	l.LastExit = nil
+	return []Action{{Kind: "start_check", Phase: l.Phase}}, nil
+}
+
+// StartChecked consumes a git start check and asks for a spawn.
+func (l *Loop) StartChecked(s gitrules.Start, newID func() string, now time.Time) []Action {
+	if l.State != "starting" {
+		return nil
+	}
+	switch s.Mode {
+	case "fresh":
+		caps := l.phaseCaps()
+		l.SessionID = newID()
+		l.PhaseStartedAt = now
+		l.LastEventAt = now
+		l.State = "running"
+		numbers := fmt.Sprintf("session %s · cap $%s · %s h",
+			l.SessionID, fnum(caps.ClaudeUSD), fnum(caps.Hours))
+		if s.Reason != "" {
+			numbers += " · " + s.Reason
+		}
+		return []Action{
+			{Kind: "spawn", Phase: l.Phase, SessionID: l.SessionID, Resume: false, BudgetUSD: caps.ClaudeUSD},
+			{Kind: "first_line", Line: "/morph-orchestrator " + l.Phase},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind: "start", Headline: l.Phase + " started", Numbers: numbers,
+			}},
+		}
+	case "resume":
+		caps := l.phaseCaps()
+		if l.SessionID == "" {
+			l.SessionID = newID()
+		}
+		l.PhaseStartedAt = now
+		l.LastEventAt = now
+		l.State = "running"
+		numbers := fmt.Sprintf("session %s · %s", l.SessionID, s.Reason)
+		return []Action{
+			{Kind: "spawn", Phase: l.Phase, SessionID: l.SessionID, Resume: true, BudgetUSD: caps.ClaudeUSD},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind: "start", Headline: l.Phase + " resumed", Numbers: numbers,
+			}},
+		}
+	default:
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "git", Phase: l.Phase, Reason: s.Reason, At: now}
+		l.Queue.Stop(s.Reason)
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind: "stop", Headline: l.Phase + " not started: git", Numbers: s.Reason,
+			}},
+		}
+	}
+}
+
+// PhaseDone asks for the end check for a finished phase.
+func (l *Loop) PhaseDone(phase, next string) ([]Action, error) {
+	if (l.State != "running" && l.State != "paused") || l.Phase != phase {
+		return nil, fmt.Errorf("%w: phase_done %q while %s %q", ErrPhaseMismatch, phase, l.State, l.Phase)
+	}
+	return []Action{{Kind: "end_check", Phase: phase}}, nil
+}
+
+// EndChecked consumes a git end check and asks for the next action.
+func (l *Loop) EndChecked(e gitrules.End, now time.Time) []Action {
+	if l.State != "running" && l.State != "paused" {
+		return nil
+	}
+	if !e.OK {
+		reason := strings.Join(e.Problems, "; ")
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "not_pushed", Phase: l.Phase, Reason: reason, At: now}
+		l.Queue.Stop(reason)
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind: "stop", Headline: l.Phase + " not pushed", Numbers: reason,
+			}},
+		}
+	}
+	l.StretchUSD += l.SessionUSD
+	finished := l.Phase
+	out, _ := l.Queue.Done(finished, l.nextPhaseID())
+	actions := []Action{{Kind: "kill"}}
+	if out.Stop == "" {
+		l.Phase = out.Next
+		l.State = "starting"
+		l.SessionID = ""
+		l.Stop = nil
+		l.Nudged = false
+		l.Alerted = false
+		l.SessionUSD = 0
+		_, _ = l.Queue.Start()
+		actions = append(actions, Action{Kind: "start_check", Phase: out.Next})
+		return actions
+	}
+	if out.Stop == "end" {
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "end", Phase: finished, Reason: "plan complete", At: now}
+		actions = append(actions, Action{Kind: "post", Milestone: control.Milestone{
+			Kind:     "end",
+			Headline: finished + " done: plan complete",
+			Numbers:  fmt.Sprintf("stretch $%.4f", l.StretchUSD),
+		}})
+		return actions
+	}
+	l.State = "waiting"
+	l.Stop = &control.Stop{Kind: out.Stop, Phase: finished, Reason: "stop after " + out.Stop, At: now}
+	actions = append(actions, Action{Kind: "post", Milestone: control.Milestone{
+		Kind:     "stop",
+		Headline: finished + " done: stop after " + out.Stop,
+		Numbers:  "next " + out.Next + " · waiting for continue",
+	}})
+	return actions
+}
+
+// WaitOperator marks the loop as waiting for the operator.
+func (l *Loop) WaitOperator(kind, reason, issueURL string, now time.Time) []Action {
+	if l.State != "running" && l.State != "paused" {
+		return nil
+	}
+	l.State = "waiting"
+	l.Stop = &control.Stop{Kind: kind, Phase: l.Phase, Reason: reason, IssueURL: issueURL, At: now}
+	l.Queue.Stop(kind)
+	numbers := reason
+	if issueURL != "" {
+		numbers += " · " + issueURL
+	}
+	return []Action{
+		{Kind: "post", Milestone: control.Milestone{
+			Kind: "stop", Headline: l.Phase + ": wait_operator " + kind, Numbers: numbers,
+		}},
+	}
+}
+
+// Continue resumes a stopped loop.
+func (l *Loop) Continue(now time.Time) ([]Action, error) {
+	if l.State != "waiting" {
+		return nil, control.ErrNotWaiting
+	}
+	if l.Stop != nil && l.Stop.Kind == "not_pushed" {
+		if _, err := l.Queue.Continue(); err != nil {
+			return nil, err
+		}
+		if _, err := l.Queue.Start(); err != nil {
+			return nil, err
+		}
+		l.State = "running"
+		l.Stop = nil
+		return []Action{{Kind: "end_check", Phase: l.Phase}}, nil
+	}
+	if _, err := l.Queue.Continue(); err != nil {
+		return nil, err
+	}
+	ph, err := l.Queue.Start()
+	if err != nil {
+		return nil, err
+	}
+	l.Phase = ph.ID
+	l.State = "starting"
+	l.Stop = nil
+	l.Nudged = false
+	l.Alerted = false
+	l.SessionUSD = 0
+	return []Action{{Kind: "start_check", Phase: l.Phase}}, nil
+}
+
+// Restart kills the running session and asks for a fresh start check.
+func (l *Loop) Restart(now time.Time) ([]Action, error) {
+	if l.State != "running" && l.State != "paused" {
+		return nil, control.ErrNoSession
+	}
+	l.State = "starting"
+	l.SessionID = ""
+	l.Restarts = nil
+	return []Action{{Kind: "kill"}, {Kind: "start_check", Phase: l.Phase}}, nil
+}
+
+// phaseCaps returns the caps of the loop's current phase.
+func (l *Loop) phaseCaps() queue.Caps {
+	for _, p := range l.Queue.Phases {
+		if p.ID == l.Phase {
+			return p.Caps
+		}
+	}
+	return queue.Caps{}
+}
+
+// nextPhaseID returns the id of the phase after the loop's current one.
+func (l *Loop) nextPhaseID() string {
+	for i, p := range l.Queue.Phases {
+		if p.ID == l.Phase && i+1 < len(l.Queue.Phases) {
+			return l.Queue.Phases[i+1].ID
+		}
+	}
+	return ""
+}
+
+// fnum formats a float without a trailing zero fraction.
+func fnum(f float64) string {
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+```

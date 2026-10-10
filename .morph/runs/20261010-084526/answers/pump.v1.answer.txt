@@ -1,0 +1,161 @@
+```go
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+
+	"morphstudio/claude"
+	"morphstudio/eventlog"
+	"morphstudio/stream"
+	"morphstudio/supervisor"
+)
+
+func init() {
+	startPump = func(d *Daemon, ctx context.Context, project string, p claude.Process, l *eventlog.Log) {
+		pj := d.projects[project]
+		if pj == nil {
+			return
+		}
+		done := make(chan struct{})
+		pj.pumps[p] = done
+		go func() {
+			d.pump(ctx, project, p, l)
+			d.mu.Lock()
+			if cur := d.projects[project]; cur != nil {
+				delete(cur.pumps, p)
+			}
+			d.mu.Unlock()
+			close(done)
+		}()
+	}
+}
+
+// Wait blocks until the project's non-current pumps return; it is a no-op
+// when there are none.
+func (d *Daemon) Wait(project string) {
+	d.mu.Lock()
+	pj := d.projects[project]
+	if pj == nil {
+		d.mu.Unlock()
+		return
+	}
+	var dones []chan struct{}
+	for proc, done := range pj.pumps {
+		if proc != pj.proc {
+			dones = append(dones, done)
+		}
+	}
+	d.mu.Unlock()
+	for _, done := range dones {
+		<-done
+	}
+}
+
+// pump reads every line from p, logs it, feeds the project's machine and
+// loop, and executes what they return. When the process exits it logs the
+// exit into the process's own log and, if p is still the project's current
+// process, hands the exit to the loop.
+func (d *Daemon) pump(ctx context.Context, project string, p claude.Process, l *eventlog.Log) {
+	for line := range p.Lines() {
+		d.mu.Lock()
+		now := d.deps.Now()
+
+		raw := json.RawMessage(line)
+		if !json.Valid(line) {
+			raw, _ = json.Marshal(string(line))
+		}
+		_, _ = l.Append("out", raw, now)
+
+		ev, err := stream.Parse(line)
+		if err != nil {
+			d.mu.Unlock()
+			continue
+		}
+
+		pj := d.projects[project]
+		if pj == nil || pj.proc != p || pj.machine == nil {
+			d.mu.Unlock()
+			continue
+		}
+
+		pj.state.Loop.Event(now)
+		macts := pj.machine.Apply(ev, now)
+
+		var lacts []supervisor.Action
+		switch ev.Type {
+		case "result":
+			if ev.Result != nil {
+				lacts = pj.state.Loop.Turn(*ev.Result, now, d.deps.Config.Loop)
+			}
+		case "rate_limit_event":
+			if ev.Limits != nil {
+				lacts = pj.state.Loop.Limits(*ev.Limits, now, d.deps.Config.Loop)
+			}
+		}
+
+		for _, a := range macts {
+			switch a.Kind {
+			case "write":
+				d.writeLine(project, a.Line)
+			case "ask":
+				_, _ = d.deps.Post(ctx, project, "ask", a.Headline, a.Numbers)
+			case "turn":
+				headline := truncRunes(a.Headline, 200)
+				if headline == "" {
+					headline = "(no text)"
+				}
+				_, _ = d.deps.Post(ctx, project, "idle",
+					pj.state.Loop.Phase+" turn ended: "+headline, a.Numbers)
+			case "limit":
+				// nothing
+			}
+		}
+
+		d.execute(ctx, project, lacts)
+		d.mu.Unlock()
+	}
+
+	st := <-p.Exit()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	exitMsg, _ := json.Marshal(map[string]any{
+		"code":   st.Code,
+		"stderr": stderrTail(st.Stderr, 20),
+	})
+	_, _ = l.Append("exit", exitMsg, d.deps.Now())
+
+	pj := d.projects[project]
+	if pj == nil || pj.proc != p {
+		return
+	}
+	pj.proc = nil
+	d.execute(ctx, project, pj.state.Loop.Exited(st.Code, st.Stderr, d.deps.Now(), d.deps.Config.Loop))
+}
+
+// truncRunes returns the first n runes of s.
+func truncRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n])
+}
+
+// stderrTail returns the last n lines of s, one trailing newline trimmed
+// first; it is "" when s is empty.
+func stderrTail(s string, n int) string {
+	s = strings.TrimSuffix(s, "\n")
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
+```

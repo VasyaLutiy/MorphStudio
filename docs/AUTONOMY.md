@@ -7,13 +7,17 @@ confirms it before the first autonomous phase and can change any line; the sessi
 
 ## State at handoff
 
-**P7b is done (10.10, merged by fast-forward a37d6d6).** After five red runs (VPS 20261010-070606; laptop old-scheme runs 084526, 092439, and on P24 123801, 133009 — see MEASURE and DECISIONS 10.10) the PM salvaged run 20261010-092439's archived answers with MorphV2 18dab5b's group `morph accept --from-run … --pick daemon-core-judge.r2.v1,pump-judge.r1.v1,config-and-main-judge.r1.v1 --commit`: 12/12 green on one tree, 12 commits with Morph-Card/Model/Variant/Run trailers, no Morph-Debt, $0. Verify: go build/vet ok, gofmt empty, 210 example tests in 17 packages, race ×3 ok on control, supervisor, daemon, cmd/morphd; D1 (UUID v4 session ids), D2 (crash = exit before phase_done/wait_operator, Restarts, Exited with stderr, crash stop) and D3 (null limits until the first rate_limit_event) are in the code. The VPS's unpushed 10.10 P7b prep commits are dropped (operator 10.10); the VPS binary for any later phase is MorphV2 ≥ 18dab5b.
+**P8b is done (10.10, merged by fast-forward 5c1cfd4): every phase of PLAN.md is built.** Run 20261010-212705 on ds,
+9/9, $0.3327, 36 min; 237 example tests green, race ×3 on daemon, supervisor, mcpserver; the orchestrator's laptop
+smoke ($0 of claude: adopt, refusals over MCP and HTTP, credential helper, `events {}`) green. P7b, P7c and P8a are done
+too (MEASURE, DECISIONS 10.10).
 
-**Next: smoke stop 2, final** (PLAN "Smoke stop 2, final": the PM on the VPS over HTTP and MCP, ≤ $0.50 of claude,
-of which $0.1386 is spent on smoke 1). No phase remains after it: the session posted 🧪, touched
-`~/.morph-wait-operator` and stopped; the PM runs the smoke and the operator restarts the session after a check (a
-green smoke → `end` 🎉 and the stretch closes; a red one → a DECISIONS line and an issue labelled for the Component).
-Running total $0.5473 of $35 executor; claude for the smokes $0.1386 of $0.55; claude for debts $2.4027 (P6).
+**Next: Smoke stop 3** (PLAN "Smoke stop 3": the PM over the systemd morphd on the VPS, ≤ $0.30 of claude), after the
+VPS morphd is rebuilt from main (RUNBOOK_VPS "Update after a merge"); then the PM removes the morph user's
+`~/.config/morph/tg.env` (Q28). No phase remains: a green smoke 3 closes the stretch (`end` 🎉); a red one → a
+DECISIONS line and an issue labelled for the Component.
+Running total ≈ $4.94 of $35 executor (+ the unknown cost of the interrupted run 20261010-205103); claude for the
+smokes $0.3845 of $1.45; claude for debts $2.4027 (P6).
 Processor `ds` (maxTokens ×3 after the cut); fallback `glm53`. Claude auto-memory is off in every phase session
 (`CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, set by `tools/vps-session.sh`).
 

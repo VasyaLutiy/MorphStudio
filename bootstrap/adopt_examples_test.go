@@ -1,0 +1,327 @@
+package bootstrap
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+	"morphstudio/runner"
+)
+
+// paEnvRunner records a copy of every env slice passed to Run, then delegates
+// to a runner.Fake.
+type paEnvRunner struct {
+	f    *runner.Fake
+	envs [][]string
+}
+
+func (e *paEnvRunner) Run(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
+	e.envs = append(e.envs, append([]string(nil), env...))
+	return e.f.Run(ctx, dir, env, name, args...)
+}
+
+// paContour returns a fresh temporary directory holding a contour.yaml file.
+func paContour(t testing.TB) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "contour.yaml"), []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// paMainScript is the scripted git output for the canonical demo repository on
+// main.
+func paMainScript() map[string]runner.Result {
+	return map[string]runner.Result{
+		"git rev-parse --is-inside-work-tree": {Stdout: "true\n"},
+		"git rev-parse --abbrev-ref HEAD":     {Stdout: "main\n"},
+		"git remote get-url origin":           {Stdout: "https://github.com/o/demo.git\n"},
+	}
+}
+
+// paOriginScript is the main script with the origin lookup scripted to origin.
+func paOriginScript(origin runner.Result) map[string]runner.Result {
+	return map[string]runner.Result{
+		"git rev-parse --is-inside-work-tree": {Stdout: "true\n"},
+		"git rev-parse --abbrev-ref HEAD":     {Stdout: "main\n"},
+		"git remote get-url origin":           origin,
+	}
+}
+
+// paKeys returns the runner.Key of every recorded call.
+func paKeys(f *runner.Fake) []string {
+	keys := make([]string, len(f.Calls))
+	for i, c := range f.Calls {
+		keys[i] = runner.Key(c.Name, c.Args...)
+	}
+	return keys
+}
+
+func TestProjectAdoptExample1(t *testing.T) {
+	dir := paContour(t)
+	f := &runner.Fake{Script: paMainScript()}
+	er := &paEnvRunner{f: f}
+
+	rep, err := Adopt(context.Background(), er, AdoptSpec{
+		Name:            "demo",
+		Language:        "go",
+		RepoURL:         "https://github.com/o/demo",
+		Dir:             dir,
+		CredentialsFile: "/st/demo/git-credentials",
+	})
+	if err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+
+	wantSteps := []string{
+		"git rev-parse --is-inside-work-tree",
+		"git rev-parse --abbrev-ref HEAD",
+		"git remote get-url origin",
+		"git config credential.helper store --file=/st/demo/git-credentials",
+	}
+	testhelp.Equal(t, "report", rep, Report{Dir: dir, Steps: wantSteps})
+
+	if len(f.Calls) != 4 {
+		t.Fatalf("calls: got %d, want 4", len(f.Calls))
+	}
+	testhelp.Equal(t, "keys", paKeys(f), wantSteps)
+
+	dirs := make([]string, 4)
+	envs := make([][]string, 4)
+	for i := range f.Calls {
+		dirs[i] = f.Calls[i].Dir
+		envs[i] = er.envs[i]
+	}
+	one := []string{"GIT_TERMINAL_PROMPT=0"}
+	testhelp.Equal(t, "call dirs", dirs, []string{dir, dir, dir, dir})
+	testhelp.Equal(t, "call envs", envs, [][]string{one, one, one, one})
+	testhelp.Equal(t, "fourth args", f.Calls[3].Args, []string{"config", "credential.helper", "store --file=/st/demo/git-credentials"})
+}
+
+func TestProjectAdoptExample2(t *testing.T) {
+	dir := paContour(t)
+	f := &runner.Fake{Script: paMainScript()}
+	er := &paEnvRunner{f: f}
+	missing := filepath.Join(t.TempDir(), "missing")
+	noContour := t.TempDir()
+
+	cases := []struct {
+		what string
+		spec AdoptSpec
+		want string
+	}{
+		{
+			"name",
+			AdoptSpec{Name: "Demo", Language: "go", RepoURL: "https://github.com/o/demo", Dir: dir},
+			"bootstrap: refused: bad project name \"Demo\"",
+		},
+		{
+			"language",
+			AdoptSpec{Name: "demo", Language: "rust", RepoURL: "https://github.com/o/demo", Dir: dir},
+			"bootstrap: refused: unknown language \"rust\"",
+		},
+		{
+			"repo url",
+			AdoptSpec{Name: "demo", Language: "go", RepoURL: "https://gitlab.com/o/r", Dir: dir},
+			"bootstrap: refused: github: not a github repository url: https://gitlab.com/o/r",
+		},
+		{
+			"relative dir",
+			AdoptSpec{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", Dir: "relative/demo"},
+			"bootstrap: refused: dir must be absolute: relative/demo",
+		},
+		{
+			"missing dir",
+			AdoptSpec{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", Dir: missing},
+			"bootstrap: refused: not a directory: " + missing,
+		},
+		{
+			"no contour",
+			AdoptSpec{Name: "demo", Language: "go", RepoURL: "https://github.com/o/demo", Dir: noContour},
+			"bootstrap: refused: no contour.yaml in " + noContour,
+		},
+	}
+
+	for _, c := range cases {
+		rep, err := Adopt(context.Background(), er, c.spec)
+		if err == nil {
+			t.Fatalf("%s: Adopt: got nil error", c.what)
+		}
+		testhelp.Equal(t, c.what+" errors.Is ErrRefused", errors.Is(err, ErrRefused), true)
+		testhelp.Equal(t, c.what+" error", err.Error(), c.want)
+		testhelp.Equal(t, c.what+" steps", rep.Steps, []string(nil))
+	}
+	testhelp.Equal(t, "calls", len(f.Calls), 0)
+}
+
+func TestProjectAdoptExample3(t *testing.T) {
+	dir := paContour(t)
+	f := &runner.Fake{Script: map[string]runner.Result{
+		"git rev-parse --is-inside-work-tree": {Code: 128, Stderr: "fatal: not a git repository (or any of the parent directories): .git\n"},
+	}}
+
+	rep, err := Adopt(context.Background(), &paEnvRunner{f: f}, AdoptSpec{
+		Name:            "demo",
+		Language:        "go",
+		RepoURL:         "https://github.com/o/demo",
+		Dir:             dir,
+		CredentialsFile: "/st/demo/git-credentials",
+	})
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), true)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: refused: not a git repository: "+dir)
+	testhelp.Equal(t, "steps", rep.Steps, []string{"git rev-parse --is-inside-work-tree"})
+	testhelp.Equal(t, "calls", len(f.Calls), 1)
+}
+
+func TestProjectAdoptExample4(t *testing.T) {
+	dir := paContour(t)
+	spec := AdoptSpec{
+		Name:            "demo",
+		Language:        "go",
+		RepoURL:         "https://github.com/o/demo",
+		Dir:             dir,
+		CredentialsFile: "/st/demo/git-credentials",
+	}
+
+	f := &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "https://github.com/o/demo.git\n"})}
+	f.Script["git rev-parse --abbrev-ref HEAD"] = runner.Result{Stdout: "morph/20261010-084526\n"}
+	rep, err := Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), true)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: refused: on branch morph/20261010-084526, not main")
+	testhelp.Equal(t, "steps", len(rep.Steps), 2)
+
+	f = &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "https://github.com/o/demo.git\n"})}
+	f.Script["git rev-parse --abbrev-ref HEAD"] = runner.Result{Code: 128, Stderr: "fatal: ambiguous argument\n"}
+	rep, err = Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), false)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: step 2 failed (exit 128): fatal: ambiguous argument")
+	testhelp.Equal(t, "steps", len(rep.Steps), 2)
+}
+
+func TestProjectAdoptExample5(t *testing.T) {
+	dir := paContour(t)
+	spec := AdoptSpec{
+		Name:            "demo",
+		Language:        "go",
+		RepoURL:         "https://github.com/o/demo",
+		Dir:             dir,
+		CredentialsFile: "/st/demo/git-credentials",
+	}
+
+	f := &runner.Fake{Script: paOriginScript(runner.Result{Code: 2, Stderr: "error: No such remote 'origin'\n"})}
+	rep, err := Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), true)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: refused: no origin remote")
+	testhelp.Equal(t, "steps", len(rep.Steps), 3)
+
+	f = &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "git@github.com:o/other.git\n"})}
+	rep, err = Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), true)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: refused: origin git@github.com:o/other.git is not https://github.com/o/demo")
+
+	f = &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "git@github.com:o/demo.git\n"})}
+	rep, err = Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	testhelp.Equal(t, "steps", len(rep.Steps), 4)
+
+	f = &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "https://github.com/o/demo/\n"})}
+	rep, err = Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	testhelp.Equal(t, "steps", len(rep.Steps), 4)
+
+	f = &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "https://example.com/x\n"})}
+	rep, err = Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), true)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: refused: origin https://example.com/x is not https://github.com/o/demo")
+}
+
+func TestProjectAdoptExample6(t *testing.T) {
+	dir := paContour(t)
+	spec := AdoptSpec{
+		Name:            "demo",
+		Language:        "go",
+		RepoURL:         "https://github.com/o/demo",
+		Dir:             dir,
+		CredentialsFile: "/st/demo/git-credentials",
+	}
+
+	f := &runner.Fake{Errors: map[string]string{
+		"git rev-parse --is-inside-work-tree": "runner: exec: \"git\": executable file not found",
+	}}
+	rep, err := Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), false)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: step 1: runner: exec: \"git\": executable file not found")
+	testhelp.Equal(t, "steps", len(rep.Steps), 1)
+
+	f = &runner.Fake{Script: paMainScript()}
+	f.Script["git config credential.helper store --file=/st/demo/git-credentials"] = runner.Result{Code: 1, Stderr: "error: could not lock config file .git/config\n"}
+	rep, err = Adopt(context.Background(), &paEnvRunner{f: f}, spec)
+	if err == nil {
+		t.Fatal("Adopt: got nil error")
+	}
+	testhelp.Equal(t, "errors.Is ErrRefused", errors.Is(err, ErrRefused), false)
+	testhelp.Equal(t, "error", err.Error(), "bootstrap: step 4 failed (exit 1): error: could not lock config file .git/config")
+	testhelp.Equal(t, "steps", len(rep.Steps), 4)
+	testhelp.Equal(t, "dir", rep.Dir, dir)
+}
+
+func TestProjectAdoptExample7(t *testing.T) {
+	dir := paContour(t)
+	f := &runner.Fake{Script: paOriginScript(runner.Result{Stdout: "https://github.com/o/a-1-b/\n"})}
+	er := &paEnvRunner{f: f}
+
+	rep, err := Adopt(context.Background(), er, AdoptSpec{
+		Name:            "a-1-b",
+		Language:        "typescript",
+		RepoURL:         "git@github.com:o/a-1-b.git",
+		Dir:             dir,
+		CredentialsFile: "/var/morphd/a-1-b/git-credentials",
+	})
+	if err != nil {
+		t.Fatalf("Adopt: %v", err)
+	}
+	if len(rep.Steps) != 4 {
+		t.Fatalf("steps: got %d, want 4", len(rep.Steps))
+	}
+	testhelp.Equal(t, "steps[3]", rep.Steps[3], "git config credential.helper store --file=/var/morphd/a-1-b/git-credentials")
+	testhelp.Equal(t, "dir", rep.Dir, dir)
+
+	if len(f.Calls) != 4 {
+		t.Fatalf("calls: got %d, want 4", len(f.Calls))
+	}
+	envs := make([][]string, 4)
+	for i := range f.Calls {
+		envs[i] = er.envs[i]
+	}
+	one := []string{"GIT_TERMINAL_PROMPT=0"}
+	testhelp.Equal(t, "call envs", envs, [][]string{one, one, one, one})
+}

@@ -1,6 +1,6 @@
 # Primer: MorphStudio
 
-generated 2026-10-10T18:57:24.872Z · 655 files in the tree · no model call, no network
+generated 2026-10-10T20:43:47.398Z · 678 files in the tree · no model call, no network
 missing: docs/PLAN.md
 
 ## Tests
@@ -14,6 +14,7 @@ missing: docs/PLAN.md
 - cost: $3.6696 over 15 priced runs (0 unpriced)
 - by format: V2 15 runs, 79/129 written, $3.6696; mrph 0 runs, 0/0 written, $0.0000
 - models: deepseek/deepseek-v4.1-flash (15 runs)
+- skipped: 20261010-190913 (no report.json)
 - debt rows (docs/MEASURE.md): none
 - running total (docs/MEASURE.md): "Running total: ≈ $4.38 of $35 executor" vs $3.6696 archived here, difference 0.7104 — the two differ by runs made outside this repository (in MEASURE, no archive here) and archived runs MEASURE's total leaves out; debt rows are in neither
 

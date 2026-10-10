@@ -1,3 +1,4 @@
+// Package api exposes the daemon's control surface over HTTP.
 package api
 
 import (
@@ -11,97 +12,85 @@ import (
 	"morphstudio/queue"
 )
 
-// Handlers is the HTTP surface over a Control.
+// Handlers turns the control surface into HTTP handlers.
 type Handlers struct {
 	Control control.Control
 }
 
-type errorDetail struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-type errorEnvelope struct {
-	Error errorDetail `json:"error"`
-}
-
-type okBody struct {
-	OK bool `json:"ok"`
-}
-
-// WriteJSON writes v as an application/json body with the given status.
+// WriteJSON writes v as an application/json body ending in a newline.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// WriteError maps err to a status and a stable code and writes the error body.
+// WriteError writes the stable error body for err.
 func WriteError(w http.ResponseWriter, err error) {
 	status, code := control.Code(err)
 	msg := err.Error()
-	if status == 500 {
+	if status == http.StatusInternalServerError {
 		msg = "internal"
 	}
-	writeErrBody(w, status, code, msg)
+	WriteJSON(w, status, errorBody(code, msg))
 }
 
-func writeErrBody(w http.ResponseWriter, status int, code, message string) {
-	WriteJSON(w, status, errorEnvelope{Error: errorDetail{Code: code, Message: message}})
+// errorBody builds the {"error":{...}} envelope.
+func errorBody(code, message string) map[string]any {
+	return map[string]any{
+		"error": map[string]any{
+			"code":    code,
+			"message": message,
+		},
+	}
 }
 
-func writeBadJSON(w http.ResponseWriter) {
-	writeErrBody(w, http.StatusBadRequest, "bad_json", "bad json")
+// okBody is the {"ok":true} acknowledgement.
+func okBody() map[string]bool {
+	return map[string]bool{"ok": true}
 }
 
-func writeOK(w http.ResponseWriter) {
-	WriteJSON(w, http.StatusOK, okBody{OK: true})
-}
-
-func project(r *http.Request) string {
-	return r.PathValue("project")
-}
-
-// readJSON enforces a JSON Content-Type and strictly decodes the body into v.
+// readJSON enforces the JSON reading rules and decodes into v. It writes the
+// error response and reports false when the body is unacceptable.
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mt != "application/json" {
-		writeErrBody(w, http.StatusUnsupportedMediaType, "unsupported_media_type",
-			"Content-Type must be application/json")
+		WriteJSON(w, http.StatusUnsupportedMediaType, errorBody(
+			"unsupported_media_type", "Content-Type must be application/json"))
 		return false
 	}
-	body := http.MaxBytesReader(w, r.Body, 1<<20)
-	dec := json.NewDecoder(body)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
-		writeBadJSON(w)
+		WriteJSON(w, http.StatusBadRequest, errorBody("bad_json", "bad json"))
 		return false
 	}
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		writeBadJSON(w)
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		WriteJSON(w, http.StatusBadRequest, errorBody("bad_json", "bad json"))
 		return false
 	}
 	return true
 }
 
-// Projects lists every project.
+// Projects answers GET /projects.
 func (h Handlers) Projects(w http.ResponseWriter, r *http.Request) {
-	views := h.Control.Projects()
-	if views == nil {
-		views = []control.ProjectView{}
+	projects := h.Control.Projects()
+	if projects == nil {
+		projects = []control.ProjectView{}
 	}
-	WriteJSON(w, http.StatusOK, struct {
-		Projects []control.ProjectView `json:"projects"`
-	}{Projects: views})
+	WriteJSON(w, http.StatusOK, map[string]any{"projects": projects})
 }
 
-// CreateProject registers a new project.
+type createProjectRequest struct {
+	Name     string `json:"name"`
+	Language string `json:"language"`
+	RepoURL  string `json:"repo_url"`
+}
+
+// CreateProject answers POST /projects.
 func (h Handlers) CreateProject(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name     string `json:"name"`
-		Language string `json:"language"`
-		RepoURL  string `json:"repo_url"`
-	}
+	var req createProjectRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -113,136 +102,157 @@ func (h Handlers) CreateProject(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, view)
 }
 
-// Status reports the state of a project.
-func (h Handlers) Status(w http.ResponseWriter, r *http.Request) {
-	st, err := h.Control.Status(project(r))
+type adoptProjectRequest struct {
+	Name     string `json:"name"`
+	Dir      string `json:"dir"`
+	RepoURL  string `json:"repo_url"`
+	Language string `json:"language"`
+}
+
+// AdoptProject answers POST /projects/adopt.
+func (h Handlers) AdoptProject(w http.ResponseWriter, r *http.Request) {
+	var req adoptProjectRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	view, err := control.Adopt(r.Context(), h.Control, req.Name, req.Dir, req.RepoURL, req.Language)
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, st)
+	WriteJSON(w, http.StatusCreated, view)
 }
 
-// Events pages the event log of a project.
+// Status answers GET /projects/{project}/status.
+func (h Handlers) Status(w http.ResponseWriter, r *http.Request) {
+	status, err := h.Control.Status(r.PathValue("project"))
+	if err != nil {
+		WriteError(w, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, status)
+}
+
+// Events answers GET /projects/{project}/events.
 func (h Handlers) Events(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-
-	since := int64(0)
-	if s := query.Get("since"); s != "" {
-		v, err := strconv.ParseInt(s, 10, 64)
+	var since int64
+	if raw := query.Get("since"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
-			writeErrBody(w, http.StatusBadRequest, "bad_input", "since must be an integer")
+			WriteJSON(w, http.StatusBadRequest, errorBody("bad_input", "since must be an integer"))
 			return
 		}
-		since = v
+		since = n
 	}
-
-	max := 0
-	if m := query.Get("max"); m != "" {
-		v, err := strconv.Atoi(m)
+	var max int
+	if raw := query.Get("max"); raw != "" {
+		n, err := strconv.Atoi(raw)
 		if err != nil {
-			writeErrBody(w, http.StatusBadRequest, "bad_input", "max must be an integer")
+			WriteJSON(w, http.StatusBadRequest, errorBody("bad_input", "max must be an integer"))
 			return
 		}
-		max = v
+		max = n
 	}
-
-	ev, err := h.Control.Events(project(r), since, max)
+	events, err := h.Control.Events(r.PathValue("project"), since, max)
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, ev)
+	WriteJSON(w, http.StatusOK, events)
 }
 
-// Messages hands operator text to a project's session.
+type messageRequest struct {
+	Text string `json:"text"`
+}
+
+// Messages answers POST /projects/{project}/messages.
 func (h Handlers) Messages(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Text string `json:"text"`
-	}
+	var req messageRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
-	res, err := h.Control.Order(project(r), req.Text)
+	result, err := h.Control.Order(r.PathValue("project"), req.Text)
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, res)
+	WriteJSON(w, http.StatusOK, result)
 }
 
-// Pending reports the question a project is waiting on, if any.
+// Pending answers GET /projects/{project}/pending.
 func (h Handlers) Pending(w http.ResponseWriter, r *http.Request) {
-	q, err := h.Control.Pending(project(r))
+	question, err := h.Control.Pending(r.PathValue("project"))
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, struct {
-		Question *control.Question `json:"question"`
-	}{Question: q})
+	WriteJSON(w, http.StatusOK, map[string]any{"question": question})
 }
 
-// Answer answers a project's pending question.
+type answerRequest struct {
+	Option int `json:"option"`
+}
+
+// Answer answers POST /projects/{project}/answer.
 func (h Handlers) Answer(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Option int `json:"option"`
-	}
+	var req answerRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := h.Control.Answer(project(r), req.Option); err != nil {
+	if err := h.Control.Answer(r.PathValue("project"), req.Option); err != nil {
 		WriteError(w, err)
 		return
 	}
-	writeOK(w)
+	WriteJSON(w, http.StatusOK, okBody())
 }
 
-// Interrupt interrupts a project's running session.
+// Interrupt answers POST /projects/{project}/interrupt.
 func (h Handlers) Interrupt(w http.ResponseWriter, r *http.Request) {
-	if err := h.Control.Interrupt(project(r)); err != nil {
+	if err := h.Control.Interrupt(r.PathValue("project")); err != nil {
 		WriteError(w, err)
 		return
 	}
-	writeOK(w)
+	WriteJSON(w, http.StatusOK, okBody())
 }
 
-// Usage reports a project's Claude limits and spend.
+// Usage answers GET /projects/{project}/usage.
 func (h Handlers) Usage(w http.ResponseWriter, r *http.Request) {
-	u, err := h.Control.Usage(project(r))
+	usage, err := h.Control.Usage(r.PathValue("project"))
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, u)
+	WriteJSON(w, http.StatusOK, usage)
 }
 
-// Restart restarts a project's session, optionally with force.
+type restartRequest struct {
+	Force bool `json:"force"`
+}
+
+// Restart answers POST /projects/{project}/restart. The body is optional: it
+// is read only when a body is present.
 func (h Handlers) Restart(w http.ResponseWriter, r *http.Request) {
-	force := false
+	req := restartRequest{}
 	if r.ContentLength != 0 {
-		var req struct {
-			Force bool `json:"force"`
-		}
 		if !readJSON(w, r, &req) {
 			return
 		}
-		force = req.Force
 	}
-	if err := h.Control.Restart(project(r), force); err != nil {
+	if err := h.Control.Restart(r.PathValue("project"), req.Force); err != nil {
 		WriteError(w, err)
 		return
 	}
-	writeOK(w)
+	WriteJSON(w, http.StatusOK, okBody())
 }
 
-// Plan loads an approved plan into a project's queue.
+// Plan answers POST /projects/{project}/plan.
 func (h Handlers) Plan(w http.ResponseWriter, r *http.Request) {
-	var p queue.Plan
-	if !readJSON(w, r, &p) {
+	var plan queue.Plan
+	if !readJSON(w, r, &plan) {
 		return
 	}
-	view, err := h.Control.PlanLoad(project(r), p)
+	view, err := h.Control.PlanLoad(r.PathValue("project"), plan)
 	if err != nil {
 		WriteError(w, err)
 		return
@@ -250,39 +260,39 @@ func (h Handlers) Plan(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, view)
 }
 
-// Continue clears a stop and resumes a project's walk.
+// Continue answers POST /projects/{project}/continue.
 func (h Handlers) Continue(w http.ResponseWriter, r *http.Request) {
-	if err := h.Control.Continue(project(r)); err != nil {
+	if err := h.Control.Continue(r.PathValue("project")); err != nil {
 		WriteError(w, err)
 		return
 	}
-	writeOK(w)
+	WriteJSON(w, http.StatusOK, okBody())
 }
 
-// StopCheck reports whether a project's walk is stopped.
+// StopCheck answers GET /projects/{project}/stop.
 func (h Handlers) StopCheck(w http.ResponseWriter, r *http.Request) {
-	stop, err := h.Control.StopCheck(project(r))
+	stop, err := h.Control.StopCheck(r.PathValue("project"))
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, struct {
-		Stop *control.Stop `json:"stop"`
-	}{Stop: stop})
+	WriteJSON(w, http.StatusOK, map[string]any{"stop": stop})
 }
 
-// GithubToken stores a project's GitHub token and reports the access it grants.
+type githubTokenRequest struct {
+	Token string `json:"token"`
+}
+
+// GithubToken answers PUT /projects/{project}/github-token.
 func (h Handlers) GithubToken(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Token string `json:"token"`
-	}
+	var req githubTokenRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
-	res, err := h.Control.PutGithubToken(r.Context(), project(r), req.Token)
+	result, err := h.Control.PutGithubToken(r.Context(), r.PathValue("project"), req.Token)
 	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, res)
+	WriteJSON(w, http.StatusOK, result)
 }

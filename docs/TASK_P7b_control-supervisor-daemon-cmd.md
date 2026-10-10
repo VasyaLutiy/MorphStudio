@@ -119,3 +119,22 @@ Report to the team lead: prep minutes, scout numbers, deck check, stub check, ru
   config 6, 7. Judges red at `== guard` (41, 45, 43, 65, 59, 42 lines). `decks/tools/stubcheck.mjs` exit 0 on all 12
   logs. Slowest chain 37 s (daemon-core, the overflow). The acceptances need Go 1.25 first on PATH
   (`GOTOOLCHAIN=local`; /usr/bin/go is 1.22).
+
+### Run 20261010-084526 (ds, MorphV2 ec56481 copy /tmp/morphbin) — RED, rolled back
+
+12/12 answers written, the group check red; 0 written, 12 failed, 16 requests, $0.5981, 37 min. daemon-core v1/r1/r2:
+`daemon/daemon.go:572:2: declared and not used: p` (v1 also `log.Close undefined`), r2 compiled; daemon-core-judge
+v1/r1/r2: `daemon/daemon_examples_test.go:333:2: declared and not used: h` and gofmt (code defect, 3 attempts);
+config-and-main: `listen: … has no "127.0.0.1:" address literal` on a correct `fmt.Sprintf("127.0.0.1:%d", …)` —
+criterion fault (class data), fixed in checks.json (any string literal beginning `"127.0.0.1:`), deck re-cut.
+
+### Run 20261010-092439 (the one re-run) — RED, rolled back: STOP
+
+12/12 written, the group check red twice; 0 written, 12 failed, 26 requests, $0.9268, 58 min. Every code card reached
+`== full` (its build, vet, probe and record checks green); the reds are two judges: daemon-core-judge v1/r1 Examples 4,
+5, 6 `testhelp.Equal(…, launches[1].BudgetUSD, 30)` — an int want against a float64 (code defect of the judge;
+`daemon/daemon_examples_test.go:411, 450, 510` of r1); pump-judge v1 without the record literal "state.json" (guard).
+Both were fixed by their next attempt (daemon-core-judge r2 `float64(30)`, pump-judge r1 holds "state.json"), but the
+second group red regenerated control-contract (r1 accepted) and every dependant's retry came back `stale`
+(10 stale answers), so the retry budget ran out with the earlier versions in place. Main after the stop: the old code,
+`go build`, `go vet` green, `go test ./...` 18 packages ok, 201 tests.

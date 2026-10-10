@@ -3,93 +3,102 @@ package supervisor
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"morphstudio/control"
 	"morphstudio/stream"
 )
 
-// Event records that the session process produced a line of output.
+// Event notes that a line arrived from the session's process.
 func (l *Loop) Event(now time.Time) {
 	l.LastEventAt = now
 }
 
-// countResumes drops resumes older than an hour and returns how many remain.
-func (l *Loop) countResumes(now time.Time) int {
-	var kept []time.Time
-	for _, t := range l.Resumes {
-		if now.Sub(t) < time.Hour {
-			kept = append(kept, t)
-		}
-	}
-	l.Resumes = kept
-	return len(kept)
-}
-
-// Exited reacts to the session process ending on its own.
-func (l *Loop) Exited(code int, now time.Time, cfg Config) []Action {
+// Exited handles an exit of the process the loop still wanted alive.
+func (l *Loop) Exited(code int, stderr string, now time.Time, cfg Config) []Action {
 	switch l.State {
 	case "running", "paused", "starting":
 	default:
 		return nil
 	}
-
-	n := l.countResumes(now)
+	line := firstStderrLine(stderr)
+	restarts := pruneRestarts(l.Restarts, now)
+	n := len(restarts)
 	if n < cfg.MaxResumesPerHour {
-		l.Resumes = append(l.Resumes, now)
+		restarts = append(restarts, now)
+		l.Restarts = restarts
+		l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n + 1}
 		l.State = "starting"
-		headline := fmt.Sprintf("%s: session exited (code %d), resuming", l.Phase, code)
-		numbers := fmt.Sprintf("resume %d of %d this hour", n+1, cfg.MaxResumesPerHour)
+		numbers := fmt.Sprintf("restart %d of %d this hour", n+1, cfg.MaxResumesPerHour)
+		if line != "" {
+			numbers += " · " + line
+		}
 		return []Action{
-			{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: headline, Numbers: numbers}},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": session exited (code " + strconv.Itoa(code) + "), restarting",
+				Numbers:  numbers,
+			}},
 			{Kind: "start_check", Phase: l.Phase},
 		}
 	}
-
-	reason := fmt.Sprintf("exited %d times within an hour (last code %d)", n, code)
+	l.Restarts = restarts
+	l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n}
+	reason := fmt.Sprintf("exited %d times within an hour (last code %d)", n+1, code)
+	if line != "" {
+		reason += ": " + line
+	}
 	l.State = "waiting"
 	l.Stop = &control.Stop{Kind: "crash", Phase: l.Phase, Reason: reason, At: now}
 	l.Queue.Stop("crash")
 	return []Action{
-		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + ": session keeps exiting", Numbers: reason}},
+		{Kind: "post", Milestone: control.Milestone{
+			Kind:     "stop",
+			Headline: l.Phase + ": session keeps exiting",
+			Numbers:  reason,
+		}},
 	}
 }
 
-// Turn folds one session result into the spend and checks the stretch cap.
+// Turn folds one result record into the loop's spend accounting.
 func (l *Loop) Turn(r stream.Result, now time.Time, cfg Config) []Action {
 	l.SessionUSD = r.TotalCostUSD
-	if cfg.StretchUSD <= 0 {
-		return nil
+	if cfg.StretchUSD > 0 && (l.State == "running" || l.State == "paused") {
+		sum := l.StretchUSD + l.SessionUSD
+		if sum >= cfg.StretchUSD {
+			l.State = "waiting"
+			reason := fmt.Sprintf("stretch cap $%.2f reached ($%.4f)", cfg.StretchUSD, sum)
+			l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+			l.Queue.Stop("cap")
+			return []Action{
+				{Kind: "kill"},
+				{Kind: "post", Milestone: control.Milestone{
+					Kind:     "stop",
+					Headline: l.Phase + ": stretch cap",
+					Numbers:  reason,
+				}},
+			}
+		}
 	}
-	if l.State != "running" && l.State != "paused" {
-		return nil
-	}
-	sum := l.StretchUSD + l.SessionUSD
-	if sum < cfg.StretchUSD {
-		return nil
-	}
-	reason := fmt.Sprintf("stretch cap $%.2f reached ($%.4f)", cfg.StretchUSD, sum)
-	l.State = "waiting"
-	l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
-	l.Queue.Stop("cap")
-	return []Action{
-		{Kind: "kill"},
-		{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + ": stretch cap", Numbers: reason}},
-	}
+	return nil
 }
 
-// Limits pauses the walk on an exhausted window or warns on the weekly one.
+// Limits handles a rate_limit_event.
 func (l *Loop) Limits(lim stream.Limits, now time.Time, cfg Config) []Action {
-	if l.State == "running" && (lim.FiveHour.Utilization >= 1 || lim.SevenDay.Utilization >= 1) {
-		var until int64
+	if l.State != "running" {
+		return nil
+	}
+	if lim.FiveHour.Utilization >= 1 || lim.SevenDay.Utilization >= 1 {
+		var resets int64
 		if lim.FiveHour.Utilization >= 1 {
-			until = lim.FiveHour.ResetsAt
+			resets = lim.FiveHour.ResetsAt
 		}
-		if lim.SevenDay.Utilization >= 1 && lim.SevenDay.ResetsAt > until {
-			until = lim.SevenDay.ResetsAt
+		if lim.SevenDay.Utilization >= 1 && lim.SevenDay.ResetsAt > resets {
+			resets = lim.SevenDay.ResetsAt
 		}
 		l.State = "paused"
-		l.PausedUntil = time.Unix(until, 0).UTC()
+		l.PausedUntil = time.Unix(resets, 0).UTC()
 		return []Action{
 			{Kind: "post", Milestone: control.Milestone{
 				Kind:     "watchdog",
@@ -98,53 +107,90 @@ func (l *Loop) Limits(lim stream.Limits, now time.Time, cfg Config) []Action {
 			}},
 		}
 	}
-	if cfg.UsageAlertPercent > 0 && !l.Alerted &&
-		lim.SevenDay.Utilization*100 >= float64(cfg.UsageAlertPercent) {
+	if cfg.UsageAlertPercent > 0 && !l.Alerted && lim.SevenDay.Utilization*100 >= float64(cfg.UsageAlertPercent) {
 		l.Alerted = true
-		headline := fmt.Sprintf("%s: weekly usage %d%%", l.Phase, control.Percent(lim.SevenDay.Utilization))
-		resets := time.Unix(lim.SevenDay.ResetsAt, 0).UTC().Format(time.RFC3339)
 		return []Action{
-			{Kind: "post", Milestone: control.Milestone{Kind: "info", Headline: headline, Numbers: "resets " + resets}},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "info",
+				Headline: l.Phase + ": weekly usage " + strconv.Itoa(control.Percent(lim.SevenDay.Utilization)) + "%",
+				Numbers:  "resets " + time.Unix(lim.SevenDay.ResetsAt, 0).UTC().Format(time.RFC3339),
+			}},
 		}
 	}
 	return nil
 }
 
-// Tick drives the timers: the resume after a pause, the wall clock cap and
-// the stall nudge.
+// Tick drives the clocked checks: resume, wall clock cap and stall nudge.
 func (l *Loop) Tick(now time.Time, cfg Config) []Action {
 	if l.State == "paused" && !now.Before(l.PausedUntil) {
 		l.State = "running"
 		l.LastEventAt = now
 		return []Action{
 			{Kind: "write", Line: "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."},
-			{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: l.Phase + ": resumed after the limit"}},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": resumed after the limit",
+				Numbers:  "",
+			}},
 		}
 	}
 	if l.State != "running" {
 		return nil
 	}
-
 	caps := l.currentCaps()
 	if caps.Hours > 0 && now.Sub(l.PhaseStartedAt) >= time.Duration(caps.Hours*float64(time.Hour)) {
-		reason := fmt.Sprintf("wall clock cap %s h reached", strconv.FormatFloat(caps.Hours, 'f', -1, 64))
 		l.State = "waiting"
+		reason := "wall clock cap " + strconv.FormatFloat(caps.Hours, 'f', -1, 64) + " h reached"
 		l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
 		l.Queue.Stop("cap")
 		return []Action{
 			{Kind: "kill"},
-			{Kind: "post", Milestone: control.Milestone{Kind: "stop", Headline: l.Phase + ": wall clock cap", Numbers: reason}},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "stop",
+				Headline: l.Phase + ": wall clock cap",
+				Numbers:  reason,
+			}},
 		}
 	}
-
 	if cfg.StallMinutes > 0 && !l.Nudged && now.Sub(l.LastEventAt) >= time.Duration(cfg.StallMinutes)*time.Minute {
 		l.Nudged = true
-		headline := fmt.Sprintf("%s: no events for %d min", l.Phase, cfg.StallMinutes)
-		line := fmt.Sprintf("Nothing has happened for %d minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first.", cfg.StallMinutes)
 		return []Action{
-			{Kind: "post", Milestone: control.Milestone{Kind: "watchdog", Headline: headline, Numbers: "one nudge sent"}},
-			{Kind: "write", Line: line},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": no events for " + strconv.Itoa(cfg.StallMinutes) + " min",
+				Numbers:  "one nudge sent",
+			}},
+			{Kind: "write", Line: "Nothing has happened for " + strconv.Itoa(cfg.StallMinutes) + " minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first."},
 		}
 	}
 	return nil
+}
+
+// firstStderrLine returns the first non-blank line of stderr, trimmed and
+// cut to its first 200 runes, or "" when there is none.
+func firstStderrLine(stderr string) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" {
+			continue
+		}
+		runes := []rune(t)
+		if len(runes) > 200 {
+			runes = runes[:200]
+		}
+		return string(runes)
+	}
+	return ""
+}
+
+// pruneRestarts drops restarts older than an hour, keeping nil when none
+// remain.
+func pruneRestarts(rs []time.Time, now time.Time) []time.Time {
+	var out []time.Time
+	for _, t := range rs {
+		if now.Sub(t) < time.Hour {
+			out = append(out, t)
+		}
+	}
+	return out
 }

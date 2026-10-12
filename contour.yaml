@@ -778,6 +778,7 @@ System:
             copies.
           steps:
             - produces: Project
+            - uses: queue
           examples:
             - given: 'base := filepath.Join(t.TempDir(), "state") (missing)'
               when: 'Open(base); List(); Get("demo"); Base()'

@@ -1,0 +1,36 @@
+```
+package users
+
+import "crypto/subtle"
+
+// Lookup returns the user whose stored token hash matches token, and true,
+// or the zero User and false when no user matches. The empty token never
+// matches. The stored hashes are compared in name order with
+// crypto/subtle.ConstantTimeCompare; the comparison is over the
+// fixed-length hex hashes, so the length of token leaks nothing. The
+// returned user is a copy of the stored one.
+func (s *Store) Lookup(token string) (User, bool) {
+	if token == "" {
+		return User{}, false
+	}
+	want := []byte(hashToken(token))
+	var found User
+	ok := false
+	for _, u := range s.sorted() {
+		if subtle.ConstantTimeCompare(want, []byte(u.TokenHash)) == 1 {
+			found = u
+			ok = true
+		}
+	}
+	return found, ok
+}
+
+// IsAdminToken reports whether token is the admin token the store was
+// opened with. A store opened with no admin token always reports false.
+func (s *Store) IsAdminToken(token string) bool {
+	if s.adminTokenHash == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(s.adminTokenHash)) == 1
+}
+```

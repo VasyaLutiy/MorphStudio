@@ -1,0 +1,42 @@
+```go
+package users
+
+import "crypto/subtle"
+
+// Lookup returns the user whose token matches the stored token hash.
+// The token hashes are compared in constant time against every stored
+// user in name order; the returned user is a copy.
+func (s *Store) Lookup(token string) (User, bool) {
+	if token == "" {
+		return User{}, false
+	}
+
+	hash := hashToken(token)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var found User
+	ok := false
+	for _, u := range s.sortedUsersLocked() {
+		if subtle.ConstantTimeCompare([]byte(hash), []byte(u.TokenHash)) == 1 {
+			found = u
+			ok = true
+		}
+	}
+	return found, ok
+}
+
+// IsAdminToken reports whether token is the store's admin token.
+// A store opened with an empty admin token always returns false.
+func (s *Store) IsAdminToken(token string) bool {
+	s.mu.RLock()
+	adminHash := s.adminTokenHash
+	s.mu.RUnlock()
+
+	if adminHash == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(adminHash)) == 1
+}
+```

@@ -1,0 +1,367 @@
+{
+  "runId": "20261012-110109",
+  "completedAt": 1791804093396,
+  "branch": "morph/20261012-110109",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "project-registry",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": "project-registry.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-registry",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 3,
+      "winningVariant": "user-registry.r2.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/user-registry_probe_test.go:22:6: urOpen redeclared in this block\n\tusers/registry_examples_test.go:15:6: other declaration of urOpen\nFAIL\tmorphstudio/users [build failed]\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/user-registry_probe_test.go:16:5: adaH redeclared in this block\n\tusers/token.go:8:2: other declaration of adaH\nusers/user-registry_probe_test.go:17:5: zoeH redeclared in this block\n\tusers/token.go:9:2: other declaration of zoeH\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "project-registry-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": "project-registry-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard registry/registry_examples_test.go\n== names registry/registry_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "token-lookup",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": "token-lookup.r2.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/token-lookup_probe_test.go:30:72: undefined: adaH\nusers/token-lookup_probe_test.go:31:72: undefined: zoeH\nusers/token-lookup_probe_test.go:74:116: undefined: adaH\nFAIL\tmorphstudio/users [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/token-lookup_probe_test.go:30:72: undefined: adaH\nusers/token-lookup_probe_test.go:31:72: undefined: zoeH\nusers/token-lookup_probe_test.go:74:116: undefined: adaH\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "user-registry-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 2,
+      "winningVariant": "user-registry-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/registry_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-secrets",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": "user-secrets.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:74: example 2 dir holds both kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:87: read dir /tmp/TestProbeUserSecretsExample32659399354/001/users/ada: open /tmp/TestProbeUserSecretsExample32659399354/001/users/ada: no such file or directory\n    user-secrets_probe_test.go:87: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\n--- FAIL: TestProbeUserSecretsExample7 (0.00s)\n    user-secrets_probe_test.go:139: example 7 dir holds only anthropic-key:\n        got:  []string{}\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.008s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\nfirst difference at char 9 of 25/10: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string{}\"\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/user-secrets_probe_test.go:16:6: usAda redeclared in this block\n\tusers/secrets_examples_test.go:14:6: other declaration of usAda\nusers/user-secrets_probe_test.go:44:6: usMode redeclared in this block\n\tusers/secrets_examples_test.go:41:6: other declaration of usMode\nusers/user-secrets_probe_test.go:55:13: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:55:22: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:68:13: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:68:22: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:79:13: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:79:22: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:91:10: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:91:19: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:91:10: too many errors\nFAIL\tmorphstudio/users [build failed]\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:74: example 2 dir holds both kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:87: read dir /tmp/TestProbeUserSecretsExample32399535270/001/users/ada: open /tmp/TestProbeUserSecretsExample32399535270/001/users/ada: no such file or directory\n    user-secrets_probe_test.go:87: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\n--- FAIL: TestProbeUserSecretsExample7 (0.00s)\n    user-secrets_probe_test.go:139: example 7 dir holds only anthropic-key:\n        got:  []string{}\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.008s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\nfirst difference at char 9 of 25/10: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string{}\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "token-lookup-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": "token-lookup-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/token_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-secrets-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 2,
+      "winningVariant": "user-secrets-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/secrets_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 115542,
+    "outputTokens": 171338,
+    "cost": 0.23598276,
+    "requests": 16
+  },
+  "requests": [
+    {
+      "customId": "project-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791802869-UBFkQsl4AJpIWme8eB33",
+      "inputTokens": 3712,
+      "outputTokens": 4453,
+      "cost": 0.0064572,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791802869-CTVYMDxQAO1iTvxDMbVr",
+      "inputTokens": 2572,
+      "outputTokens": 11047,
+      "cost": 0.014028,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791802976-OMJIayFPPcycvHzsgit7",
+      "inputTokens": 4218,
+      "outputTokens": 7949,
+      "cost": 0.0108042,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791802976-sGDnZ8Ply0ST5CF0hSCt",
+      "inputTokens": 2639,
+      "outputTokens": 1738,
+      "cost": 0.0028773,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791802976-XuB53n2gWmC1uhFYYJo1",
+      "inputTokens": 3120,
+      "outputTokens": 9261,
+      "cost": 0.0120492,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791802992-jiLtzqSlCDl10QY1JYs3",
+      "inputTokens": 3115,
+      "outputTokens": 3184,
+      "cost": 0.00447882,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803051-ctnT7eA2tOGU0flQ39yw",
+      "inputTokens": 3009,
+      "outputTokens": 2772,
+      "cost": 0.0042291,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803051-YFjY2OValRP7LIGRGX1R",
+      "inputTokens": 3856,
+      "outputTokens": 9371,
+      "cost": 0.012402,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803148-CciO4T7sf3TtzDI7HmS3",
+      "inputTokens": 12189,
+      "outputTokens": 21608,
+      "cost": 0.02903334,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803354-PWjkA73rozcX6zInxLaF",
+      "inputTokens": 9508,
+      "outputTokens": 16140,
+      "cost": 0.0222204,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803354-t2VB3vJ3b9SG7vDP4XWy",
+      "inputTokens": 10666,
+      "outputTokens": 9254,
+      "cost": 0.0143046,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803354-tdEwXrhaP3HvAZG4wJbl",
+      "inputTokens": 11720,
+      "outputTokens": 23817,
+      "cost": 0.03181992,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803588-iwpDBdsSRPYKgSvGBRMs",
+      "inputTokens": 11279,
+      "outputTokens": 5164,
+      "cost": 0.0095805,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803646-3MosUrxZz8tUR8f9itgJ",
+      "inputTokens": 12334,
+      "outputTokens": 21198,
+      "cost": 0.02623476,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803848-9Z3frOhKvkhIEKgIy8S7",
+      "inputTokens": 9770,
+      "outputTokens": 382,
+      "cost": 0.0033894,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791803849-OhTyk1ItvUub7pLIiW3f",
+      "inputTokens": 11835,
+      "outputTokens": 24000,
+      "cost": 0.03207402,
+      "finishReason": "length",
+      "error": null
+    }
+  ],
+  "rounds": [
+    {
+      "round": 0,
+      "reds": [
+        {
+          "customId": "user-registry",
+          "blamed": [
+            "user-registry",
+            "user-registry-judge"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/user-registry_probe_test.go:22:6: urOpen redeclared in this block\n\tusers/registry_examples_test.go:15:6: other declaration of urOpen\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+        },
+        {
+          "customId": "token-lookup",
+          "blamed": [
+            "token-lookup"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/token-lookup_probe_test.go:30:72: undefined: adaH\nusers/token-lookup_probe_test.go:31:72: undefined: zoeH\nusers/token-lookup_probe_test.go:74:116: undefined: adaH\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+        },
+        {
+          "customId": "user-secrets",
+          "blamed": [
+            "user-secrets",
+            "user-secrets-judge"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/user-secrets_probe_test.go:16:6: usAda redeclared in this block\n\tusers/secrets_examples_test.go:14:6: other declaration of usAda\nusers/user-secrets_probe_test.go:44:6: usMode redeclared in this block\n\tusers/secrets_examples_test.go:41:6: other declaration of usMode\nusers/user-secrets_probe_test.go:55:13: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:55:22: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:68:13: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:68:22: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:79:13: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:79:22: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:91:10: assignment mismatch: 2 variables but usAda returns 1 value\nusers/user-secrets_probe_test.go:91:19: too many arguments in call to usAda\n\thave (*testing.T, string)\n\twant (*testing.T)\nusers/user-secrets_probe_test.go:91:10: too many errors\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "reds": [
+        {
+          "customId": "user-registry",
+          "blamed": [
+            "token-lookup",
+            "user-registry"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/user-registry_probe_test.go:16:5: adaH redeclared in this block\n\tusers/token.go:8:2: other declaration of adaH\nusers/user-registry_probe_test.go:17:5: zoeH redeclared in this block\n\tusers/token.go:9:2: other declaration of zoeH\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+        },
+        {
+          "customId": "user-secrets",
+          "blamed": [
+            "user-secrets"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:74: example 2 dir holds both kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:87: read dir /tmp/TestProbeUserSecretsExample32399535270/001/users/ada: open /tmp/TestProbeUserSecretsExample32399535270/001/users/ada: no such file or directory\n    user-secrets_probe_test.go:87: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\n--- FAIL: TestProbeUserSecretsExample7 (0.00s)\n    user-secrets_probe_test.go:139: example 7 dir holds only anthropic-key:\n        got:  []string{}\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.008s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\nfirst difference at char 9 of 25/10: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string{}\"\n"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "reds": [
+        {
+          "customId": "token-lookup",
+          "blamed": [
+            "token-lookup"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n# morphstudio/users [morphstudio/users.test]\nusers/token-lookup_probe_test.go:30:72: undefined: adaH\nusers/token-lookup_probe_test.go:31:72: undefined: zoeH\nusers/token-lookup_probe_test.go:74:116: undefined: adaH\nFAIL\tmorphstudio/users [build failed]\nFAIL\n"
+        },
+        {
+          "customId": "user-secrets",
+          "blamed": [
+            "user-secrets"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:74: example 2 dir holds both kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:87: read dir /tmp/TestProbeUserSecretsExample32659399354/001/users/ada: open /tmp/TestProbeUserSecretsExample32659399354/001/users/ada: no such file or directory\n    user-secrets_probe_test.go:87: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\n--- FAIL: TestProbeUserSecretsExample7 (0.00s)\n    user-secrets_probe_test.go:139: example 7 dir holds only anthropic-key:\n        got:  []string{}\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.008s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\nfirst difference at char 9 of 25/10: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string{}\"\n"
+        }
+      ]
+    }
+  ],
+  "stop": "retry cap: token-lookup (2 retries), user-secrets (2 retries)"
+}

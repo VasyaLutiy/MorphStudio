@@ -1,0 +1,169 @@
+```go
+package users
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"sync"
+	"time"
+)
+
+var (
+	ErrNotFound   = errors.New("user not found")
+	ErrExists     = errors.New("user exists")
+	ErrBadName    = errors.New("bad user name")
+	ErrEmptyToken = errors.New("empty token")
+)
+
+var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+
+type User struct {
+	Name      string    `json:"name"`
+	LinuxUser string    `json:"linux_user"`
+	ChatID    int64     `json:"chat_id"`
+	TokenHash string    `json:"token_hash"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type Store struct {
+	base           string
+	users          map[string]User
+	adminTokenHash string
+	mu             sync.RWMutex
+}
+
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func Open(base string, adminToken string) (*Store, error) {
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		return nil, err
+	}
+
+	s := &Store{
+		base:  base,
+		users: make(map[string]User),
+	}
+	if adminToken != "" {
+		s.adminTokenHash = hashToken(adminToken)
+	}
+
+	data, err := os.ReadFile(filepath.Join(base, "users.json"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return s, nil
+		}
+		return nil, err
+	}
+
+	var users []User
+	if err := json.Unmarshal(data, &users); err != nil {
+		return nil, fmt.Errorf("users: read %w", err)
+	}
+	if users == nil {
+		return nil, fmt.Errorf("users: read %w", errors.New("not a JSON array"))
+	}
+
+	for _, u := range users {
+		s.users[u.Name] = u
+	}
+	return s, nil
+}
+
+func (s *Store) Base() string {
+	return s.base
+}
+
+func (s *Store) Add(u User, token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !nameRE.MatchString(u.Name) {
+		return ErrBadName
+	}
+	if _, ok := s.users[u.Name]; ok {
+		return ErrExists
+	}
+	if token == "" {
+		return ErrEmptyToken
+	}
+
+	u.TokenHash = hashToken(token)
+	s.users[u.Name] = u
+	if err := s.saveLocked(); err != nil {
+		delete(s.users, u.Name)
+		return err
+	}
+	return nil
+}
+
+func (s *Store) Get(name string) (User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	u, ok := s.users[name]
+	if !ok {
+		return User{}, ErrNotFound
+	}
+	return u, nil
+}
+
+func (s *Store) List() []User {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.sortedUsersLocked()
+}
+
+func (s *Store) sortedUsersLocked() []User {
+	users := make([]User, 0, len(s.users))
+	for _, u := range s.users {
+		users = append(users, u)
+	}
+	sort.Slice(users, func(i, j int) bool {
+		return users[i].Name < users[j].Name
+	})
+	return users
+}
+
+func (s *Store) saveLocked() error {
+	users := s.sortedUsersLocked()
+	data, err := json.MarshalIndent(users, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	f, err := os.CreateTemp(s.base, "users-*.json")
+	if err != nil {
+		return err
+	}
+	tmpName := f.Name()
+	defer func() {
+		if tmpName != "" {
+			os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, filepath.Join(s.base, "users.json")); err != nil {
+		return err
+	}
+	tmpName = ""
+	return nil
+}
+```

@@ -16,11 +16,14 @@ System:
     - Claude Behind An Interface
     - Bearer Token On Every Route
     - The Session Reports Only Itself
+    - Per-User Tokens
+    - One Chat One User
   guardrails:
     - Injected Clock And Ids
     - No Network In Tests
     - No Shell Outside Runner
     - Secrets Never Logged
+    - Tester Isolation
   dependencies:
     - name: github.com/modelcontextprotocol/go-sdk
       version: "v1.8.0"
@@ -760,7 +763,7 @@ System:
             Declares in registry/registry.go: `var ErrNotFound = errors.New("project not found")`, `var ErrExists = errors.New("project exists")`,
             `var ErrBadName = errors.New("bad project name")`, `var ErrNoState = errors.New("no state")`,
             `type Project struct { Name string `json:"name"`; Language string `json:"language"`; RepoURL string `json:"repo_url"`; Dir string `json:"dir"`;
-            Caps queue.Caps `json:"caps"`; CreatedAt time.Time `json:"created_at"` }`, `type Registry struct` (unexported fields),
+            Caps queue.Caps `json:"caps"`; User string `json:"user"`; CreatedAt time.Time `json:"created_at"` }`, `type Registry struct` (unexported fields),
             `func Open(base string) (*Registry, error)`, `func (r *Registry) Base() string`, `func (r *Registry) Add(p Project) error`,
             `func (r *Registry) Get(name string) (Project, error)`, `func (r *Registry) List() []Project`,
             `func (r *Registry) SaveState(name string, v any) error` and `func (r *Registry) LoadState(name string, v any) error`.
@@ -797,6 +800,9 @@ System:
             - given: 'the registry of example 1 after Add({Name "alpha", Language "go", Dir "/p/alpha"})'
               when: 'p := List(); p[0].Name = "changed"; p = append(p, Project{Name: "extra"}); g, _ := Get("alpha"); g.Name = "changed"; then List() and Get("alpha")'
               then: 'List() is exactly []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha"}} and Get("alpha") returns that project, nil: writes to returned values never reach the registry'
+            - given: 'the registry of example 1 after Add({Name "zeta", Language "go", Dir "/p/zeta", User "zeta-ux"})'
+              when: 'reopen the base with Open (a second Open of the same base); Get("zeta"); decode base/projects.json with json.Unmarshal into []Project'
+              then: 'Get returns the project with User "zeta-ux", nil; the decoded file equals List() including User "zeta-ux"; a project added without a User (the field the zero string "") still round-trips with User ""'
         - name: Secret Files
           description: Secrets stored per project as files of mode 0600 that are never returned by the API.
           behavior: >
@@ -833,6 +839,120 @@ System:
             - given: 'the registry of example 1 after PutSecret("demo", "session-token", "tok-9")'
               when: 'DeleteSecret("demo", "session-token"); HasSecret'
               then: 'nil; false'
+    - name: users
+      description: >
+        Package users in users/: the registry of users for the onboarding VPS — who may connect, under which Linux user,
+        with which token — and their secret files. Imports nothing of the module: the standard library only
+        (crypto/sha256, crypto/subtle, encoding/hex, encoding/json, errors, fmt, os, path/filepath, regexp, sort, strings,
+        sync, time).
+      language: go
+      functions:
+        - name: User Registry
+          description: The registry of users in one JSON file, rewritten whole and atomically; the token only as a SHA-256 hash.
+          behavior: >
+            Declares in users/users.go: `var ErrNotFound = errors.New("user not found")`, `var ErrExists = errors.New("user exists")`,
+            `var ErrBadName = errors.New("bad user name")`, `var ErrChatTaken = errors.New("chat already has a user")`,
+            `type User struct { Name string `json:"name"`; LinuxUser string `json:"linux_user"`; ChatID int64 `json:"chat_id"`;
+            TokenHash string `json:"token_hash"`; CreatedAt time.Time `json:"created_at"` }` (TokenHash is the hex of the
+            SHA-256 of the bearer token, encoding/hex lowercase), `type Users struct` (unexported fields),
+            `func Open(base string, adminToken string) (*Users, error)`, `func (u *Users) Base() string`,
+            `func (u *Users) Add(v User) error`, `func (u *Users) Get(name string) (User, error)`,
+            `func (u *Users) List() []User` and `func (u *Users) Delete(name string) error`.
+            Open creates base (0o700) when missing and reads base/users.json: missing → empty; not a JSON array of
+            User → (nil, an error beginning "users: read "). adminToken "" is allowed (no admin token, IsAdmin always
+            false); a non-empty one is stored as its own SHA-256 hex, never in the clear. Add: Name must match
+            ^[a-z0-9][a-z0-9-]{0,39}$ else ErrBadName; a stored name → ErrExists; a stored user with the same ChatID →
+            ErrChatTaken; else stored and the whole list written as a JSON array sorted by Name (json.MarshalIndent
+            with two spaces, an empty list as []) to a temporary file in base then renamed onto users.json. Get → the
+            user or (User{}, ErrNotFound). List → a new slice sorted by Name (empty non-nil). Delete removes the user
+            and, when it exists, its whole directory base/<name> (os.RemoveAll) and rewrites users.json; unknown name →
+            ErrNotFound. Every error of the file system is returned as is (never one of the sentinels). Values are
+            copies. No error text ever contains a token or its hash.
+          steps:
+            - produces: User
+          examples:
+            - given: 'base := filepath.Join(t.TempDir(), "ustate") (missing)'
+              when: 'Open(base, ""); List(); Get("alice"); Base()'
+              then: 'a non-nil *Users, nil; the directory exists mode & 0o777 == 0o700; []User{} (non-nil, empty); (User{}, ErrNotFound); base'
+            - given: 'the registry of example 1; Add({Name "bob", LinuxUser "bob-ux", ChatID 42, TokenHash "a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd", CreatedAt 2026-10-12T10:00:00Z}); Add({Name "alice", LinuxUser "alice-ux", ChatID 7, TokenHash "61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2", CreatedAt 2026-10-12T10:01:00Z})'
+              when: 'Add twice, then List, then decode base/users.json'
+              then: 'both nil; List names in order "alice", "bob"; the file decodes (json.Unmarshal into []User) to exactly List(); the directory base holds only users.json'
+            - given: 'the registry after example 2'
+              when: 'Add({Name "alice", LinuxUser "x", ChatID 9, TokenHash "h2"}); Add({Name "carol", LinuxUser "c", ChatID 42, TokenHash "h3"}); Add({Name "Carol"}); Add({Name 41 × "a"})'
+              then: 'ErrExists; ErrChatTaken; ErrBadName; ErrBadName; List still 2'
+            - given: 'the file written by example 2, Open(base, "admin-op-9") again'
+              when: 'List; Get("bob")'
+              then: 'equal field by field to the first registry''s List (times round-trip through JSON); Get returns the bob user'
+            - given: 'the registry after example 2 with a secret file base/bob/anthropic-key'
+              when: 'Delete("bob"); Get("bob"); os.Stat(base/bob)'
+              then: 'nil; (User{}, ErrNotFound); the directory base/bob no longer exists; List holds only alice; Delete("nope") → ErrNotFound'
+            - given: 'base/users.json holding the text {not json'
+              when: 'Open(base, "x")'
+              then: '(nil, an error beginning "users: read ")'
+        - name: User Secrets
+          description: A user's secrets stored as files of mode 0600 that are never returned to a client and never appear in any error text.
+          behavior: >
+            Declares in users/secrets.go, over the Users of users/users.go:
+            `var ErrNoSecret = errors.New("no secret")`, `var ErrEmptySecret = errors.New("empty secret")`,
+            `var SecretKinds = []string{"anthropic-key", "github-token"}`,
+            `func (u *Users) SecretPath(name, kind string) string` = filepath.Join(base, name, kind),
+            `func (u *Users) PutSecret(name, kind, value string) error`, `func (u *Users) HasSecret(name, kind string) bool`,
+            `func (u *Users) ReadSecret(name, kind string) (string, error)` and `func (u *Users) DeleteSecret(name, kind string) error`.
+            PutSecret: unknown user → ErrNotFound; kind not in SecretKinds → fmt.Errorf("users: unknown secret kind %q", kind);
+            value "" → ErrEmptySecret; else the user directory is created (0o700) and value is written by a temporary
+            file (0o600) in that directory renamed onto SecretPath; the written file has mode 0o600 even when it
+            existed with another mode. HasSecret: the file exists. ReadSecret: the content verbatim — the value is for
+            morphd's own use only (the claude environment, a credential file); it is never returned to a client and
+            never written to a log, a milestone or an error text; missing → ("", ErrNoSecret); unknown user →
+            ErrNotFound. DeleteSecret removes the file; missing → nil. No error text of this Function contains the
+            value or any part of it.
+          steps:
+            - calls: User Registry
+            - produces: secret file
+          examples:
+            - given: 'a registry with user "alice" (Add, of example 1 of User Registry); PutSecret("alice", "anthropic-key", "sk-ant-abc")'
+              when: 'PutSecret; HasSecret; ReadSecret; os.Stat(SecretPath("alice", "anthropic-key"))'
+              then: 'nil; true; ("sk-ant-abc", nil); mode & 0o777 == 0o600; the directory base/alice mode & 0o777 == 0o700; the directory holds only anthropic-key'
+            - given: 'the registry of example 1'
+              when: 'PutSecret("alice", "github-token", "ghp_xyz"); ReadSecret of it'
+              then: 'nil; exactly "ghp_xyz"; the directory base/alice holds anthropic-key and github-token only'
+            - given: 'the registry of example 1'
+              when: 'PutSecret("nope", "anthropic-key", "sk-1"); PutSecret("alice", "password", "p"); PutSecret("alice", "github-token", "")'
+              then: 'ErrNotFound; error text "users: unknown secret kind \"password\""; ErrEmptySecret; the directory base/alice still holds only anthropic-key'
+            - given: 'the registry of example 1; os.Chmod(SecretPath("alice", "anthropic-key"), 0o644); PutSecret("alice", "anthropic-key", "sk-ant-new")'
+              when: 'PutSecret then Stat and ReadSecret'
+              then: 'mode & 0o777 == 0o600 again; "sk-ant-new"'
+            - given: 'the registry of example 1'
+              when: 'HasSecret("alice", "github-token"); ReadSecret("alice", "github-token"); ReadSecret("nope", "anthropic-key"); DeleteSecret("alice", "github-token")'
+              then: 'false; ("", ErrNoSecret); ("", ErrNotFound); nil'
+            - given: 'the registry of example 1 after PutSecret("alice", "github-token", "ghp_new")'
+              when: 'PutSecret with a value that makes the file system fail: the directory base/alice replaced by a read-only file where the directory was; every error path of PutSecret and ReadSecret is checked'
+              then: 'the returned error (not one of the sentinels) never contains "ghp_new" nor any of its parts longer than 3 characters; no error text of this package contains the value'
+        - name: Token Lookup
+          description: A bearer token resolves to exactly one user by a constant-time compare; the operator's admin token resolves to all.
+          behavior: >
+            Declares in users/tokens.go, over the Users of users/users.go:
+            `func (u *Users) LookupToken(token string) (User, bool)` and `func (u *Users) IsAdmin(token string) bool`.
+            LookupToken: token "" → (User{}, false); else the SHA-256 hex of token is compared (crypto/subtle.
+            ConstantTimeCompare over the decoded bytes) against every stored TokenHash and the first name-sorted
+            match is returned with true; none → (User{}, false). IsAdmin: token "" → false; a constant-time compare
+            against the admin token hash given to Open (an empty admin token → always false). No error, log or
+            returned text ever contains the token.
+          steps:
+            - calls: User Registry
+          examples:
+            - given: 'base := a directory with tests/fixtures/users/users-3.json copied as users.json (three users: alice with TokenHash 61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2, bob with TokenHash a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd, carol with TokenHash b9a24afb8ff6092a52e6232b5b6b76b476503d5322dcdcdf73e75989201448f7); u := Open(base, "admin-op-9")'
+              when: 'LookupToken("tok-bob-2"); LookupToken("tok-alice-1"); LookupToken("tok-carol-3")'
+              then: 'the bob user, true; the alice user, true; the carol user, true (each compared field by field with the decoded fixture)'
+            - given: 'the registry of example 1'
+              when: 'LookupToken("wrong-token"); LookupToken("")'
+              then: '(User{}, false); (User{}, false); List is unchanged'
+            - given: 'the registry of example 1'
+              when: 'IsAdmin("admin-op-9"); IsAdmin("tok-bob-2"); IsAdmin("")'
+              then: 'true; false; false'
+            - given: 'the registry of example 1 but opened with Open(base, "")'
+              when: 'IsAdmin("admin-op-9"); IsAdmin("")'
+              then: 'false; false (no admin token: IsAdmin is always false, never a panic)'
     - name: gitrules
       description: >
         Package gitrules in gitrules/: the git rules of a phase — what morphd checks before it starts a session and
@@ -1871,9 +1991,14 @@ Guardrail:
       runs commands through runner.Runner and tests script them with runner.Fake.
   - name: Secrets Never Logged
     description: >
-      The API token, the session tokens, the GitHub token and the Telegram token never appear in a response body, a log
-      line, a milestone, an error text or the argv of a spawned process; secrets live in files of mode 0600 under the
+      The API token, the session tokens, the GitHub token, the Telegram token, claude tokens (subscription OAuth tokens
+      included), API keys, PATs, MCP tokens and one-time links never appear in a response body, a log line, a milestone,
+      an error text or the argv of a spawned process; secrets live in files of mode 0600 under the
       state directory; the git credentials reach git through a credential store file, never through a URL or an argument.
+  - name: Tester Isolation
+    description: >
+      Every claude session and every git / morph command of a tester's project goes through morph-spawn / morph-run under
+      the project's user; only package claude builds a process argv; no package runs sudo with anything else.
 Requirement:
   - name: Claude Behind An Interface
     description: >
@@ -1889,3 +2014,10 @@ Requirement:
       A VPS session can call phase_done, wait_operator and milestone only through its own endpoint
       /mcp/{project}/session with the token morphd minted for that spawn; the token changes on every spawn, so a past
       session or another project cannot report.
+  - name: Per-User Tokens
+    description: >
+      Every HTTP / MCP token belongs to one user and sees only that user's projects; only the operator's admin token
+      sees all. Tokens are API keys brought by the user; subscription OAuth tokens are never taken (D5).
+  - name: One Chat One User
+    description: >
+      A Telegram chat maps to at most one user; an unknown chat gets only /start.

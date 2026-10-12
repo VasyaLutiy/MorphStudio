@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "phase": "P9a",
+  "parts": "decks/P9a/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "tools",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "gitrules",
+    "supervisor",
+    "bootstrap",
+    "control",
+    "api",
+    "daemon",
+    "mcpserver",
+    "cmd",
+    "pump"
+  ],
+  "cards": [
+    {
+      "id": "user-registry",
+      "extra": "echo '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' users/users.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' users/users.go 2>&1)$(gofmt -l -r 'time.Until -> time.Time' users/users.go 2>&1); [ -z \"$C\" ] || { echo \"clock: users/users.go reads time.Now, time.Since or time.Until (package users reads no clock: Injected Clock And Ids)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" users/users.go 2>&1); [ -z \"$C\" ] || { echo \"net: users/users.go uses $x (package users opens no listener and runs no HTTP client)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "user-secrets",
+      "extra": "echo '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' users/secrets.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' users/secrets.go 2>&1)$(gofmt -l -r 'time.Until -> time.Time' users/secrets.go 2>&1); [ -z \"$C\" ] || { echo \"clock: users/secrets.go reads time.Now, time.Since or time.Until (package users reads no clock: Injected Clock And Ids)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" users/secrets.go 2>&1); [ -z \"$C\" ] || { echo \"net: users/secrets.go uses $x (package users opens no listener and runs no HTTP client)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "token-lookup",
+      "extra": "echo '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' users/tokens.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' users/tokens.go 2>&1)$(gofmt -l -r 'time.Until -> time.Time' users/tokens.go 2>&1); [ -z \"$C\" ] || { echo \"clock: users/tokens.go reads time.Now, time.Since or time.Until (package users reads no clock: Injected Clock And Ids)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" users/tokens.go 2>&1); [ -z \"$C\" ] || { echo \"net: users/tokens.go uses $x (package users opens no listener and runs no HTTP client)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "project-registry",
+      "extra": "echo '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' registry/registry.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' registry/registry.go 2>&1)$(gofmt -l -r 'time.Until -> time.Time' registry/registry.go 2>&1); [ -z \"$C\" ] || { echo \"clock: registry/registry.go reads time.Now, time.Since or time.Until (package registry reads no clock: Injected Clock And Ids)\"; exit 1; }\necho '== net'; for x in http.DefaultClient http.Get http.Post http.PostForm http.Head http.ListenAndServe http.ListenAndServeTLS; do C=$(gofmt -l -r \"$x -> http.NoBody\" registry/registry.go 2>&1); [ -z \"$C\" ] || { echo \"net: registry/registry.go uses $x (package registry opens no listener and runs no HTTP client)\"; exit 1; }; done\n"
+    },
+    {
+      "id": "user-registry-judge",
+      "files": [
+        {
+          "file": "users/users_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestUserRegistryExample1",
+            "TestUserRegistryExample2",
+            "TestUserRegistryExample3",
+            "TestUserRegistryExample4",
+            "TestUserRegistryExample5",
+            "TestUserRegistryExample6",
+            "TestUserRegistryExample7",
+            "user not found",
+            "user exists",
+            "bad user name",
+            "chat already has a user",
+            "users: read ",
+            "alice",
+            "bob",
+            "carol",
+            "alice-ux",
+            "bob-ux",
+            "users.json",
+            "ustate",
+            "h2",
+            "h3",
+            "admin-op-9",
+            "61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2",
+            "a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd",
+            "2026-10-12T10:00:00Z",
+            "2026-10-12T10:01:00Z",
+            "anthropic-key"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "user-secrets-judge",
+      "files": [
+        {
+          "file": "users/secrets_examples_test.go",
+          "min": 6,
+          "max": 12,
+          "new": true,
+          "lits": [
+            "TestUserSecretsExample1",
+            "TestUserSecretsExample2",
+            "TestUserSecretsExample3",
+            "TestUserSecretsExample4",
+            "TestUserSecretsExample5",
+            "TestUserSecretsExample6",
+            "no secret",
+            "empty secret",
+            "anthropic-key",
+            "github-token",
+            "password",
+            "sk-ant-abc",
+            "sk-ant-new",
+            "ghp_xyz",
+            "ghp_new",
+            "sk-1",
+            "sk-ant-old",
+            "users: unknown secret kind",
+            "alice"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "token-lookup-judge",
+      "files": [
+        {
+          "file": "users/tokens_examples_test.go",
+          "min": 4,
+          "max": 10,
+          "new": true,
+          "lits": [
+            "TestTokenLookupExample1",
+            "TestTokenLookupExample2",
+            "TestTokenLookupExample3",
+            "TestTokenLookupExample4",
+            "../tests/fixtures/users/users-3.json",
+            "users.json",
+            "ustate",
+            "admin-op-9",
+            "tok-alice-1",
+            "tok-bob-2",
+            "tok-carol-3",
+            "wrong-token",
+            "alice",
+            "bob",
+            "carol",
+            "61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2",
+            "a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd",
+            "b9a24afb8ff6092a52e6232b5b6b76b476503d5322dcdcdf73e75989201448f7"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project-registry-judge",
+      "files": [
+        {
+          "file": "registry/registry_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": false,
+          "lits": [
+            "TestProjectRegistryExample1",
+            "TestProjectRegistryExample2",
+            "TestProjectRegistryExample3",
+            "TestProjectRegistryExample4",
+            "TestProjectRegistryExample5",
+            "TestProjectRegistryExample6",
+            "TestProjectRegistryExample7",
+            "TestProjectRegistryExample8",
+            "project not found",
+            "project exists",
+            "bad project name",
+            "no state",
+            "registry: read ",
+            "zeta",
+            "alpha",
+            "beta",
+            "m-1",
+            "zeta-ux",
+            "projects.json",
+            "state.json",
+            "/p/alpha",
+            "/p/zeta"
+          ]
+        }
+      ]
+    }
+  ]
+}

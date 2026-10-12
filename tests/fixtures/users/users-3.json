@@ -1,0 +1,23 @@
+[
+  {
+    "name": "alice",
+    "linux_user": "alice-ux",
+    "chat_id": 7,
+    "token_hash": "61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2",
+    "created_at": "2026-10-12T10:01:00Z"
+  },
+  {
+    "name": "bob",
+    "linux_user": "bob-ux",
+    "chat_id": 42,
+    "token_hash": "a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd",
+    "created_at": "2026-10-12T10:00:00Z"
+  },
+  {
+    "name": "carol",
+    "linux_user": "carol-ux",
+    "chat_id": 99,
+    "token_hash": "b9a24afb8ff6092a52e6232b5b6b76b476503d5322dcdcdf73e75989201448f7",
+    "created_at": "2026-10-12T10:02:00Z"
+  }
+]

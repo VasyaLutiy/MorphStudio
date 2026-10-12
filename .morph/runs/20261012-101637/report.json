@@ -1,0 +1,100 @@
+{
+  "runId": "20261012-101637",
+  "completedAt": 1791800434491,
+  "branch": "morph/20261012-101637",
+  "processor": "ds",
+  "generations": 2,
+  "outcomes": [
+    {
+      "customId": "user-secrets",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "user-secrets.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "8072911590cc98aaabf7d08ff76c87ff6b64399e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 97,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "user-secrets-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "user-secrets-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/secrets_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard users/secrets_examples_test.go\nguard: users/secrets_examples_test.go does not mention the example literal \"no secret\"\nguard: users/secrets_examples_test.go does not mention the example literal \"sk-ant-old\"\n"
+      ],
+      "commit": "c6b63e667bd9ebc5a91a29d5d846378266f1e44e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 192,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 17453,
+    "outputTokens": 24173,
+    "cost": 0.032584619999999995,
+    "requests": 3
+  },
+  "requests": [
+    {
+      "customId": "user-secrets.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791800197-X9Lzi0QHw5AsINPY5B9s",
+      "inputTokens": 3116,
+      "outputTokens": 2032,
+      "cost": 0.00254376,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791800218-pjJqXDZ9uweL1hSHYjS4",
+      "inputTokens": 3632,
+      "outputTokens": 15240,
+      "cost": 0.0193776,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791800361-oeQiCP5HxsuGwEcZyPha",
+      "inputTokens": 10705,
+      "outputTokens": 6901,
+      "cost": 0.01066326,
+      "finishReason": "stop",
+      "error": null
+    }
+  ],
+  "rounds": [
+    {
+      "round": 0,
+      "reds": [
+        {
+          "customId": "user-secrets-judge",
+          "blamed": [
+            "user-secrets-judge"
+          ],
+          "log": "== vet\n== gofmt\n== guard users/secrets_examples_test.go\nguard: users/secrets_examples_test.go does not mention the example literal \"no secret\"\nguard: users/secrets_examples_test.go does not mention the example literal \"sk-ant-old\"\n"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "reds": []
+    }
+  ]
+}

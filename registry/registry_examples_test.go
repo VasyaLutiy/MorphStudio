@@ -12,114 +12,204 @@ import (
 	"morphstudio/queue"
 )
 
+// rgOpen opens the registry under base and fails the test on error.
+func rgOpen(t *testing.T, base string) *Registry {
+	t.Helper()
+	r, err := Open(base)
+	if err != nil {
+		t.Fatalf("Open(%q): %v", base, err)
+	}
+	if r == nil {
+		t.Fatalf("Open(%q) returned a nil registry", base)
+	}
+	return r
+}
+
+// rgAdd adds p and fails the test on error.
+func rgAdd(t *testing.T, r *Registry, p Project) {
+	t.Helper()
+	if err := r.Add(p); err != nil {
+		t.Fatalf("Add(%q): %v", p.Name, err)
+	}
+}
+
+// rgNames lists the names of ps.
+func rgNames(ps []Project) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.Name
+	}
+	return out
+}
+
+// rgEqualProject compares got and want field by field, the creation time by
+// its JSON round-trip form.
+func rgEqualProject(t *testing.T, what string, got, want Project) {
+	t.Helper()
+	testhelp.Equal(t, what+" Name", got.Name, want.Name)
+	testhelp.Equal(t, what+" Language", got.Language, want.Language)
+	testhelp.Equal(t, what+" RepoURL", got.RepoURL, want.RepoURL)
+	testhelp.Equal(t, what+" Dir", got.Dir, want.Dir)
+	testhelp.Equal(t, what+" User", got.User, want.User)
+	testhelp.Equal(t, what+" Caps", got.Caps, want.Caps)
+	testhelp.Equal(t, what+" CreatedAt", got.CreatedAt.Format(time.RFC3339Nano), want.CreatedAt.Format(time.RFC3339Nano))
+}
+
+// rgZeta is the zeta project of the examples.
+func rgZeta() Project {
+	return Project{
+		Name:      "zeta",
+		Language:  "go",
+		RepoURL:   "https://github.com/o/zeta",
+		Dir:       "/p/zeta",
+		User:      "mu-zeta",
+		Caps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},
+		CreatedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
+	}
+}
+
+// rgAlpha is the alpha project of the examples.
+func rgAlpha() Project {
+	return Project{
+		Name:      "alpha",
+		Language:  "python",
+		RepoURL:   "https://github.com/o/alpha",
+		Dir:       "/p/alpha",
+		User:      "mu-alpha",
+		Caps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},
+		CreatedAt: time.Date(2026, 10, 8, 15, 1, 0, 0, time.UTC),
+	}
+}
+
+// rgSeed opens base and adds the zeta and alpha projects.
+func rgSeed(t *testing.T, base string) *Registry {
+	t.Helper()
+	r := rgOpen(t, base)
+	rgAdd(t, r, rgZeta())
+	rgAdd(t, r, rgAlpha())
+	return r
+}
+
 func TestProjectRegistryExample1(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "state")
+
 	r, err := Open(base)
-	testhelp.Equal(t, "Open error", err, nil)
-	testhelp.Equal(t, "Open registry is nil", r == nil, false)
+	testhelp.Equal(t, "Open error", err, error(nil))
 	if r == nil {
-		t.Fatal("Open returned nil registry")
+		t.Fatal("Open returned a nil registry")
 	}
+
 	info, err := os.Stat(base)
 	if err != nil {
-		t.Fatalf("Stat %s: %v", base, err)
+		t.Fatalf("Stat(%q): %v", base, err)
 	}
-	testhelp.Equal(t, "base is directory", info.IsDir(), true)
+	if !info.IsDir() {
+		t.Errorf("Stat(%q).IsDir(): got false, want true", base)
+	}
+
 	testhelp.Equal(t, "List", r.List(), []Project{})
-	got, err := r.Get("demo")
-	testhelp.Equal(t, "Get demo project", got, Project{})
-	testhelp.Equal(t, "Get demo error", err, ErrNotFound)
+
+	got, gotErr := r.Get("demo")
+	testhelp.Equal(t, "Get project", got, Project{})
+	testhelp.Equal(t, "Get error", gotErr, ErrNotFound)
+
 	testhelp.Equal(t, "Base", r.Base(), base)
 }
 
 func TestProjectRegistryExample2(t *testing.T) {
-	r, base := rgNew(t)
-	testhelp.Equal(t, "Add zeta error", r.Add(rgZeta()), nil)
-	testhelp.Equal(t, "Add alpha error", r.Add(rgAlpha()), nil)
+	base := filepath.Join(t.TempDir(), "state")
+	r := rgOpen(t, base)
 
-	list := r.List()
-	gotNames := []string{}
-	for _, p := range list {
-		gotNames = append(gotNames, p.Name)
-	}
-	testhelp.Equal(t, "List names", gotNames, []string{"alpha", "zeta"})
+	err := r.Add(rgZeta())
+	testhelp.Equal(t, "Add zeta error", err, error(nil))
+	err = r.Add(rgAlpha())
+	testhelp.Equal(t, "Add alpha error", err, error(nil))
+
+	got := r.List()
+	testhelp.Equal(t, "List names", rgNames(got), []string{"alpha", "zeta"})
 
 	data, err := os.ReadFile(filepath.Join(base, "projects.json"))
 	if err != nil {
-		t.Fatalf("ReadFile projects.json: %v", err)
+		t.Fatalf("ReadFile: %v", err)
 	}
 	var decoded []Project
-	testhelp.Equal(t, "decode error", json.Unmarshal(data, &decoded), nil)
-	testhelp.Equal(t, "decoded projects", decoded, r.List())
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	testhelp.Equal(t, "decoded projects", decoded, got)
 
 	entries, err := os.ReadDir(base)
 	if err != nil {
-		t.Fatalf("ReadDir %s: %v", base, err)
+		t.Fatalf("ReadDir: %v", err)
 	}
-	gotEntries := []string{}
-	for _, e := range entries {
-		gotEntries = append(gotEntries, e.Name())
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
 	}
-	testhelp.Equal(t, "base entries", gotEntries, []string{"projects.json"})
+	testhelp.Equal(t, "base entries", names, []string{"projects.json"})
 }
 
 func TestProjectRegistryExample3(t *testing.T) {
-	r, _ := rgSeed(t)
-	testhelp.Equal(t, "Add alpha again error", r.Add(Project{Name: "alpha"}), ErrExists)
-	testhelp.Equal(t, "Add Alpha error", r.Add(Project{Name: "Alpha"}), ErrBadName)
-	testhelp.Equal(t, "Add -x error", r.Add(Project{Name: "-x"}), ErrBadName)
-	testhelp.Equal(t, "Add long name error", r.Add(Project{Name: strings.Repeat("a", 41)}), ErrBadName)
+	base := filepath.Join(t.TempDir(), "state")
+	r := rgSeed(t, base)
+
+	testhelp.Equal(t, "Add duplicate error", r.Add(Project{Name: "alpha"}), ErrExists)
+	testhelp.Equal(t, "Add uppercase error", r.Add(Project{Name: "Alpha"}), ErrBadName)
+	testhelp.Equal(t, "Add leading dash error", r.Add(Project{Name: "-x"}), ErrBadName)
+	testhelp.Equal(t, "Add too long error", r.Add(Project{Name: strings.Repeat("a", 41)}), ErrBadName)
+
 	testhelp.Equal(t, "List length", len(r.List()), 2)
 }
 
 func TestProjectRegistryExample4(t *testing.T) {
-	r1, base := rgSeed(t)
+	base := filepath.Join(t.TempDir(), "state")
+	first := rgSeed(t, base)
 
-	r2, err := Open(base)
-	testhelp.Equal(t, "Open error", err, nil)
-	if r2 == nil {
-		t.Fatal("Open returned nil registry")
+	again, err := Open(base)
+	testhelp.Equal(t, "Open error", err, error(nil))
+	if again == nil {
+		t.Fatal("Open returned a nil registry")
 	}
 
-	data, err := json.Marshal(r1.List())
-	if err != nil {
-		t.Fatalf("Marshal list: %v", err)
+	got := again.List()
+	want := first.List()
+	testhelp.Equal(t, "List names", rgNames(got), rgNames(want))
+	if len(got) != len(want) {
+		t.Fatalf("List length: got %d, want %d", len(got), len(want))
 	}
-	var want []Project
-	if err := json.Unmarshal(data, &want); err != nil {
-		t.Fatalf("Unmarshal list: %v", err)
+	for i := range got {
+		rgEqualProject(t, "List project", got[i], want[i])
 	}
-	testhelp.Equal(t, "List after reopen", r2.List(), want)
 
-	got, err := r2.Get("zeta")
-	testhelp.Equal(t, "Get zeta error", err, nil)
-	testhelp.Equal(t, "Get zeta project", got, want[1])
+	zeta, zetaErr := again.Get("zeta")
+	testhelp.Equal(t, "Get zeta error", zetaErr, error(nil))
+	rgEqualProject(t, "Get zeta", zeta, rgZeta())
 }
 
 func TestProjectRegistryExample5(t *testing.T) {
-	r, base := rgSeed(t)
+	base := filepath.Join(t.TempDir(), "state")
+	r := rgSeed(t, base)
 
 	type S struct {
 		N int `json:"n"`
 	}
 
-	testhelp.Equal(t, "SaveState alpha error", r.SaveState("alpha", S{7}), nil)
-
 	var out S
-	testhelp.Equal(t, "LoadState alpha error", r.LoadState("alpha", &out), nil)
+	testhelp.Equal(t, "SaveState alpha error", r.SaveState("alpha", S{7}), error(nil))
+	testhelp.Equal(t, "LoadState alpha error", r.LoadState("alpha", &out), error(nil))
 	testhelp.Equal(t, "loaded state", out, S{7})
 
 	var out2 S
 	testhelp.Equal(t, "LoadState zeta error", r.LoadState("zeta", &out2), ErrNoState)
 
-	testhelp.Equal(t, "SaveState nope error", r.SaveState("nope", S{1}), ErrNotFound)
-
 	var out3 S
+	testhelp.Equal(t, "SaveState nope error", r.SaveState("nope", S{1}), ErrNotFound)
 	testhelp.Equal(t, "LoadState nope error", r.LoadState("nope", &out3), ErrNotFound)
 
-	info, err := os.Stat(filepath.Join(base, "alpha", "state.json"))
+	statePath := filepath.Join(base, "alpha", "state.json")
+	info, err := os.Stat(statePath)
 	if err != nil {
-		t.Fatalf("Stat state.json: %v", err)
+		t.Fatalf("Stat(%q): %v", statePath, err)
 	}
 	testhelp.Equal(t, "state.json mode", info.Mode()&0o777, os.FileMode(0o600))
 
@@ -131,83 +221,45 @@ func TestProjectRegistryExample5(t *testing.T) {
 }
 
 func TestProjectRegistryExample6(t *testing.T) {
-	path := testhelp.WriteFile(t, "state/projects.json", "{not json")
-	base := filepath.Dir(path)
+	base := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "projects.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	r, err := Open(base)
-	testhelp.Equal(t, "Open registry is nil", r == nil, true)
+	testhelp.Equal(t, "registry", r, (*Registry)(nil))
 	if err == nil {
-		t.Fatal("Open error = nil, want prefix \"registry: read \"")
+		t.Fatal("Open error: got nil, want an error")
 	}
-	testhelp.Equal(t, "Open error prefix", strings.HasPrefix(err.Error(), "registry: read "), true)
+	if !strings.HasPrefix(err.Error(), "registry: read ") {
+		t.Errorf("Open error:\ngot:  %q\nwant prefix: %q", err.Error(), "registry: read ")
+	}
 }
 
 func TestProjectRegistryExample7(t *testing.T) {
-	r, _ := rgNew(t)
-	rgAdd(t, r, Project{Name: "alpha", Language: "go", Dir: "/p/alpha"})
+	base := filepath.Join(t.TempDir(), "state")
+	r := rgOpen(t, base)
+
+	alpha := Project{Name: "alpha", Language: "go", Dir: "/p/alpha", User: "mu-alpha"}
+	rgAdd(t, r, alpha)
 
 	p := r.List()
 	p[0].Name = "changed"
 	p = append(p, Project{Name: "extra"})
-	testhelp.Equal(t, "returned list length", len(p), 2)
 
-	g, err := r.Get("alpha")
-	testhelp.Equal(t, "Get alpha error", err, nil)
+	g, gErr := r.Get("alpha")
+	if gErr != nil {
+		t.Fatalf("Get alpha: %v", gErr)
+	}
 	g.Name = "changed"
 
-	testhelp.Equal(t, "List unchanged", r.List(), []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha"}})
+	want := []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha", User: "mu-alpha"}}
+	testhelp.Equal(t, "List", r.List(), want)
+
 	got, err := r.Get("alpha")
-	testhelp.Equal(t, "Get alpha error after mutation", err, nil)
-	testhelp.Equal(t, "Get alpha project", got, Project{Name: "alpha", Language: "go", Dir: "/p/alpha"})
-}
-
-func rgOpen(t testing.TB, base string) *Registry {
-	t.Helper()
-	r, err := Open(base)
-	testhelp.Equal(t, "Open error", err, nil)
-	if r == nil {
-		t.Fatal("Open returned nil registry")
-	}
-	return r
-}
-
-func rgNew(t testing.TB) (*Registry, string) {
-	t.Helper()
-	base := filepath.Join(t.TempDir(), "state")
-	return rgOpen(t, base), base
-}
-
-func rgAdd(t testing.TB, r *Registry, p Project) {
-	t.Helper()
-	testhelp.Equal(t, "Add error", r.Add(p), nil)
-}
-
-func rgSeed(t testing.TB) (*Registry, string) {
-	t.Helper()
-	r, base := rgNew(t)
-	rgAdd(t, r, rgZeta())
-	rgAdd(t, r, rgAlpha())
-	return r, base
-}
-
-func rgZeta() Project {
-	return Project{
-		Name:      "zeta",
-		Language:  "go",
-		RepoURL:   "https://github.com/o/zeta",
-		Dir:       "/p/zeta",
-		Caps:      queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},
-		CreatedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC),
-	}
-}
-
-func rgAlpha() Project {
-	return Project{
-		Name:      "alpha",
-		Language:  "python",
-		RepoURL:   "https://github.com/o/alpha",
-		Dir:       "/p/alpha",
-		Caps:      queue.Caps{ClaudeUSD: 10, Hours: 1, ExecutorUSD: 2},
-		CreatedAt: time.Date(2026, 10, 8, 15, 1, 0, 0, time.UTC),
-	}
+	testhelp.Equal(t, "Get alpha error", err, error(nil))
+	testhelp.Equal(t, "Get alpha", got, alpha)
 }

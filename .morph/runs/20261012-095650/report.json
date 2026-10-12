@@ -1,0 +1,345 @@
+{
+  "runId": "20261012-095650",
+  "completedAt": 1791800049769,
+  "branch": "morph/20261012-095650",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "project-registry",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": "project-registry.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-registry",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": "user-registry.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "project-registry-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 2,
+      "winningVariant": "project-registry-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard registry/registry_examples_test.go\n== names registry/registry_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard registry/registry_examples_test.go\nguard: registry/registry_examples_test.go does not mention the example literal \"project not found\"\nguard: registry/registry_examples_test.go does not mention the example literal \"project exists\"\nguard: registry/registry_examples_test.go does not mention the example literal \"bad project name\"\nguard: registry/registry_examples_test.go does not mention the example literal \"no state\"\nguard: registry/registry_examples_test.go does not mention the example literal \"beta\"\nguard: registry/registry_examples_test.go does not mention the example literal \"m-1\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "token-lookup",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 1,
+      "winningVariant": "token-lookup.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-registry-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 2,
+      "winningVariant": "user-registry-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/users_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard users/users_examples_test.go\nguard: users/users_examples_test.go has 6 func Test, expected 7..13\nguard: users/users_examples_test.go does not mention the example literal \"TestUserRegistryExample7\"\nguard: users/users_examples_test.go does not mention the example literal \"user not found\"\nguard: users/users_examples_test.go does not mention the example literal \"user exists\"\nguard: users/users_examples_test.go does not mention the example literal \"bad user name\"\nguard: users/users_examples_test.go does not mention the example literal \"chat already has a user\"\nguard: users/users_examples_test.go does not mention the example literal \"2026-10-12T10:00:00Z\"\nguard: users/users_examples_test.go does not mention the example literal \"2026-10-12T10:01:00Z\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-secrets",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": "user-secrets.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:72: example 2 dir holds the two kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:81: read dir /tmp/TestProbeUserSecretsExample3408008092/001/ustate/alice: open /tmp/TestProbeUserSecretsExample3408008092/001/ustate/alice: no such file or directory\n    user-secrets_probe_test.go:81: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.003s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:72: example 2 dir holds the two kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:81: read dir /tmp/TestProbeUserSecretsExample32542108520/001/ustate/alice: open /tmp/TestProbeUserSecretsExample32542108520/001/ustate/alice: no such file or directory\n    user-secrets_probe_test.go:81: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.009s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:72: example 2 dir holds the two kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:81: read dir /tmp/TestProbeUserSecretsExample31250660380/001/ustate/alice: open /tmp/TestProbeUserSecretsExample31250660380/001/ustate/alice: no such file or directory\n    user-secrets_probe_test.go:81: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.008s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "red"
+    },
+    {
+      "customId": "token-lookup-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 2,
+      "winningVariant": "token-lookup-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/tokens_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard users/tokens_examples_test.go\nguard: users/tokens_examples_test.go does not mention the example literal \"61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2\"\nguard: users/tokens_examples_test.go does not mention the example literal \"a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd\"\nguard: users/tokens_examples_test.go does not mention the example literal \"b9a24afb8ff6092a52e6232b5b6b76b476503d5322dcdcdf73e75989201448f7\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    },
+    {
+      "customId": "user-secrets-judge",
+      "status": "failed",
+      "reason": "transaction rolled back",
+      "attempts": 2,
+      "winningVariant": "user-secrets-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/secrets_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard users/secrets_examples_test.go\nguard: users/secrets_examples_test.go does not mention the example literal \"no secret\"\nguard: users/secrets_examples_test.go does not mention the example literal \"empty secret\"\nguard: users/secrets_examples_test.go does not mention the example literal \"sk-ant-old\"\n"
+      ],
+      "commit": null,
+      "diffstat": null,
+      "lastRound": "green"
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 91007,
+    "outputTokens": 136766,
+    "cost": 0.18547698,
+    "requests": 14
+  },
+  "requests": [
+    {
+      "customId": "project-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799010-y5oPkSpXtht5D4Ges0EC",
+      "inputTokens": 3878,
+      "outputTokens": 13537,
+      "cost": 0.0174078,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799010-UYE6LfSjDQHdz1ZnzSzX",
+      "inputTokens": 2323,
+      "outputTokens": 6482,
+      "cost": 0.0084753,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799150-DLm7vlsJriuMP4Q748fB",
+      "inputTokens": 4281,
+      "outputTokens": 10060,
+      "cost": 0.0133563,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799150-3nsHNX9Zjrv0Amsq1htx",
+      "inputTokens": 2772,
+      "outputTokens": 1794,
+      "cost": 0.0029844,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799150-pfdOcJfaMzo1vb9fh0AW",
+      "inputTokens": 2500,
+      "outputTokens": 7215,
+      "cost": 0.009408,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799169-pNsq8D1xAy1ptyfzacpd",
+      "inputTokens": 3116,
+      "outputTokens": 2689,
+      "cost": 0.00388512,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799255-GKDB7rwmqBZPqX09Hw5K",
+      "inputTokens": 3581,
+      "outputTokens": 7523,
+      "cost": 0.0101019,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799255-G7lcsp8YnF8dVowBKvYv",
+      "inputTokens": 3671,
+      "outputTokens": 18153,
+      "cost": 0.0228849,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-registry-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799453-fgTpbQFfknS09I89xcXL",
+      "inputTokens": 11683,
+      "outputTokens": 11432,
+      "cost": 0.01611738,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799453-h2iviRlv7OvfhUC4goag",
+      "inputTokens": 9822,
+      "outputTokens": 6282,
+      "cost": 0.00993204,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799453-zf2wV0sRTL86EcBaXmJ3",
+      "inputTokens": 11080,
+      "outputTokens": 16647,
+      "cost": 0.02274744,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799647-fFpbNxsJwGM2nmJ9lBhm",
+      "inputTokens": 10124,
+      "outputTokens": 1616,
+      "cost": 0.00414696,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799647-hV7FsMkQbm2Dml62g0pr",
+      "inputTokens": 10927,
+      "outputTokens": 3336,
+      "cost": 0.0072813,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791799689-hZSPayhoWTmLBuVoP6Tb",
+      "inputTokens": 11249,
+      "outputTokens": 30000,
+      "cost": 0.03674814,
+      "finishReason": "length",
+      "error": null
+    }
+  ],
+  "rounds": [
+    {
+      "round": 0,
+      "reds": [
+        {
+          "customId": "project-registry-judge",
+          "blamed": [
+            "project-registry-judge"
+          ],
+          "log": "== vet\n== gofmt\n== guard registry/registry_examples_test.go\nguard: registry/registry_examples_test.go does not mention the example literal \"project not found\"\nguard: registry/registry_examples_test.go does not mention the example literal \"project exists\"\nguard: registry/registry_examples_test.go does not mention the example literal \"bad project name\"\nguard: registry/registry_examples_test.go does not mention the example literal \"no state\"\nguard: registry/registry_examples_test.go does not mention the example literal \"beta\"\nguard: registry/registry_examples_test.go does not mention the example literal \"m-1\"\n"
+        },
+        {
+          "customId": "user-registry-judge",
+          "blamed": [
+            "user-registry-judge"
+          ],
+          "log": "== vet\n== gofmt\n== guard users/users_examples_test.go\nguard: users/users_examples_test.go has 6 func Test, expected 7..13\nguard: users/users_examples_test.go does not mention the example literal \"TestUserRegistryExample7\"\nguard: users/users_examples_test.go does not mention the example literal \"user not found\"\nguard: users/users_examples_test.go does not mention the example literal \"user exists\"\nguard: users/users_examples_test.go does not mention the example literal \"bad user name\"\nguard: users/users_examples_test.go does not mention the example literal \"chat already has a user\"\nguard: users/users_examples_test.go does not mention the example literal \"2026-10-12T10:00:00Z\"\nguard: users/users_examples_test.go does not mention the example literal \"2026-10-12T10:01:00Z\"\n"
+        },
+        {
+          "customId": "user-secrets",
+          "blamed": [
+            "user-secrets"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:72: example 2 dir holds the two kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:81: read dir /tmp/TestProbeUserSecretsExample32542108520/001/ustate/alice: open /tmp/TestProbeUserSecretsExample32542108520/001/ustate/alice: no such file or directory\n    user-secrets_probe_test.go:81: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.009s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\n"
+        },
+        {
+          "customId": "token-lookup-judge",
+          "blamed": [
+            "token-lookup-judge"
+          ],
+          "log": "== vet\n== gofmt\n== guard users/tokens_examples_test.go\nguard: users/tokens_examples_test.go does not mention the example literal \"61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2\"\nguard: users/tokens_examples_test.go does not mention the example literal \"a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd\"\nguard: users/tokens_examples_test.go does not mention the example literal \"b9a24afb8ff6092a52e6232b5b6b76b476503d5322dcdcdf73e75989201448f7\"\n"
+        },
+        {
+          "customId": "user-secrets-judge",
+          "blamed": [
+            "user-secrets-judge"
+          ],
+          "log": "== vet\n== gofmt\n== guard users/secrets_examples_test.go\nguard: users/secrets_examples_test.go does not mention the example literal \"no secret\"\nguard: users/secrets_examples_test.go does not mention the example literal \"empty secret\"\nguard: users/secrets_examples_test.go does not mention the example literal \"sk-ant-old\"\n"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "reds": [
+        {
+          "customId": "user-secrets",
+          "blamed": [
+            "user-secrets"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:72: example 2 dir holds the two kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:81: read dir /tmp/TestProbeUserSecretsExample31250660380/001/ustate/alice: open /tmp/TestProbeUserSecretsExample31250660380/001/ustate/alice: no such file or directory\n    user-secrets_probe_test.go:81: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.008s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\n"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "reds": [
+        {
+          "customId": "user-secrets",
+          "blamed": [
+            "user-secrets"
+          ],
+          "log": "== build\n== vet\n== gofmt\n== guard\n== probe\n--- FAIL: TestProbeUserSecretsExample2 (0.00s)\n    user-secrets_probe_test.go:72: example 2 dir holds the two kinds:\n        got:  []string{\"github-token\"}\n        want: []string{\"anthropic-key\", \"github-token\"}\n--- FAIL: TestProbeUserSecretsExample3 (0.00s)\n    user-secrets_probe_test.go:81: read dir /tmp/TestProbeUserSecretsExample3408008092/001/ustate/alice: open /tmp/TestProbeUserSecretsExample3408008092/001/ustate/alice: no such file or directory\n    user-secrets_probe_test.go:81: example 3 dir still holds only anthropic-key:\n        got:  []string(nil)\n        want: []string{\"anthropic-key\"}\nFAIL\tmorphstudio/users\t0.003s\nfirst difference at char 10 of 41/24: expected \"[]string{\\\"anthropic-key\\\", \\\"github-token\\\"}\" received \"[]string{\\\"github-token\\\"}\"\nfirst difference at char 8 of 25/13: expected \"[]string{\\\"anthropic-key\\\"}\" received \"[]string(nil)\"\n"
+        }
+      ]
+    }
+  ],
+  "stop": "retry cap: user-secrets (2 retries)"
+}

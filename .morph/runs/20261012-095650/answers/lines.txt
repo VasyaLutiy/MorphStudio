@@ -1,0 +1,14 @@
+morph run: project-registry.v1 accepted stage 0 finish stop chars 4340
+morph run: user-registry.v1 accepted stage 0 finish stop chars 3001
+morph run: project-registry-judge.v1 accepted stage 0 finish stop chars 7064
+morph run: token-lookup.v1 accepted stage 0 finish stop chars 1221
+morph run: user-registry-judge.v1 accepted stage 0 finish stop chars 5346
+morph run: user-secrets.v1 accepted stage 0 finish stop chars 2072
+morph run: token-lookup-judge.v1 accepted stage 0 finish stop chars 3355
+morph run: user-secrets-judge.v1 accepted stage 0 finish stop chars 6150
+morph run: project-registry-judge.r1.v1 accepted stage 0 finish stop chars 7634
+morph run: user-registry-judge.r1.v1 accepted stage 0 finish stop chars 6102
+morph run: user-secrets.r1.v1 accepted stage 0 finish stop chars 2771
+morph run: token-lookup-judge.r1.v1 accepted stage 0 finish stop chars 3971
+morph run: user-secrets-judge.r1.v1 accepted stage 0 finish stop chars 6649
+morph run: user-secrets.r2.v1 corrupt stage 0 finish length chars none

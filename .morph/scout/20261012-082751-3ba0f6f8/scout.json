@@ -1,0 +1,438 @@
+{
+  "schema": 1,
+  "scoutId": "20261012-082751-3ba0f6f8",
+  "createdAt": "2026-10-12T08:27:51.311Z",
+  "root": "/tmp/p9a-claude",
+  "ref": "d92a8b3028b810a2fc080f8861e65fbda241bf86",
+  "question": "Project Registry (registry/registry.go, contour.yaml group registry, Function Project Registry) gains a field `User string` on `Project` (json \"user\", \"\" = the operator's project) and a method `ListUser(user string) []Project` returning only that user's projects sorted by Name.\nA new package `users` (users/) holds a user registry (users.json), per-user secret files and a bearer-token lookup; it imports nothing of the module.\nNot changing: Secret Files (registry/secrets.go), the registry file format of existing fields, Open/Add/Get/List/SaveState/LoadState semantics.\nOut of scope: per-user auth in api/mcpserver, spawn, the Telegram bot.\nName every test and caller that relies on the old behaviour of registry.Project (its fields, its JSON, its zero value) and on the unexported fields of registry.Registry.\n",
+  "questionSha256": "3ba0f6f8ede09cc24697a86d6b83ae2f798929f6e72d3046f52cdbdbe71111f5",
+  "protocolSha256": "f4277a23036671a78527bac6371514271758732ac83cd9c008c784d40448bb78",
+  "processor": "ds",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "seed": {
+    "source": "primer",
+    "path": null,
+    "files": [
+      "cmd/morphd/config.go",
+      "cmd/morphd/main.go",
+      "daemon/pump.go",
+      "mcpserver/pm.go",
+      "daemon/daemon.go",
+      "api/router.go"
+    ],
+    "chars": 1319
+  },
+  "budgets": {
+    "calls": 30,
+    "reads": 12,
+    "chars": 120000,
+    "rounds": 40,
+    "deadlineMs": 1800000
+  },
+  "caps": {
+    "readLines": 400,
+    "readChars": 12000,
+    "grepHits": 200,
+    "grepLineChars": 300,
+    "listEntries": 300,
+    "grepSkip": [
+      ".morph",
+      "decks"
+    ]
+  },
+  "status": "ok",
+  "answer": {
+    "targets": [
+      "registry/registry.go"
+    ],
+    "context_slice": [
+      "contour.yaml",
+      "docs/TASK_P4_registry-gitrules-control.md",
+      "morph-map.json",
+      "registry/registry_examples_test.go",
+      "registry/secrets.go",
+      "registry/secrets_examples_test.go",
+      "daemon/daemon.go",
+      "cmd/morphd/main.go",
+      "daemon/daemon_examples_test.go",
+      "daemon/pump_examples_test.go"
+    ],
+    "reasoning": "The P9a re-cut changes one existing code file: registry/registry.go gains `User string `json:\"user\"`` on Project and `func (r *Registry) ListUser(user string) []Project` (filter on User, sorted by Name), while Open/Add/Get/List/SaveState/LoadState semantics and the existing JSON keys stay as they are. registry/registry_examples_test.go is the card's own judge file (registry/registry_examples_test.go is written by the project-registry-judge card), so the same change touches it: it pins the old Project surface — JSON round-trips of base/projects.json into []Project (examples 2 and 4), the zero value `Project{}` returned by Get (example 1), the copy semantics of List/Get (example 7) and the rgAlpha/rgZeta literals — and must be extended for the new field and ListUser. The rest of the tree only uses Project with keyed fields and never touches Registry's unexported fields by name outside package registry: daemon/daemon.go builds registry.Project{...} at lines 212 and 265 and projects it into control.ProjectView (no JSON change), cmd/morphd/main.go calls registry.Open/reg.Get/reg.ReadSecret, and the daemon/daemon_examples_test.go and daemon/pump_examples_test.go helpers call reg.Add(registry.Project{...}); registry/secrets.go is the only file besides registry.go that names the unexported base field (r.base in SecretPath/PutSecret), so the unexported fields of Registry are relied on only inside package registry. The new `users` package (users/users.go) is a new file of a new directory, not a file of the tree, so it cannot be named as a target."
+  },
+  "stopReason": "the model answered after the budget closed: the character budget is spent (120043 of 120000 chars)",
+  "spent": {
+    "calls": 24,
+    "reads": 8,
+    "chars": 120129,
+    "rounds": 26
+  },
+  "elapsedMs": 418328,
+  "usage": {
+    "requests": 26,
+    "inputTokens": 680781,
+    "outputTokens": 30273,
+    "cost": 0.07052669999999998
+  },
+  "journal": [
+    {
+      "round": 1,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "registry/"
+      },
+      "chars": 147,
+      "error": null,
+      "inputTokens": 6152,
+      "outputTokens": 186,
+      "cost": 0.0020688
+    },
+    {
+      "round": 2,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "registry/registry.go",
+        "from": 1,
+        "to": 186
+      },
+      "chars": 5208,
+      "error": null,
+      "inputTokens": 6401,
+      "outputTokens": 34,
+      "cost": 0.00030222
+    },
+    {
+      "round": 3,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "users/"
+      },
+      "chars": 50,
+      "error": "no such directory in the tree: users/",
+      "inputTokens": 8248,
+      "outputTokens": 181,
+      "cost": 0.00103272
+    },
+    {
+      "round": 4,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "registry\\.",
+        "path": "api"
+      },
+      "chars": 47,
+      "error": null,
+      "inputTokens": 8288,
+      "outputTokens": 81,
+      "cost": 0.00037176
+    },
+    {
+      "round": 5,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "\\bregistry\\.[A-Z]|\\bregistry\\.Project\\b",
+        "path": "."
+      },
+      "chars": 5806,
+      "error": null,
+      "inputTokens": 8336,
+      "outputTokens": 200,
+      "cost": 0.00052896
+    },
+    {
+      "round": 6,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "projects\\.json",
+        "path": ""
+      },
+      "chars": 2637,
+      "error": null,
+      "inputTokens": 10336,
+      "outputTokens": 297,
+      "cost": 0.00124536
+    },
+    {
+      "round": 7,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "Project\\{",
+        "path": ""
+      },
+      "chars": 5056,
+      "error": null,
+      "inputTokens": 11249,
+      "outputTokens": 283,
+      "cost": 0.0009495
+    },
+    {
+      "round": 8,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "registry/registry_examples_test.go",
+        "from": 1,
+        "to": 213
+      },
+      "chars": 7054,
+      "error": null,
+      "inputTokens": 12855,
+      "outputTokens": 890,
+      "cost": 0.00202146
+    },
+    {
+      "round": 9,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "\\.projects\\b|\\.base\\b",
+        "path": ""
+      },
+      "chars": 4985,
+      "error": null,
+      "inputTokens": 15522,
+      "outputTokens": 914,
+      "cost": 0.0022974
+    },
+    {
+      "round": 10,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "contour.yaml",
+        "from": 755,
+        "to": 830
+      },
+      "chars": 7753,
+      "error": null,
+      "inputTokens": 17400,
+      "outputTokens": 449,
+      "cost": 0.0016116
+    },
+    {
+      "round": 11,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "morph-map.json",
+        "from": null,
+        "to": null
+      },
+      "chars": 11963,
+      "error": null,
+      "inputTokens": 19566,
+      "outputTokens": 1311,
+      "cost": 0.00288108
+    },
+    {
+      "round": 12,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "registry\\.Open|registry\\.List|reg\\.List\\(\\)|\\.Get\\(",
+        "path": ""
+      },
+      "chars": 10988,
+      "error": null,
+      "inputTokens": 23034,
+      "outputTokens": 1211,
+      "cost": 0.00311028
+    },
+    {
+      "round": 13,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "PLAN_ONBOARDING_VPS.md",
+        "from": 60,
+        "to": 135
+      },
+      "chars": 11146,
+      "error": null,
+      "inputTokens": 26314,
+      "outputTokens": 633,
+      "cost": 0.00257124
+    },
+    {
+      "round": 14,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "docs/"
+      },
+      "chars": 784,
+      "error": null,
+      "inputTokens": 29638,
+      "outputTokens": 2179,
+      "cost": 0.00445596
+    },
+    {
+      "round": 15,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "morph-map.json",
+        "from": 44,
+        "to": 101
+      },
+      "chars": 11097,
+      "error": null,
+      "inputTokens": 29938,
+      "outputTokens": 1481,
+      "cost": 0.00287892
+    },
+    {
+      "round": 16,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "created_at|caps\\\"|project_view|ProjectView\\{",
+        "path": ""
+      },
+      "chars": 11010,
+      "error": null,
+      "inputTokens": 32996,
+      "outputTokens": 842,
+      "cost": 0.00289128
+    },
+    {
+      "round": 17,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "daemon/daemon.go",
+        "from": 200,
+        "to": 300
+      },
+      "chars": 3443,
+      "error": null,
+      "inputTokens": 36497,
+      "outputTokens": 1237,
+      "cost": 0.00358614
+    },
+    {
+      "round": 18,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "cmd/morphd/main.go",
+        "from": null,
+        "to": null
+      },
+      "chars": 3701,
+      "error": null,
+      "inputTokens": 37697,
+      "outputTokens": 1254,
+      "cost": 0.00299886
+    },
+    {
+      "round": 19,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "P9a|ListUser|\"user\"",
+        "path": "decks"
+      },
+      "chars": 2990,
+      "error": null,
+      "inputTokens": 39076,
+      "outputTokens": 2069,
+      "cost": 0.00411408
+    },
+    {
+      "round": 20,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "NumField|reflect\\.TypeOf",
+        "path": ""
+      },
+      "chars": 5351,
+      "error": null,
+      "inputTokens": 40197,
+      "outputTokens": 1357,
+      "cost": 0.00318126
+    },
+    {
+      "round": 21,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "tests/"
+      },
+      "chars": 41,
+      "error": null,
+      "inputTokens": 41977,
+      "outputTokens": 1725,
+      "cost": 0.00388038
+    },
+    {
+      "round": 22,
+      "turn": "action",
+      "action": {
+        "kind": "read",
+        "path": "registry/secrets.go",
+        "from": 1,
+        "to": 101
+      },
+      "chars": 2814,
+      "error": null,
+      "inputTokens": 42031,
+      "outputTokens": 6536,
+      "cost": 0.00925506
+    },
+    {
+      "round": 23,
+      "turn": "action",
+      "action": {
+        "kind": "list",
+        "path": "decks/"
+      },
+      "chars": 200,
+      "error": null,
+      "inputTokens": 43023,
+      "outputTokens": 2037,
+      "cost": 0.00401562
+    },
+    {
+      "round": 24,
+      "turn": "action",
+      "action": {
+        "kind": "grep",
+        "pattern": "created_at|repo_url|caps",
+        "path": "decks"
+      },
+      "chars": 5772,
+      "error": null,
+      "inputTokens": 43145,
+      "outputTokens": 623,
+      "cost": 0.00207894
+    },
+    {
+      "round": 25,
+      "turn": "answer",
+      "action": null,
+      "chars": 0,
+      "error": "targets: not in the tree (missing, ignored or a directory): users/users.go",
+      "inputTokens": 45067,
+      "outputTokens": 1770,
+      "cost": 0.00403194
+    },
+    {
+      "round": 26,
+      "turn": "answer",
+      "action": null,
+      "chars": 0,
+      "error": null,
+      "inputTokens": 45798,
+      "outputTokens": 493,
+      "cost": 0.00216588
+    }
+  ]
+}

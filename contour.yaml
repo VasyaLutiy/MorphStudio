@@ -760,20 +760,26 @@ System:
             Declares in registry/registry.go: `var ErrNotFound = errors.New("project not found")`, `var ErrExists = errors.New("project exists")`,
             `var ErrBadName = errors.New("bad project name")`, `var ErrNoState = errors.New("no state")`,
             `type Project struct { Name string `json:"name"`; Language string `json:"language"`; RepoURL string `json:"repo_url"`; Dir string `json:"dir"`;
-            Caps queue.Caps `json:"caps"`; CreatedAt time.Time `json:"created_at"` }`, `type Registry struct` (unexported fields),
+            Caps queue.Caps `json:"caps"`; CreatedAt time.Time `json:"created_at"`; User string `json:"user,omitempty"` }` (User names the
+            project's user of package users, "" = the operator's project), `type Registry struct { base string; projects []Project }`
+            (unexported fields; registry/secrets.go reads r.base),
             `func Open(base string) (*Registry, error)`, `func (r *Registry) Base() string`, `func (r *Registry) Add(p Project) error`,
             `func (r *Registry) Get(name string) (Project, error)`, `func (r *Registry) List() []Project`,
-            `func (r *Registry) SaveState(name string, v any) error` and `func (r *Registry) LoadState(name string, v any) error`.
+            `func (r *Registry) ListUser(user string) []Project`, `func (r *Registry) SaveState(name string, v any) error` and `func (r *Registry) LoadState(name string, v any) error`.
             Open creates base (0o700) when missing and reads base/projects.json: missing → empty; not a JSON array of
             Project → (nil, an error beginning "registry: read "). Add: Name must match ^[a-z0-9][a-z0-9-]{0,39}$ else
             ErrBadName; a stored name → ErrExists; else stored and the whole list written as a JSON array sorted by Name
             (json.MarshalIndent with two spaces, an empty list as []) to a temporary file in base then renamed onto
             projects.json. Get → the project or (Project{}, ErrNotFound). List → a new slice sorted by Name (empty non-nil).
+            ListUser → a new slice of the projects whose User equals user, sorted by Name (empty non-nil); ListUser("") is
+            the operator's projects. A projects.json written before User existed (entries without the key "user") opens
+            with User "" on every project; a project with User "" is written without the key "user".
             SaveState writes json.MarshalIndent(v) to base/<name>/state.json (the directory created 0o700; unknown name →
             ErrNotFound) by temporary file and rename; LoadState unmarshals it into v, missing file → ErrNoState, unknown
             name → ErrNotFound. Every error of the file system is returned as is (never one of the sentinels). Values are
             copies.
           steps:
+            - uses: queue
             - produces: Project
           examples:
             - given: 'base := filepath.Join(t.TempDir(), "state") (missing)'
@@ -797,6 +803,12 @@ System:
             - given: 'the registry of example 1 after Add({Name "alpha", Language "go", Dir "/p/alpha"})'
               when: 'p := List(); p[0].Name = "changed"; p = append(p, Project{Name: "extra"}); g, _ := Get("alpha"); g.Name = "changed"; then List() and Get("alpha")'
               then: 'List() is exactly []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha"}} and Get("alpha") returns that project, nil: writes to returned values never reach the registry'
+            - given: 'base := filepath.Join(t.TempDir(), "state"); Open(base); Add({Name "alpha", Language "go", RepoURL "https://github.com/ann/alpha", Dir "/home/mu-ann/projects/alpha", Caps {30, 3, 5}, CreatedAt 2026-10-12T09:00:00Z, User "ann"}); Add({Name "beta", Language "python", RepoURL "https://github.com/bob/beta", Dir "/home/mu-bob/projects/beta", CreatedAt 2026-10-12T09:05:00Z, User "bob"}); Add({Name "core", Language "go", Dir "/home/morph/projects/core", CreatedAt 2026-10-12T09:10:00Z})'
+              when: 'ListUser("ann"); ListUser("bob"); ListUser(""); ListUser("eve"); List(); then l := ListUser("ann"); l[0].User = "bob"; ListUser("bob")'
+              then: '[]Project{alpha}; []Project{beta}; []Project{core}; []Project{} (non-nil, empty); names "alpha", "beta", "core"; still []Project{beta}: a write to a returned value never reaches the registry'
+            - given: 'the registry of example 8; a second base whose projects.json holds the text [{"name":"old","dir":"/p/old"}]'
+              when: 'decode base/projects.json into []map[string]any; Open(base) again and Get("alpha"); Open(the second base) and Get("old")'
+              then: 'entry 0 has "user": "ann", entry 2 (core) has no key "user"; the alpha project of example 8 field by field, nil; (Project{Name: "old", Dir: "/p/old"}, nil) with User ""'
         - name: Secret Files
           description: Secrets stored per project as files of mode 0600 that are never returned by the API.
           behavior: >
@@ -833,6 +845,145 @@ System:
             - given: 'the registry of example 1 after PutSecret("demo", "session-token", "tok-9")'
               when: 'DeleteSecret("demo", "session-token"); HasSecret'
               then: 'nil; false'
+    - name: users
+      description: >
+        Package users in users/: the users of a multi-user morphd (one Linux user mu-<name> per tester), their MCP/API
+        bearer tokens kept only as SHA-256 hashes, their secret files of mode 0600 and the lookup of a bearer token.
+        The registry lives in its own base directory (morphd's state directory joined with "users"): base/users.json
+        and one directory base/<name> per user holding that user's secrets. Imports nothing of the module; the
+        standard library only (crypto/sha256, crypto/subtle, encoding/hex, encoding/json, errors, fmt, os,
+        path/filepath, regexp, sort, sync, time). The clock comes in as a `now` argument; tokens are minted by the
+        caller, never here.
+      language: go
+      guardrails: [No Shell, No Clock, No Network, No Env, Stdlib Only]
+      functions:
+        - name: User Registry
+          description: The users of morphd in one JSON file, rewritten whole and atomically; a token is stored only as its SHA-256 hash.
+          behavior: >
+            Declares in users/users.go: `var ErrNotFound = errors.New("users: user not found")`,
+            `var ErrExists = errors.New("users: user exists")`, `var ErrBadName = errors.New("users: bad user name")`,
+            `var ErrChatTaken = errors.New("users: chat bound to another user")`,
+            `var ErrEmptyToken = errors.New("users: empty token")`, `var ErrTokenTaken = errors.New("users: token taken")`,
+            `type User struct { Name string `json:"name"`; LinuxUser string `json:"linux_user"`; ChatID int64 `json:"chat_id"`;
+            TokenHash string `json:"token_hash"`; CreatedAt time.Time `json:"created_at"` }`,
+            `type Registry struct { mu sync.Mutex; base string; users []User }` (unexported fields; users/secrets.go and
+            users/tokens.go read r.base and r.users), `func HashToken(token string) string` = the lower-case hex of
+            sha256.Sum256 of the token's bytes, `func Open(base string) (*Registry, error)`, `func (r *Registry) Base() string`,
+            `func (r *Registry) Add(name string, now time.Time) (User, error)`, `func (r *Registry) Get(name string) (User, error)`,
+            `func (r *Registry) List() []User`, `func (r *Registry) ByChat(chatID int64) (User, error)`,
+            `func (r *Registry) SetChat(name string, chatID int64) error` and `func (r *Registry) SetToken(name, token string) error`.
+            Every exported method holds r.mu for its whole body (Get, List and ByChat too). Open creates base (0o700) when
+            missing and reads base/users.json: missing → empty; not a JSON array of User → (nil, an error beginning
+            "users: read "). Add: name must match ^[a-z][a-z0-9]{0,15}$ else ErrBadName; a stored name → ErrExists; else
+            User{Name: name, LinuxUser: "mu-" + name, CreatedAt: now} is stored and returned. SetChat: unknown name →
+            ErrNotFound; chatID != 0 already the ChatID of another user → ErrChatTaken; else the user's ChatID = chatID
+            (0 unbinds). SetToken: unknown name → ErrNotFound; token "" → ErrEmptyToken; HashToken(token) already the
+            TokenHash of another user → ErrTokenTaken; else the user's TokenHash = HashToken(token); the token itself is
+            never stored, returned or put into an error text. Every successful Add, SetChat and SetToken writes the whole
+            list as a JSON array sorted by Name (json.MarshalIndent with two spaces, no trailing newline, an empty list as
+            []) to a temporary file (mode 0o600) in base, renamed onto base/users.json; a failed call writes nothing.
+            Get → the user or (User{}, ErrNotFound). List → a new slice sorted by Name (empty non-nil). ByChat: chatID 0 →
+            (User{}, ErrNotFound); else the user whose ChatID equals it, or (User{}, ErrNotFound). Every error of the file
+            system is returned as is. Values are copies. tests/fixtures/users/users-3.json is the exact users.json of
+            three users: ann (ChatID 111111111, the token "mcp-ann-0001", created 2026-10-12T09:00:00Z), bob (ChatID 0,
+            the token "mcp-bob-0002", created 2026-10-12T09:05:00Z) and eve (ChatID 333333333, no token, created
+            2026-10-12T09:10:00Z).
+          steps:
+            - produces: User
+          examples:
+            - given: 'base := filepath.Join(t.TempDir(), "users") (missing)'
+              when: 'Open(base); List(); Get("ann"); ByChat(0); Base(); the texts of ErrNotFound, ErrExists, ErrBadName, ErrChatTaken, ErrEmptyToken, ErrTokenTaken'
+              then: 'a non-nil *Registry, nil; base exists with mode & 0o777 == 0o700; []User{} (non-nil, empty); (User{}, ErrNotFound); (User{}, ErrNotFound); base; "users: user not found", "users: user exists", "users: bad user name", "users: chat bound to another user", "users: empty token", "users: token taken"'
+            - given: 'the registry of example 1'
+              when: 'Add("eve", 2026-10-12T09:10:00Z); Add("ann", 2026-10-12T09:00:00Z); Add("bob", 2026-10-12T09:05:00Z); SetChat("ann", 111111111); SetChat("eve", 333333333); SetToken("ann", "mcp-ann-0001"); SetToken("bob", "mcp-bob-0002"); then read base/users.json'
+              then: 'the first Add returns (User{Name: "eve", LinuxUser: "mu-eve", ChatID: 0, TokenHash: "", CreatedAt: 2026-10-12T09:10:00Z}, nil), the other calls nil; the bytes of base/users.json equal the bytes of tests/fixtures/users/users-3.json exactly; base/users.json mode & 0o777 == 0o600; the directory base holds only users.json'
+            - given: 'base := t.TempDir(); base/users.json written with the bytes of tests/fixtures/users/users-3.json; Open(base)'
+              when: 'List(); Get("bob"); ByChat(333333333); ByChat(222222222)'
+              then: 'List is []User{{"ann", "mu-ann", 111111111, "44d5cbb64a5151b2608de24987b45d9344b8e60386c1a2d4f6ce8904f7e56d2b", 2026-10-12T09:00:00Z}, {"bob", "mu-bob", 0, "67cfcbd6b49e25979dbe31281596a0765b85aa0b22850cfbfc515247220055ff", 2026-10-12T09:05:00Z}, {"eve", "mu-eve", 333333333, "", 2026-10-12T09:10:00Z}}; (the bob User, nil); (the eve User, nil); (User{}, ErrNotFound)'
+            - given: 'the registry of example 3'
+              when: 't0 := 2026-10-12T10:00:00Z; Add("ann", t0); Add("Ann", t0); Add("mu-x", t0); Add("1a", t0); Add("", t0); Add(17 × "a", t0); SetChat("bob", 111111111); SetChat("zed", 5); SetToken("eve", ""); SetToken("eve", "mcp-ann-0001"); SetToken("zed", "mcp-zed-1")'
+              then: '(User{}, ErrExists); (User{}, ErrBadName) for each of the next five; ErrChatTaken; ErrNotFound; ErrEmptyToken; ErrTokenTaken; ErrNotFound; the bytes of base/users.json still equal the fixture''s; no error text contains "mcp-ann-0001" or "mcp-zed-1"'
+            - given: 'the registry of example 3'
+              when: 'SetToken("eve", "mcp-new-0003"); HashToken("mcp-new-0003"); Get("eve"); read base/users.json'
+              then: 'nil; "866e38f9ff3bcf4eae882fcd6e81a2637709e9d6a7b5e6ec9fd7ec48ced9c413"; eve with TokenHash "866e38f9ff3bcf4eae882fcd6e81a2637709e9d6a7b5e6ec9fd7ec48ced9c413"; the file text contains "866e38f9ff3bcf4eae882fcd6e81a2637709e9d6a7b5e6ec9fd7ec48ced9c413" and does not contain "mcp-new-0003" (the token is stored only as its hash)'
+            - given: 'the registry of example 3'
+              when: 'SetChat("ann", 0); ByChat(111111111); SetChat("bob", 111111111); ByChat(111111111); SetChat("bob", 111111111) again; Open(base) again and Get("bob")'
+              then: 'nil; (User{}, ErrNotFound); nil; the bob User with ChatID 111111111, nil; nil (binding a chat to its own user again is no error); the reopened bob has ChatID 111111111 and ann ChatID 0'
+            - given: 'base := t.TempDir(); base/users.json holding the text {not json'
+              when: Open(base)
+              then: '(nil, an error beginning "users: read ")'
+            - given: 'the registry of example 3'
+              when: 'l := List(); l[0].Name = "changed"; l[0].TokenHash = ""; g, _ := Get("bob"); g.ChatID = 7; then List() and Get("bob")'
+              then: 'List() equals the List of example 3 and Get("bob") returns bob with ChatID 0, nil: writes to returned values never reach the registry'
+        - name: User Secrets
+          description: Secrets stored per user as files of mode 0600 that are never returned by the API nor put into an error text.
+          behavior: >
+            Declares in users/secrets.go, over the Registry of users/users.go (it reads r.base and calls r.Get; it never
+            locks r.mu itself): `var ErrNoSecret = errors.New("users: no secret")`,
+            `var ErrEmptySecret = errors.New("users: empty secret")`,
+            `var SecretKinds = []string{"anthropic-key", "github-token"}`,
+            `func (r *Registry) SecretPath(name, kind string) string` = filepath.Join(base, name, kind),
+            `func (r *Registry) PutSecret(name, kind, value string) error`, `func (r *Registry) HasSecret(name, kind string) bool`,
+            `func (r *Registry) ReadSecret(name, kind string) (string, error)` and `func (r *Registry) DeleteSecret(name, kind string) error`.
+            PutSecret: unknown user → ErrNotFound; kind not in SecretKinds → fmt.Errorf("users: unknown secret kind %q", kind);
+            value "" → ErrEmptySecret; else the user's directory base/<name> is created (0o700) and value is written by a
+            temporary file (0o600) in that directory renamed onto SecretPath; the written file has mode 0o600 even when it
+            existed with another mode; a failed write removes its temporary file. No error text of this file ever holds
+            the value: a file-system error is returned as is (its text names paths and kinds, never the value).
+            HasSecret: the file exists. ReadSecret: the content verbatim; missing → ("", ErrNoSecret); unknown user →
+            ("", ErrNotFound). DeleteSecret removes the file; missing → nil; unknown user → ErrNotFound.
+          steps:
+            - calls: User Registry
+            - produces: secret file
+          examples:
+            - given: 'base := t.TempDir(); base/users.json written with the bytes of tests/fixtures/users/users-3.json; r, _ := Open(base)'
+              when: 'PutSecret("ann", "anthropic-key", "sk-ant-api03-AAAA"); HasSecret("ann", "anthropic-key"); ReadSecret("ann", "anthropic-key"); SecretPath("ann", "anthropic-key"); os.Stat of it'
+              then: 'nil; true; ("sk-ant-api03-AAAA", nil); filepath.Join(base, "ann", "anthropic-key"); mode & 0o777 == 0o600; the directory base/ann has mode & 0o777 == 0o700 and holds only anthropic-key; base holds ann and users.json'
+            - given: 'the registry of example 1'
+              when: 'PutSecret("bob", "github-token", "github_pat_11BBBB\n"); ReadSecret("bob", "github-token")'
+              then: 'nil; ("github_pat_11BBBB\n", nil) (the newline kept)'
+            - given: 'the registry of example 1'
+              when: 'PutSecret("zed", "github-token", "x"); PutSecret("ann", "password", "sk-ant-api03-AAAA"); PutSecret("ann", "github-token", ""); SecretKinds; the texts of ErrNoSecret and ErrEmptySecret'
+              then: 'ErrNotFound; an error with text exactly "users: unknown secret kind \"password\""; ErrEmptySecret; base/ann does not exist; []string{"anthropic-key", "github-token"}; "users: no secret", "users: empty secret"'
+            - given: 'the registry of example 1 after PutSecret("ann", "anthropic-key", "sk-ant-api03-AAAA"); os.Chmod(SecretPath("ann", "anthropic-key"), 0o644)'
+              when: 'PutSecret("ann", "anthropic-key", "sk-ant-api03-CCCC"); os.Stat; ReadSecret'
+              then: 'nil; mode & 0o777 == 0o600 again; ("sk-ant-api03-CCCC", nil); base/ann holds only anthropic-key'
+            - given: 'the registry of example 1'
+              when: 'HasSecret("ann", "github-token"); ReadSecret("ann", "github-token"); ReadSecret("zed", "github-token"); DeleteSecret("ann", "github-token"); DeleteSecret("zed", "github-token"); PutSecret("ann", "github-token", "github_pat_11DDDD"); DeleteSecret("ann", "github-token"); HasSecret("ann", "github-token")'
+              then: 'false; ("", ErrNoSecret); ("", ErrNotFound); nil; ErrNotFound; nil; nil; false'
+            - given: 'the registry of example 1; os.WriteFile(filepath.Join(base, "eve"), []byte("x"), 0o600) (base/eve is a file, so eve''s directory cannot be made)'
+              when: 'PutSecret("eve", "anthropic-key", "sk-ant-api03-SECRET-EVE"); PutSecret("eve", "github-token", "github_pat_11SECRETEVE"); PutSecret("eve", "password", "sk-ant-api03-SECRET-EVE")'
+              then: 'a non-nil error whose text does not contain "sk-ant-api03-SECRET-EVE"; a non-nil error whose text does not contain "github_pat_11SECRETEVE"; the error text "users: unknown secret kind \"password\"" (Secrets Never Logged, one example per kind); HasSecret("eve", "anthropic-key") false'
+        - name: Token Lookup
+          description: A bearer token to its caller — a user, or the operator's admin token that sees every project — by constant-time comparison of hashes.
+          behavior: >
+            Declares in users/tokens.go, over the Registry of users/users.go: `type Caller struct { User string; Admin bool }`,
+            `func (c Caller) Sees(owner string) bool` and `func (r *Registry) Lookup(adminToken, bearer string) (Caller, bool)`.
+            Lookup holds r.mu. bearer "" → (Caller{}, false). The hash h = HashToken(bearer); adminToken != "" and
+            subtle.ConstantTimeCompare([]byte(h), []byte(HashToken(adminToken))) == 1 → (Caller{Admin: true}, true);
+            else every user whose TokenHash is not "" is compared with subtle.ConstantTimeCompare([]byte(h),
+            []byte(u.TokenHash)) and a match → (Caller{User: u.Name}, true); no match → (Caller{}, false). Tokens are
+            compared only through their hashes (equal lengths), never with == on the token text. Sees: Admin → true;
+            else User != "" and owner == User (a project with owner "" is the operator's: only the admin sees it).
+          steps:
+            - calls: User Registry
+            - produces: Caller
+          examples:
+            - given: 'base := t.TempDir(); base/users.json written with the bytes of tests/fixtures/users/users-3.json; r, _ := Open(base)'
+              when: 'Lookup("mcp-admin-9", "mcp-ann-0001"); Lookup("mcp-admin-9", "mcp-bob-0002"); Lookup("mcp-admin-9", "mcp-admin-9")'
+              then: '(Caller{User: "ann"}, true); (Caller{User: "bob"}, true); (Caller{Admin: true}, true)'
+            - given: 'the registry of example 1'
+              when: 'Lookup("mcp-admin-9", ""); Lookup("mcp-admin-9", "mcp-ann-000"); Lookup("mcp-admin-9", "MCP-ANN-0001"); Lookup("mcp-admin-9", " mcp-ann-0001"); Lookup("mcp-admin-9", "44d5cbb64a5151b2608de24987b45d9344b8e60386c1a2d4f6ce8904f7e56d2b")'
+              then: '(Caller{}, false) each (the stored hash is not a token)'
+            - given: 'the registry of example 1'
+              when: 'Lookup("", ""); Lookup("", "mcp-ann-0001"); Lookup("", "mcp-admin-9")'
+              then: '(Caller{}, false); (Caller{User: "ann"}, true); (Caller{}, false) (an empty admin token matches nothing)'
+            - given: 'the registry of example 1'
+              when: 'SetToken("eve", "mcp-new-0003"); Lookup("mcp-admin-9", "mcp-new-0003"); SetToken("ann", "mcp-ann-0002"); Lookup("mcp-admin-9", "mcp-ann-0001"); Lookup("mcp-admin-9", "mcp-ann-0002")'
+              then: 'nil; (Caller{User: "eve"}, true); nil; (Caller{}, false) (the old token no longer works); (Caller{User: "ann"}, true)'
+            - given: 'Caller{Admin: true}, Caller{User: "ann"}, Caller{}'
+              when: 'Sees("ann") and Sees("") on each; Caller{User: "ann"}.Sees("bob")'
+              then: 'true, true; true, false; false, false; false'
     - name: gitrules
       description: >
         Package gitrules in gitrules/: the git rules of a phase — what morphd checks before it starts a session and

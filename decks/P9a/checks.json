@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "phase": "P9a",
+  "parts": "decks/P9a/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "tools",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "bootstrap",
+    "gitrules",
+    "control",
+    "supervisor",
+    "daemon",
+    "api",
+    "mcpserver",
+    "cmd",
+    "registry/secrets.go",
+    "registry/secrets_examples_test.go"
+  ],
+  "cards": [
+    {
+      "id": "project-registry"
+    },
+    {
+      "id": "user-registry"
+    },
+    {
+      "id": "user-secrets"
+    },
+    {
+      "id": "token-lookup"
+    },
+    {
+      "id": "project-registry-judge",
+      "files": [
+        {
+          "file": "registry/registry_examples_test.go",
+          "min": 9,
+          "max": 15,
+          "new": false,
+          "lits": [
+            "TestProjectRegistryExample1",
+            "TestProjectRegistryExample2",
+            "TestProjectRegistryExample3",
+            "TestProjectRegistryExample4",
+            "TestProjectRegistryExample5",
+            "TestProjectRegistryExample6",
+            "TestProjectRegistryExample7",
+            "TestProjectRegistryExample8",
+            "TestProjectRegistryExample9",
+            "ListUser",
+            "/home/mu-ann/projects/alpha",
+            "https://github.com/bob/beta",
+            "/home/morph/projects/core",
+            "/p/old",
+            "map[string]any",
+            "projects.json",
+            "registry: read "
+          ]
+        }
+      ]
+    },
+    {
+      "id": "user-registry-judge",
+      "files": [
+        {
+          "file": "users/users_examples_test.go",
+          "min": 8,
+          "max": 14,
+          "new": true,
+          "lits": [
+            "TestUserRegistryExample1",
+            "TestUserRegistryExample2",
+            "TestUserRegistryExample3",
+            "TestUserRegistryExample4",
+            "TestUserRegistryExample5",
+            "TestUserRegistryExample6",
+            "TestUserRegistryExample7",
+            "TestUserRegistryExample8",
+            "../tests/fixtures/users/users-3.json",
+            "44d5cbb64a5151b2608de24987b45d9344b8e60386c1a2d4f6ce8904f7e56d2b",
+            "67cfcbd6b49e25979dbe31281596a0765b85aa0b22850cfbfc515247220055ff",
+            "866e38f9ff3bcf4eae882fcd6e81a2637709e9d6a7b5e6ec9fd7ec48ced9c413",
+            "mcp-ann-0001",
+            "mcp-bob-0002",
+            "mcp-new-0003",
+            "mcp-zed-1",
+            "users: user not found",
+            "users: user exists",
+            "users: bad user name",
+            "users: chat bound to another user",
+            "users: empty token",
+            "users: token taken",
+            "users: read ",
+            "111111111",
+            "222222222",
+            "333333333",
+            "mu-eve",
+            "mu-x",
+            "{not json",
+            "HashToken",
+            "ByChat"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "user-secrets-judge",
+      "files": [
+        {
+          "file": "users/secrets_examples_test.go",
+          "min": 6,
+          "max": 12,
+          "new": true,
+          "lits": [
+            "TestUserSecretsExample1",
+            "TestUserSecretsExample2",
+            "TestUserSecretsExample3",
+            "TestUserSecretsExample4",
+            "TestUserSecretsExample5",
+            "TestUserSecretsExample6",
+            "../tests/fixtures/users/users-3.json",
+            "sk-ant-api03-AAAA",
+            "github_pat_11BBBB\\n",
+            "sk-ant-api03-CCCC",
+            "github_pat_11DDDD",
+            "sk-ant-api03-SECRET-EVE",
+            "github_pat_11SECRETEVE",
+            "unknown secret kind",
+            "password",
+            "anthropic-key",
+            "github-token",
+            "users: no secret",
+            "users: empty secret",
+            "0o644",
+            "SecretPath"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "token-lookup-judge",
+      "files": [
+        {
+          "file": "users/tokens_examples_test.go",
+          "min": 5,
+          "max": 11,
+          "new": true,
+          "lits": [
+            "TestTokenLookupExample1",
+            "TestTokenLookupExample2",
+            "TestTokenLookupExample3",
+            "TestTokenLookupExample4",
+            "TestTokenLookupExample5",
+            "../tests/fixtures/users/users-3.json",
+            "mcp-admin-9",
+            "mcp-ann-0001",
+            "mcp-bob-0002",
+            "mcp-ann-000\"",
+            "MCP-ANN-0001",
+            "\" mcp-ann-0001\"",
+            "44d5cbb64a5151b2608de24987b45d9344b8e60386c1a2d4f6ce8904f7e56d2b",
+            "mcp-new-0003",
+            "mcp-ann-0002",
+            "Sees"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+```
+package users
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+)
+
+// tlThree returns a registry opened on a fresh temporary base whose
+// users.json is the bytes of tests/fixtures/users/users-3.json.
+func tlThree(t *testing.T) *Registry {
+	t.Helper()
+	b, err := os.ReadFile("../tests/fixtures/users/users-3.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "users.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Open(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestTokenLookupExample1(t *testing.T) {
+	r := tlThree(t)
+
+	c, ok := r.Lookup("mcp-admin-9", "mcp-ann-0001")
+	testhelp.Equal(t, "ann caller", c, Caller{User: "ann"})
+	testhelp.Equal(t, "ann ok", ok, true)
+
+	c, ok = r.Lookup("mcp-admin-9", "mcp-bob-0002")
+	testhelp.Equal(t, "bob caller", c, Caller{User: "bob"})
+	testhelp.Equal(t, "bob ok", ok, true)
+
+	c, ok = r.Lookup("mcp-admin-9", "mcp-admin-9")
+	testhelp.Equal(t, "admin caller", c, Caller{Admin: true})
+	testhelp.Equal(t, "admin ok", ok, true)
+}
+
+func TestTokenLookupExample2(t *testing.T) {
+	r := tlThree(t)
+
+	for _, bearer := range []string{
+		"",
+		"mcp-ann-000",
+		"MCP-ANN-0001",
+		" mcp-ann-0001",
+		"44d5cbb64a5151b2608de24987b45d9344b8e60386c1a2d4f6ce8904f7e56d2b",
+	} {
+		c, ok := r.Lookup("mcp-admin-9", bearer)
+		testhelp.Equal(t, "caller for "+bearer, c, Caller{})
+		testhelp.Equal(t, "ok for "+bearer, ok, false)
+	}
+}
+
+func TestTokenLookupExample3(t *testing.T) {
+	r := tlThree(t)
+
+	c, ok := r.Lookup("", "")
+	testhelp.Equal(t, "caller empty bearer", c, Caller{})
+	testhelp.Equal(t, "ok empty bearer", ok, false)
+
+	c, ok = r.Lookup("", "mcp-ann-0001")
+	testhelp.Equal(t, "caller ann", c, Caller{User: "ann"})
+	testhelp.Equal(t, "ok ann", ok, true)
+
+	c, ok = r.Lookup("", "mcp-admin-9")
+	testhelp.Equal(t, "caller admin", c, Caller{})
+	testhelp.Equal(t, "ok admin", ok, false)
+}
+
+func TestTokenLookupExample4(t *testing.T) {
+	r := tlThree(t)
+
+	err := r.SetToken("eve", "mcp-new-0003")
+	testhelp.Equal(t, "settoken eve", err, nil)
+
+	c, ok := r.Lookup("mcp-admin-9", "mcp-new-0003")
+	testhelp.Equal(t, "eve caller", c, Caller{User: "eve"})
+	testhelp.Equal(t, "eve ok", ok, true)
+
+	err = r.SetToken("ann", "mcp-ann-0002")
+	testhelp.Equal(t, "settoken ann", err, nil)
+
+	c, ok = r.Lookup("mcp-admin-9", "mcp-ann-0001")
+	testhelp.Equal(t, "old ann caller", c, Caller{})
+	testhelp.Equal(t, "old ann ok", ok, false)
+
+	c, ok = r.Lookup("mcp-admin-9", "mcp-ann-0002")
+	testhelp.Equal(t, "new ann caller", c, Caller{User: "ann"})
+	testhelp.Equal(t, "new ann ok", ok, true)
+}
+
+func TestTokenLookupExample5(t *testing.T) {
+	cases := []struct {
+		caller Caller
+		owner  string
+		want   bool
+	}{
+		{Caller{Admin: true}, "ann", true},
+		{Caller{Admin: true}, "", true},
+		{Caller{User: "ann"}, "ann", true},
+		{Caller{User: "ann"}, "", false},
+		{Caller{}, "ann", false},
+		{Caller{}, "", false},
+		{Caller{User: "ann"}, "bob", false},
+	}
+
+	for _, c := range cases {
+		got := c.caller.Sees(c.owner)
+		testhelp.Equal(t, "Sees("+c.owner+")", got, c.want)
+	}
+}
+```

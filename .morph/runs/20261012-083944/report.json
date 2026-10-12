@@ -1,0 +1,231 @@
+{
+  "runId": "20261012-083944",
+  "completedAt": 1791794641490,
+  "branch": "morph/20261012-083944",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "project-registry",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-registry.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "bf6e657a24678231a7ed0df51b2801d6763bcb22",
+      "diffstat": {
+        "files": 1,
+        "insertions": 76,
+        "deletions": 58
+      }
+    },
+    {
+      "customId": "user-registry",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "user-registry.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "88e8c928cb36aa44cd8a1f265b5cf08215113a58",
+      "diffstat": {
+        "files": 1,
+        "insertions": 248,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-registry-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-registry-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard registry/registry_examples_test.go\n== names registry/registry_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "161bb5b76bccd16308e85086acc4477dfce09e15",
+      "diffstat": {
+        "files": 1,
+        "insertions": 243,
+        "deletions": 129
+      }
+    },
+    {
+      "customId": "token-lookup",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "token-lookup.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "6d580273a06483770c551b67eafd82ebaa20b3b0",
+      "diffstat": {
+        "files": 1,
+        "insertions": 42,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "user-registry-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "user-registry-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/users_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "2f859d876e806a3d360d72c844320f793b225402",
+      "diffstat": {
+        "files": 1,
+        "insertions": 316,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "user-secrets",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "user-secrets.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "b18b06f0ee5d2f60b2a7c99620f2c6ee8dad4a1b",
+      "diffstat": {
+        "files": 1,
+        "insertions": 114,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "token-lookup-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "token-lookup-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/tokens_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "7bdbdeeb415d3822563e852a14b852c9d52bc69e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 119,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "user-secrets-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "user-secrets-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard users/secrets_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "f232866daa022449e333f38d639111b139690b49",
+      "diffstat": {
+        "files": 1,
+        "insertions": 189,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 34740,
+    "outputTokens": 47482,
+    "cost": 0.06684744,
+    "requests": 8
+  },
+  "requests": [
+    {
+      "customId": "project-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794385-NscBvMxh2OCYxnPtMMrF",
+      "inputTokens": 4072,
+      "outputTokens": 4103,
+      "cost": 0.0061452,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794385-pT8Y22rnWsyN9nJzfm4F",
+      "inputTokens": 3286,
+      "outputTokens": 7473,
+      "cost": 0.0099534,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794457-PsaQnyqj5MpmMw1k82L8",
+      "inputTokens": 4694,
+      "outputTokens": 11584,
+      "cost": 0.015309,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794457-mAbfCsNs2zIGcbJHTqb4",
+      "inputTokens": 3735,
+      "outputTokens": 2000,
+      "cost": 0.0035205,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794457-XAHtPKtJPZ4KWyQ2kcec",
+      "inputTokens": 4445,
+      "outputTokens": 9813,
+      "cost": 0.0131091,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794478-cxdLAvSlRjAuXWr66KBu",
+      "inputTokens": 4085,
+      "outputTokens": 2349,
+      "cost": 0.00362958,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "token-lookup-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794559-SJCVURObJwJDd4ojqiUq",
+      "inputTokens": 4813,
+      "outputTokens": 3012,
+      "cost": 0.0050583,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "user-secrets-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791794559-FsEya6skNbCqvZC9iKsw",
+      "inputTokens": 5610,
+      "outputTokens": 7148,
+      "cost": 0.01012236,
+      "finishReason": "stop",
+      "error": null
+    }
+  ],
+  "rounds": [
+    {
+      "round": 0,
+      "reds": []
+    }
+  ]
+}

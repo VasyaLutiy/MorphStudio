@@ -1,3 +1,5 @@
+// Package registry stores the projects of one morphd instance in a single
+// JSON file and a JSON state blob per project.
 package registry
 
 import (
@@ -13,19 +15,19 @@ import (
 	"morphstudio/queue"
 )
 
-// ErrNotFound is returned when a project is not stored.
+// ErrNotFound reports a project name the registry does not hold.
 var ErrNotFound = errors.New("project not found")
 
-// ErrExists is returned when a project name is already stored.
+// ErrExists reports a project name the registry already holds.
 var ErrExists = errors.New("project exists")
 
-// ErrBadName is returned when a project name is not acceptable.
+// ErrBadName reports a project name that is not allowed.
 var ErrBadName = errors.New("bad project name")
 
-// ErrNoState is returned when a project has no stored state blob.
+// ErrNoState reports that a project has no state file yet.
 var ErrNoState = errors.New("no state")
 
-// Project is one registered project.
+// Project is one project of the registry.
 type Project struct {
 	Name      string     `json:"name"`
 	Language  string     `json:"language"`
@@ -33,17 +35,19 @@ type Project struct {
 	Dir       string     `json:"dir"`
 	Caps      queue.Caps `json:"caps"`
 	CreatedAt time.Time  `json:"created_at"`
+	User      string     `json:"user,omitempty"`
 }
 
-// Registry is the project registry rooted at a base directory.
+// Registry holds the projects of one base directory.
 type Registry struct {
 	base     string
 	projects []Project
 }
 
-var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+// nameRe is the rule a project name must match.
+var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
-// Open creates base when missing and reads its projects.json.
+// Open opens the registry under base, creating the directory when missing.
 func Open(base string) (*Registry, error) {
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return nil, err
@@ -64,7 +68,6 @@ func Open(base string) (*Registry, error) {
 	if ps == nil {
 		ps = []Project{}
 	}
-	sort.Slice(ps, func(i, j int) bool { return ps[i].Name < ps[j].Name })
 	r.projects = ps
 	return r, nil
 }
@@ -74,22 +77,24 @@ func (r *Registry) Base() string {
 	return r.base
 }
 
-// Add validates and stores a project, rewriting the whole list.
+// Add stores a new project and rewrites the registry file.
 func (r *Registry) Add(p Project) error {
-	if !nameRE.MatchString(p.Name) {
+	if !nameRe.MatchString(p.Name) {
 		return ErrBadName
 	}
-	for _, existing := range r.projects {
-		if existing.Name == p.Name {
+	for _, e := range r.projects {
+		if e.Name == p.Name {
 			return ErrExists
 		}
 	}
 	r.projects = append(r.projects, p)
-	sort.Slice(r.projects, func(i, j int) bool { return r.projects[i].Name < r.projects[j].Name })
+	sort.Slice(r.projects, func(i, j int) bool {
+		return r.projects[i].Name < r.projects[j].Name
+	})
 	return r.write()
 }
 
-// Get returns the stored project with the given name.
+// Get returns the named project.
 func (r *Registry) Get(name string) (Project, error) {
 	for _, p := range r.projects {
 		if p.Name == name {
@@ -99,15 +104,56 @@ func (r *Registry) Get(name string) (Project, error) {
 	return Project{}, ErrNotFound
 }
 
-// List returns a new sorted copy of the stored projects.
+// List returns a copy of every project, sorted by name.
 func (r *Registry) List() []Project {
 	out := make([]Project, len(r.projects))
 	copy(out, r.projects)
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// SaveState writes a project's state blob.
+// ListUser returns a copy of the user's projects, sorted by name.
+func (r *Registry) ListUser(user string) []Project {
+	out := []Project{}
+	for _, p := range r.projects {
+		if p.User == user {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// write rewrites projects.json atomically.
+func (r *Registry) write() error {
+	ps := r.projects
+	if ps == nil {
+		ps = []Project{}
+	}
+	data, err := json.MarshalIndent(ps, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(r.base, ".projects-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, filepath.Join(r.base, "projects.json")); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
+}
+
+// SaveState writes the project's state blob.
 func (r *Registry) SaveState(name string, v any) error {
 	if _, err := r.Get(name); err != nil {
 		return err
@@ -120,33 +166,34 @@ func (r *Registry) SaveState(name string, v any) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, ".state-*.json")
+	tmp, err := os.CreateTemp(dir, ".state-*.tmp")
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		os.Remove(tmp)
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
 		return err
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
 		return err
 	}
-	if err := os.Rename(tmp, filepath.Join(dir, "state.json")); err != nil {
-		os.Remove(tmp)
+	if err := os.Rename(tmpName, filepath.Join(dir, "state.json")); err != nil {
+		os.Remove(tmpName)
 		return err
 	}
 	return nil
 }
 
-// LoadState reads a project's state blob into v.
+// LoadState reads the project's state blob.
 func (r *Registry) LoadState(name string, v any) error {
 	if _, err := r.Get(name); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(filepath.Join(r.base, name, "state.json"))
+	path := filepath.Join(r.base, name, "state.json")
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ErrNoState
@@ -154,33 +201,4 @@ func (r *Registry) LoadState(name string, v any) error {
 		return err
 	}
 	return json.Unmarshal(data, v)
-}
-
-func (r *Registry) write() error {
-	if r.projects == nil {
-		r.projects = []Project{}
-	}
-	data, err := json.MarshalIndent(r.projects, "", "  ")
-	if err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(r.base, ".projects-*.json")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, filepath.Join(r.base, "projects.json")); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
 }

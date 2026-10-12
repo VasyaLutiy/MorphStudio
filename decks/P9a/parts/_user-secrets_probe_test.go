@@ -10,7 +10,8 @@ import (
 	"morphstudio/internal/testhelp"
 )
 
-// psReg: the registry of example 1 of User Registry with user "alice".
+// psReg: the registry of example 1 of User Registry with user "alice", after example 1's
+// PutSecret("alice", "anthropic-key", "sk-ant-abc") (the state every later example builds on).
 func psReg(t *testing.T, what string) (*Users, string) {
 	t.Helper()
 	base := filepath.Join(t.TempDir(), "ustate")
@@ -20,6 +21,9 @@ func psReg(t *testing.T, what string) (*Users, string) {
 	}
 	if err := u.Add(User{Name: "alice"}); err != nil {
 		t.Fatalf("%s: Add(alice) error %v, want nil", what, err)
+	}
+	if err := u.PutSecret("alice", "anthropic-key", "sk-ant-abc"); err != nil {
+		t.Fatalf("%s: PutSecret(anthropic-key) error %v, want nil", what, err)
 	}
 	return u, base
 }

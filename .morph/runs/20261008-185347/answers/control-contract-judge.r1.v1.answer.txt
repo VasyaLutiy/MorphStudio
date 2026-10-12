@@ -1,0 +1,169 @@
+```
+package control
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/github"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+func ccJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func ccTime(hour, minute, second int) time.Time {
+	return time.Date(2026, 10, 8, hour, minute, second, 0, time.UTC)
+}
+
+func ccCode(err error) [2]any {
+	code, name := Code(err)
+	return [2]any{code, name}
+}
+
+var _ = queue.Plan{}
+
+func TestControlContractExample1(t *testing.T) {
+	s := Status{
+		State:     "busy",
+		Phase:     "P18",
+		Minutes:   37,
+		CostUSD:   1.92,
+		FiveHour:  22,
+		SevenDay:  60,
+		SessionID: "s-1",
+		Queue: QueueView{
+			State:    "running",
+			Approved: "7b31dfe",
+			Index:    1,
+			Phases:   3,
+			Current:  "P18",
+		},
+		Repo: github.Access{
+			Checked:   true,
+			Reachable: true,
+			Push:      true,
+			CheckedAt: ccTime(15, 0, 0),
+		},
+	}
+	got := ccJSON(t, s)
+	want := `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`
+	testhelp.Equal(t, "Status marshal", got, want)
+	if strings.Contains(got, `"stop"`) {
+		t.Errorf("Status marshal: unexpected stop key in %s", got)
+	}
+}
+
+func TestControlContractExample2(t *testing.T) {
+	s := Status{
+		State: "waiting",
+		Stop: &Stop{
+			Kind:   "not_pushed",
+			Phase:  "P17",
+			Reason: "not pushed: HEAD bbb222, origin/main aaa111",
+			At:     ccTime(16, 0, 0),
+		},
+	}
+	got := ccJSON(t, s)
+	wantSuffix := `,"stop":{"kind":"not_pushed","phase":"P17","reason":"not pushed: HEAD bbb222, origin/main aaa111","at":"2026-10-08T16:00:00Z"}}`
+	if !strings.HasSuffix(got, wantSuffix) {
+		t.Errorf("Status stop suffix:\ngot:  %#v\nwant: %#v", got, wantSuffix)
+	}
+	if strings.Contains(got, `"issue_url"`) {
+		t.Errorf("Status stop: unexpected issue_url in %s", got)
+	}
+}
+
+func TestControlContractExample3(t *testing.T) {
+	q := Question{
+		RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+		Text:      "Which option do you want: A or B?",
+		Header:    "A or B",
+		Options:   []string{"Option A", "Option B"},
+		AskedAt:   ccTime(13, 9, 8),
+	}
+	got := ccJSON(t, q)
+	want := `{"request_id":"9f4ffa22-2676-4391-bfd9-bd7d16c3866c","text":"Which option do you want: A or B?","header":"A or B","options":["Option A","Option B"],"asked_at":"2026-10-08T13:09:08Z"}`
+	testhelp.Equal(t, "Question marshal", got, want)
+}
+
+func TestControlContractExample4(t *testing.T) {
+	got := []int{
+		Percent(0.22),
+		Percent(0.6),
+		Percent(0.005),
+		Percent(1.3),
+		Percent(-0.1),
+		Percent(0.995),
+	}
+	want := []int{22, 60, 1, 100, 0, 100}
+	testhelp.Equal(t, "Percent", got, want)
+}
+
+func TestControlContractExample5(t *testing.T) {
+	got := [][2]any{
+		ccCode(nil),
+		ccCode(ErrUnknownProject),
+		ccCode(fmt.Errorf("wrap: %w", ErrBadOption)),
+		ccCode(ErrBadToken),
+		ccCode(ErrExists),
+		ccCode(ErrNoSession),
+		ccCode(ErrBusy),
+		ccCode(ErrNoQuestion),
+		ccCode(ErrNotBusy),
+		ccCode(ErrNotWaiting),
+		ccCode(ErrBadInput),
+		ccCode(errors.New("disk full")),
+	}
+	want := [][2]any{
+		{200, ""},
+		{404, "unknown_project"},
+		{400, "bad_option"},
+		{401, "bad_session_token"},
+		{409, "exists"},
+		{409, "no_session"},
+		{409, "busy"},
+		{409, "no_question"},
+		{409, "not_busy"},
+		{409, "not_waiting"},
+		{400, "bad_input"},
+		{500, "internal"},
+	}
+	testhelp.Equal(t, "Code", got, want)
+}
+
+func TestControlContractExample6(t *testing.T) {
+	testhelp.Equal(t, "ErrNoQuestion identity", ErrNoQuestion == session.ErrNoQuestion, true)
+	testhelp.Equal(t, "ErrBadOption identity", ErrBadOption == session.ErrBadOption, true)
+	testhelp.Equal(t, "ErrNotBusy identity", ErrNotBusy == session.ErrNotBusy, true)
+	testhelp.Equal(t, "Control NumMethod", reflect.TypeOf((*Control)(nil)).Elem().NumMethod(), 17)
+}
+
+func TestControlContractExample7(t *testing.T) {
+	u := Usage{
+		FiveHour:         22,
+		SevenDay:         60,
+		FiveHourResetsAt: 1791469200,
+		SevenDayResetsAt: 1791853200,
+		SessionCostUSD:   0.0064,
+		StretchCostUSD:   5.2609,
+		LimitsAt:         ccTime(13, 9, 3),
+	}
+	got := ccJSON(t, u)
+	want := `{"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}`
+	testhelp.Equal(t, "Usage marshal", got, want)
+}
+```

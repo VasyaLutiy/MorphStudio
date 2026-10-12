@@ -1,0 +1,199 @@
+{
+  "runId": "20261008-211009",
+  "completedAt": 1791495167063,
+  "branch": "morph/20261008-211009",
+  "processor": "ds",
+  "generations": 4,
+  "outcomes": [
+    {
+      "customId": "daemon-core",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "daemon-core.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "64bbbac7a8e3fc37e1919388ad0df2d131a122c9",
+      "diffstat": {
+        "files": 1,
+        "insertions": 721,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "pump",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "pump.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "4327c21bdf289ced8b55beb912e9a169a62aa93e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 123,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "config-and-main",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "config-and-main.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\nlisten: cmd/morphd/main.go has no \"127.0.0.1:\" address literal (morphd listens on 127.0.0.1 only)\n"
+      ],
+      "commit": "f42c05d957b63a3ff047b5b448dc20ed18e24acc",
+      "diffstat": {
+        "files": 2,
+        "insertions": 313,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "daemon-core-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "daemon-core-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard daemon/daemon_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:19:2: \"morphstudio/github\" imported and not used\n== gofmt\ngofmt -l lists: daemon/daemon_examples_test.go\ndiff daemon/daemon_examples_test.go.orig daemon/daemon_examples_test.go\n--- daemon/daemon_examples_test.go.orig\n+++ daemon/daemon_examples_test.go\n@@ -29,12 +29,12 @@\n const dcProjectCreated = 0 // unused sentinel kept out of the way\n \n type dcHarness struct {\n-\tt       *testing.T\n-\ttmp     string\n+\tt        *testing.T\n+\ttmp      string\n \tstateDir string\n-\tprojDir string\n-\treg     *registry.Registry\n-\trun     *runner.Fake\n+\tprojDir  string\n+\treg      *registry.Registry\n+\trun      *runner.Fake\n \n \tmu       sync.Mutex\n \tlaunches []claude.Launch\n== guard daemon/daemon_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:19:2: \"morphstudio/github\" imported and not used\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n"
+      ],
+      "commit": "fa5f38bff8911699d72110d37412674f24c01578",
+      "diffstat": {
+        "files": 1,
+        "insertions": 725,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "pump-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "pump-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard daemon/pump_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "c94b66a6ab6c39148676e2d0007fa09b000c56a8",
+      "diffstat": {
+        "files": 1,
+        "insertions": 562,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "config-and-main-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "config-and-main-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "868d9880aca33604d1578c78580885be117dc626",
+      "diffstat": {
+        "files": 1,
+        "insertions": 247,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 236528,
+    "outputTokens": 176689,
+    "cost": 0.1401102,
+    "requests": 8
+  },
+  "requests": [
+    {
+      "customId": "daemon-core.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791493809-UTwagtJPtyLIu0OTnJen",
+      "inputTokens": 29717,
+      "outputTokens": 21412,
+      "cost": 0.01730475,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791494014-Rr5cL5zOJ2iifWk5fTN9",
+      "inputTokens": 20487,
+      "outputTokens": 5827,
+      "cost": 0.00656925,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791494094-hM02TzEwT7LVCM9xRnPa",
+      "inputTokens": 25200,
+      "outputTokens": 10247,
+      "cost": 0.0099282,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791494094-mvCAplSNIECUpLmcaOOE",
+      "inputTokens": 27169,
+      "outputTokens": 33727,
+      "cost": 0.02431155,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791494094-ArcV6uBNtRqeNE7yGGMo",
+      "inputTokens": 55614,
+      "outputTokens": 49061,
+      "cost": 0.0363963,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791494611-HuXJADc7ATuIEs5lAidi",
+      "inputTokens": 35016,
+      "outputTokens": 3743,
+      "cost": 0.0074982,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791494611-zoNJhQVTHYdGQndR3D9v",
+      "inputTokens": 33246,
+      "outputTokens": 42092,
+      "cost": 0.0302421,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791495057-5SXwug3P1AGgWXSebtBL",
+      "inputTokens": 10079,
+      "outputTokens": 10580,
+      "cost": 0.00785985,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

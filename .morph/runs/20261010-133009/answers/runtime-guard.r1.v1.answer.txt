@@ -1,0 +1,202 @@
+```
+// Package supervisor drives one project's phase loop: it decides what the
+// daemon does after each loop input and records the loop's state.
+package supervisor
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/stream"
+)
+
+// Event records that the session process produced a line of output.
+func (l *Loop) Event(now time.Time) {
+	l.LastEventAt = now
+}
+
+// Exited reacts to an exit the daemon saw while the loop still wanted the
+// session: a crash, whatever the code.
+func (l *Loop) Exited(code int, stderr string, now time.Time, cfg Config) []Action {
+	if l.State != "running" && l.State != "paused" && l.State != "starting" {
+		return nil
+	}
+	line := firstLine(stderr)
+	var kept []time.Time
+	for _, t := range l.Restarts {
+		if now.Sub(t) < time.Hour {
+			kept = append(kept, t)
+		}
+	}
+	n := len(kept)
+	if n < cfg.MaxResumesPerHour {
+		kept = append(kept, now)
+		l.Restarts = kept
+		l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n + 1}
+		l.State = "starting"
+		numbers := fmt.Sprintf("restart %d of %d this hour", n+1, cfg.MaxResumesPerHour)
+		if line != "" {
+			numbers += " · " + line
+		}
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: fmt.Sprintf("%s: session exited (code %d), restarting", l.Phase, code),
+				Numbers:  numbers,
+			}},
+			{Kind: "start_check", Phase: l.Phase},
+		}
+	}
+	l.Restarts = kept
+	l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n}
+	l.State = "waiting"
+	reason := fmt.Sprintf("exited %d times within an hour (last code %d)", n+1, code)
+	if line != "" {
+		reason += ": " + line
+	}
+	l.Stop = &control.Stop{Kind: "crash", Phase: l.Phase, Reason: reason, At: now}
+	l.Queue.Stop("crash")
+	return []Action{
+		{Kind: "post", Milestone: control.Milestone{
+			Kind:     "stop",
+			Headline: l.Phase + ": session keeps exiting",
+			Numbers:  reason,
+		}},
+	}
+}
+
+// Turn folds one session result into the spend and checks the stretch cap.
+func (l *Loop) Turn(r stream.Result, now time.Time, cfg Config) []Action {
+	l.SessionUSD = r.TotalCostUSD
+	if cfg.StretchUSD > 0 && (l.State == "running" || l.State == "paused") &&
+		l.StretchUSD+l.SessionUSD >= cfg.StretchUSD {
+		total := l.StretchUSD + l.SessionUSD
+		reason := fmt.Sprintf("stretch cap $%.2f reached ($%.4f)", cfg.StretchUSD, total)
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+		l.Queue.Stop("cap")
+		return []Action{
+			{Kind: "kill"},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "stop",
+				Headline: l.Phase + ": stretch cap",
+				Numbers:  reason,
+			}},
+		}
+	}
+	return nil
+}
+
+// Limits reacts to a rate-limit snapshot: pause on an exhausted window, or
+// warn once when the weekly usage crosses the configured alert.
+func (l *Loop) Limits(lim stream.Limits, now time.Time, cfg Config) []Action {
+	if l.State == "running" {
+		var until int64
+		paused := false
+		if lim.FiveHour.Utilization >= 1 {
+			until = lim.FiveHour.ResetsAt
+			paused = true
+		}
+		if lim.SevenDay.Utilization >= 1 {
+			if !paused || lim.SevenDay.ResetsAt > until {
+				until = lim.SevenDay.ResetsAt
+			}
+			paused = true
+		}
+		if paused {
+			l.State = "paused"
+			l.PausedUntil = time.Unix(until, 0).UTC()
+			return []Action{
+				{Kind: "post", Milestone: control.Milestone{
+					Kind:     "watchdog",
+					Headline: l.Phase + ": usage limit, paused",
+					Numbers:  "until " + l.PausedUntil.Format(time.RFC3339),
+				}},
+			}
+		}
+	}
+	if cfg.UsageAlertPercent > 0 && !l.Alerted &&
+		lim.SevenDay.Utilization*100 >= float64(cfg.UsageAlertPercent) {
+		l.Alerted = true
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "info",
+				Headline: fmt.Sprintf("%s: weekly usage %d%%", l.Phase, control.Percent(lim.SevenDay.Utilization)),
+				Numbers:  "resets " + time.Unix(lim.SevenDay.ResetsAt, 0).UTC().Format(time.RFC3339),
+			}},
+		}
+	}
+	return nil
+}
+
+// Tick is the daemon's timer: it resumes a paused loop, stops a loop that hit
+// its wall clock cap and nudges a loop that stopped producing events.
+func (l *Loop) Tick(now time.Time, cfg Config) []Action {
+	if l.State == "paused" && !now.Before(l.PausedUntil) {
+		l.State = "running"
+		l.LastEventAt = now
+		return []Action{
+			{Kind: "write", Line: "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": resumed after the limit",
+				Numbers:  "",
+			}},
+		}
+	}
+	if l.State != "running" {
+		return nil
+	}
+	var hours float64
+	if cur, ok := l.Queue.Current(); ok {
+		hours = cur.Caps.Hours
+	}
+	if hours > 0 && now.Sub(l.PhaseStartedAt) >= time.Duration(hours*float64(time.Hour)) {
+		reason := fmt.Sprintf("wall clock cap %s h reached", strconv.FormatFloat(hours, 'f', -1, 64))
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+		l.Queue.Stop("cap")
+		return []Action{
+			{Kind: "kill"},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "stop",
+				Headline: l.Phase + ": wall clock cap",
+				Numbers:  reason,
+			}},
+		}
+	}
+	if cfg.StallMinutes > 0 && !l.Nudged &&
+		now.Sub(l.LastEventAt) >= time.Duration(cfg.StallMinutes)*time.Minute {
+		l.Nudged = true
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: fmt.Sprintf("%s: no events for %d min", l.Phase, cfg.StallMinutes),
+				Numbers:  "one nudge sent",
+			}},
+			{Kind: "write", Line: fmt.Sprintf("Nothing has happened for %d minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first.", cfg.StallMinutes)},
+		}
+	}
+	return nil
+}
+
+// firstLine returns the first non-blank, trimmed line of s, cut to 200
+// runes, or "" when there is none.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		r := []rune(line)
+		if len(r) > 200 {
+			r = r[:200]
+		}
+		return string(r)
+	}
+	return ""
+}
+```

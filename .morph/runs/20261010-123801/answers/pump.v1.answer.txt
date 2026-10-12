@@ -1,0 +1,190 @@
+```
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+
+	"morphstudio/claude"
+	"morphstudio/eventlog"
+	"morphstudio/stream"
+	"morphstudio/supervisor"
+)
+
+func init() {
+	startPump = func(d *Daemon, ctx context.Context, project string, p claude.Process, l *eventlog.Log) {
+		pr, ok := d.projects[project]
+		if !ok {
+			return
+		}
+		done := make(chan struct{})
+		pr.pumps[p] = done
+		go func() {
+			d.pump(ctx, project, p, l)
+			d.mu.Lock()
+			if pr2, ok := d.projects[project]; ok {
+				delete(pr2.pumps, p)
+			}
+			close(done)
+			d.mu.Unlock()
+		}()
+	}
+}
+
+// Wait blocks until every pump of project whose process has already been
+// replaced by a newer one has returned. It returns immediately when there is
+// no pending pump, which is the common case.
+func (d *Daemon) Wait(project string) {
+	d.mu.Lock()
+	pr, ok := d.projects[project]
+	if !ok {
+		d.mu.Unlock()
+		return
+	}
+	var pending []chan struct{}
+	for proc, done := range pr.pumps {
+		if proc != pr.proc {
+			pending = append(pending, done)
+		}
+	}
+	d.mu.Unlock()
+	for _, done := range pending {
+		<-done
+	}
+}
+
+// pump reads one process to its end: every line is logged, folded into the
+// project's machine and loop, and the resulting actions are executed; the
+// exit is logged even when the process is no longer the project's current
+// one, and only a still-current exit reaches the loop's Exited transition.
+func (d *Daemon) pump(ctx context.Context, project string, p claude.Process, l *eventlog.Log) {
+	for line := range p.Lines() {
+		d.pumpLine(ctx, project, p, l, line)
+	}
+
+	st := <-p.Exit()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	pr, ok := d.projects[project]
+	if !ok {
+		return
+	}
+
+	body, err := json.Marshal(exitMsg{Code: st.Code, Stderr: tailLines(st.Stderr, 20)})
+	msg := json.RawMessage(body)
+	if err != nil || len(body) == 0 {
+		msg = json.RawMessage(`{}`)
+	}
+	_, _ = l.Append("exit", msg, d.deps.Now())
+
+	if pr.proc != p {
+		return
+	}
+	pr.proc = nil
+	d.execute(ctx, project, pr.state.Loop.Exited(st.Code, st.Stderr, d.deps.Now(), d.deps.Config.Loop))
+}
+
+// pumpLine folds one output line of p into the project's own log, then into
+// its machine and loop, and finally runs the actions they ask for. Callers
+// must hold d.mu so that anyone who sees the line in Events also sees its
+// effects.
+func (d *Daemon) pumpLine(ctx context.Context, project string, p claude.Process, l *eventlog.Log, line []byte) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	pr, ok := d.projects[project]
+	if !ok {
+		return
+	}
+
+	now := d.deps.Now()
+
+	msg := json.RawMessage(append([]byte(nil), line...))
+	if !json.Valid(line) {
+		if b, err := json.Marshal(string(line)); err == nil {
+			msg = json.RawMessage(b)
+		}
+	}
+	_, _ = l.Append("out", msg, now)
+
+	ev, err := stream.Parse(line)
+	if err != nil {
+		return
+	}
+
+	if pr.proc != p {
+		return
+	}
+
+	pr.state.Loop.Event(now)
+
+	if pr.machine == nil {
+		return
+	}
+	macts := pr.machine.Apply(ev, now)
+
+	var lacts []supervisor.Action
+	switch ev.Type {
+	case "result":
+		if ev.Result != nil {
+			lacts = pr.state.Loop.Turn(*ev.Result, now, d.deps.Config.Loop)
+		}
+	case "rate_limit_event":
+		if ev.Limits != nil {
+			lacts = pr.state.Loop.Limits(*ev.Limits, now, d.deps.Config.Loop)
+		}
+	}
+
+	for _, a := range macts {
+		switch a.Kind {
+		case "write":
+			d.writeLine(project, a.Line)
+		case "ask":
+			_, _ = d.deps.Post(ctx, project, "ask", a.Headline, a.Numbers)
+		case "turn":
+			headline := firstRunes(a.Headline, 200)
+			if headline == "" {
+				headline = "(no text)"
+			}
+			_, _ = d.deps.Post(ctx, project, "idle", pr.state.Loop.Phase+" turn ended: "+headline, a.Numbers)
+		case "limit":
+			// The loop reacts to the limits; the machine action is a no-op
+			// here.
+		}
+	}
+
+	d.execute(ctx, project, lacts)
+}
+
+// exitMsg is the body of the "exit" entry of a session log.
+type exitMsg struct {
+	Code   int    `json:"code"`
+	Stderr string `json:"stderr"`
+}
+
+// tailLines trims one trailing newline and returns at most max of the last
+// lines of s, joined with "\n"; it returns "" for empty input.
+func tailLines(s string, max int) string {
+	s = strings.TrimSuffix(s, "\n")
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > max {
+		lines = lines[len(lines)-max:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// firstRunes returns the first n runes of s, or all of s when it is shorter.
+func firstRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) > n {
+		r = r[:n]
+	}
+	return string(r)
+}
+```

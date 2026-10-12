@@ -1,0 +1,407 @@
+{
+  "runId": "20261008-083312",
+  "completedAt": 1791448800064,
+  "branch": "morph/20261008-083312",
+  "processor": "ds",
+  "generations": 5,
+  "outcomes": [
+    {
+      "customId": "basic-auth",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "basic-auth.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "61a0b544291207449563ab87cb72859be9182a2c",
+      "diffstat": {
+        "files": 1,
+        "insertions": 48,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "validate-input",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "validate-input.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "7ef243340c3010845ed290c13e5e37ce6f5ea3d7",
+      "diffstat": {
+        "files": 1,
+        "insertions": 70,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "basic-auth-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "basic-auth-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard auth/basic_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "fd5745b4238c752f93d7206ffdf74449e24b4c6d",
+      "diffstat": {
+        "files": 1,
+        "insertions": 118,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "build-project",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "build-project.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "e58309048fc5476fce48d6d427fe2567da7fca96",
+      "diffstat": {
+        "files": 1,
+        "insertions": 29,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "memory-store",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "memory-store.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "c0452d7117c2b28da52b49f493f2f043f4af09b9",
+      "diffstat": {
+        "files": 1,
+        "insertions": 105,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "validate-input-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "validate-input-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard project/validate_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard project/validate_examples_test.go\nguard: project/validate_examples_test.go does not mention the example literal \"TestValidateInputExample1\"\nguard: project/validate_examples_test.go does not mention the example literal \"TestValidateInputExample2\"\nguard: project/validate_examples_test.go does not mention the example literal \"TestValidateInputExample3\"\nguard: project/validate_examples_test.go does not mention the example literal \"TestValidateInputExample4\"\nguard: project/validate_examples_test.go does not mention the example literal \"TestValidateInputExample5\"\nguard: project/validate_examples_test.go does not mention the example literal \"TestValidateInputExample6\"\n"
+      ],
+      "commit": "c04db3d41d5aff675da0dcc632883ddf5ebf0f41",
+      "diffstat": {
+        "files": 1,
+        "insertions": 108,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "build-project-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "build-project-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard project/project_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard project/project_examples_test.go\nguard: project/project_examples_test.go does not mention the example literal \"TestBuildProjectExample1\"\nguard: project/project_examples_test.go does not mention the example literal \"TestBuildProjectExample2\"\nguard: project/project_examples_test.go does not mention the example literal \"TestBuildProjectExample3\"\nguard: project/project_examples_test.go does not mention the example literal \"TestBuildProjectExample4\"\n"
+      ],
+      "commit": "7daa7570d2f6e080ae272c78f48ed7efa91fe8c2",
+      "diffstat": {
+        "files": 1,
+        "insertions": 81,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "file-store",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "file-store.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "bec770f01a7636e4b9764d4a3ca77d393d875365",
+      "diffstat": {
+        "files": 1,
+        "insertions": 158,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "memory-store-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "memory-store-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard store/mem_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "4c412719cadd983035cc08ae308b220fc6d29fc9",
+      "diffstat": {
+        "files": 1,
+        "insertions": 126,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-handlers",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-handlers.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "650794775a2f3d008beba9466dde7eaa26fc02d3",
+      "diffstat": {
+        "files": 1,
+        "insertions": 179,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "file-store-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "file-store-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard store/file_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "e06ca5828500a7c5ce1a1e90ac035c829f876ef0",
+      "diffstat": {
+        "files": 1,
+        "insertions": 291,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-handlers-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-handlers-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard api/handlers_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "7e85fb5f0deae4558eb38bef61be4ce62371c34d",
+      "diffstat": {
+        "files": 1,
+        "insertions": 231,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "router",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "router.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "3edc0c2edaa290f15bfbd731448bf0c13fbac852",
+      "diffstat": {
+        "files": 1,
+        "insertions": 29,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "router-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "router-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard api/router_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "970be8ac878a10ae3a67fee9a6778fb276855f23",
+      "diffstat": {
+        "files": 1,
+        "insertions": 152,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 47011,
+    "outputTokens": 59726,
+    "cost": 0.08522154,
+    "requests": 16
+  },
+  "requests": [
+    {
+      "customId": "basic-auth.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448392-vjZlHCkINdJfyI0UbHG5",
+      "inputTokens": 1595,
+      "outputTokens": 1132,
+      "cost": 0.0018369,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "validate-input.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448392-QU6gHFEqhsouCJtOzyhY",
+      "inputTokens": 1398,
+      "outputTokens": 1648,
+      "cost": 0.002397,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "basic-auth-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448409-VMn8mL6ccuuGGPB5jjIY",
+      "inputTokens": 1936,
+      "outputTokens": 2661,
+      "cost": 0.003774,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "build-project.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448409-wZyTv6XZExxL9OCFtxJm",
+      "inputTokens": 1624,
+      "outputTokens": 304,
+      "cost": 0.000852,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "memory-store.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448409-S0wx6eZRThYATHKq5dSw",
+      "inputTokens": 1832,
+      "outputTokens": 1070,
+      "cost": 0.0018336,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "validate-input-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448419-pRQKuRz86QNYyfLV7jj4",
+      "inputTokens": 1657,
+      "outputTokens": 3790,
+      "cost": 0.0050451,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "validate-input-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448460-Hm9xnQaibDCuaekJV9Oj",
+      "inputTokens": 5782,
+      "outputTokens": 1169,
+      "cost": 0.00286092,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "build-project-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448477-LiQM5gOXdIf9sZzJITuH",
+      "inputTokens": 1882,
+      "outputTokens": 6169,
+      "cost": 0.0079674,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "file-store.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448477-DT128UbP0bWOP6L6rghK",
+      "inputTokens": 2313,
+      "outputTokens": 2624,
+      "cost": 0.0038427,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "memory-store-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448477-5UESF4QeX5w5DPNoH3iy",
+      "inputTokens": 2304,
+      "outputTokens": 4524,
+      "cost": 0.00612,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-handlers.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448500-bOC8PjyKzcLKr5X0ZxWB",
+      "inputTokens": 3474,
+      "outputTokens": 3468,
+      "cost": 0.0052038,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "build-project-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448534-up0ZdwMGj5jIv17sYV9y",
+      "inputTokens": 5782,
+      "outputTokens": 966,
+      "cost": 0.00261732,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "file-store-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448555-Rqd5IjO1rNsttEndgFvE",
+      "inputTokens": 3631,
+      "outputTokens": 6166,
+      "cost": 0.0084885,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-handlers-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448555-haiPZBzmGMPSgdnsTv1s",
+      "inputTokens": 4610,
+      "outputTokens": 15384,
+      "cost": 0.0198438,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "router.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448555-XjHVq0wGcqohfCBY9RLP",
+      "inputTokens": 2927,
+      "outputTokens": 319,
+      "cost": 0.0012609,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "router-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791448707-sgPIU5bFUsi3vw2NewgC",
+      "inputTokens": 4264,
+      "outputTokens": 8332,
+      "cost": 0.0112776,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

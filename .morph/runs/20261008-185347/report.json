@@ -1,0 +1,303 @@
+{
+  "runId": "20261008-185347",
+  "completedAt": 1791485898049,
+  "branch": "morph/20261008-185347",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "control-contract",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "control-contract.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "617e8642468495397bbc163f77a6a84c4aa6a0b0",
+      "diffstat": {
+        "files": 1,
+        "insertions": 174,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-start-check",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-start-check.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "c34974c5502634d08211f312dc8a443a846bca46",
+      "diffstat": {
+        "files": 1,
+        "insertions": 142,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-registry",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-registry.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "8264991851957c755e61e40600d25eb722ffcdfb",
+      "diffstat": {
+        "files": 1,
+        "insertions": 186,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "control-contract-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "control-contract-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/control\n# [morphstudio/control]\nvet: control/control_examples_test.go:110:4: multiple-value Code(nil) (value of type (int, string)) in single-value context\n== gofmt\n== guard control/control_examples_test.go\n== own\n# morphstudio/control [morphstudio/control.test]\ncontrol/control_examples_test.go:110:4: multiple-value Code(nil) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:111:4: multiple-value Code(ErrUnknownProject) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:112:4: multiple-value Code(fmt.Errorf(\"wrap: %w\", ErrBadOption)) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:113:4: multiple-value Code(ErrBadToken) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:114:4: multiple-value Code(ErrExists) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:115:4: multiple-value Code(ErrNoSession) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:116:4: multiple-value Code(ErrBusy) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:117:4: multiple-value Code(ErrNoQuestion) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:118:4: multiple-value Code(ErrNotBusy) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:119:4: multiple-value Code(ErrNotWaiting) (value of type (int, string)) in single-value context\ncontrol/control_examples_test.go:119:4: too many errors\nFAIL\tmorphstudio/control [build failed]\nFAIL\n"
+      ],
+      "commit": "3b560d578f0bb4f751384ef8f0573b9814d11c3b",
+      "diffstat": {
+        "files": 1,
+        "insertions": 167,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-end-check",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-end-check.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "7625c33b6b6d4d733c2029f9a1c6bc8171e9caf7",
+      "diffstat": {
+        "files": 1,
+        "insertions": 125,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-start-check-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-start-check-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard gitrules/start_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "a25be30b85bf3c4ef7cf098272dca0df2969875a",
+      "diffstat": {
+        "files": 1,
+        "insertions": 186,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-registry-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-registry-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard registry/registry_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "892c41a42d7405958df0749e6ac8033ae9e43116",
+      "diffstat": {
+        "files": 1,
+        "insertions": 213,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "secret-files",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "secret-files.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "75a905b0b5d0ff1af6887d469157b64603f40817",
+      "diffstat": {
+        "files": 1,
+        "insertions": 101,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-end-check-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "phase-end-check-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard gitrules/end_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard gitrules/end_examples_test.go\nguard: gitrules/end_examples_test.go does not mention the example literal \"../tests/fixtures/git/measure.md\"\n"
+      ],
+      "commit": "76bd7c18e8ae4debecd873da32033dc01ba2fd65",
+      "diffstat": {
+        "files": 1,
+        "insertions": 156,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "secret-files-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "secret-files-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard registry/secrets_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "84794baa71a15db697e91113892444a41324f246",
+      "diffstat": {
+        "files": 1,
+        "insertions": 157,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 71270,
+    "outputTokens": 58272,
+    "cost": 0.044409540000000004,
+    "requests": 12
+  },
+  "requests": [
+    {
+      "customId": "control-contract.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485627-k5fR2FGrbjrSaqUgZITA",
+      "inputTokens": 8667,
+      "outputTokens": 3405,
+      "cost": 0.00334305,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-start-check.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485627-fVEoHJHiluFlJH6DMKbo",
+      "inputTokens": 2957,
+      "outputTokens": 2926,
+      "cost": 0.00219915,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-registry.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485627-SwkSE75nvWA6Q0qKBJsl",
+      "inputTokens": 3534,
+      "outputTokens": 3462,
+      "cost": 0.0026073,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485670-vQ6SEqgJfVXquy3eT01C",
+      "inputTokens": 8783,
+      "outputTokens": 1858,
+      "cost": 0.00243225,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-end-check.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485670-yIyH3WhshDDlrAELujPr",
+      "inputTokens": 4059,
+      "outputTokens": 4656,
+      "cost": 0.00340245,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-start-check-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485670-WWdlll5HaKIZMClfIfZN",
+      "inputTokens": 3530,
+      "outputTokens": 8456,
+      "cost": 0.0056031,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-registry-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485683-JCCO5cMblWr2UC6kYY3D",
+      "inputTokens": 4139,
+      "outputTokens": 8451,
+      "cost": 0.00569145,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "secret-files.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485701-Iehzhf0MXlyF1fAinLXq",
+      "inputTokens": 3140,
+      "outputTokens": 2244,
+      "cost": 0.0018174,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485755-lP9d6QNGFYzgSfpIWfcg",
+      "inputTokens": 14231,
+      "outputTokens": 2442,
+      "cost": 0.00290865,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-end-check-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485780-QyvjYK6aWsfcOljJuPUu",
+      "inputTokens": 4681,
+      "outputTokens": 14613,
+      "cost": 0.00946995,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "secret-files-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485780-GXqUbeNbmtjfMQZ9mplN",
+      "inputTokens": 3838,
+      "outputTokens": 3707,
+      "cost": 0.0027999,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-end-check-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791485880-llLmDEv9KVOZAQqhMls9",
+      "inputTokens": 9711,
+      "outputTokens": 2052,
+      "cost": 0.00213489,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

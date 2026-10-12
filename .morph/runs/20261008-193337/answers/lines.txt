@@ -1,0 +1,10 @@
+morph run: http-handlers.v1 accepted stage 10 frozen finish stop chars 6907
+morph run: phase-loop.v1 accepted stage 9 frozen finish stop chars 7737
+morph run: http-handlers-judge.v1 accepted stage 6 frozen finish stop chars 15245
+morph run: phase-loop-judge.v1 accepted stage 6 frozen finish stop chars 11716
+morph run: router.v1 accepted stage 10 frozen finish stop chars 2468
+morph run: runtime-guard.v1 accepted stage 9 frozen finish stop chars 5130
+morph run: router-judge.v1 rejected stage 3 guard api/router_examples_test.go finish stop chars 8496
+morph run: runtime-guard-judge.v1 rejected stage 6 frozen finish stop chars 10042
+morph run: router-judge.r1.v1 accepted stage 6 frozen finish stop chars 8380
+morph run: runtime-guard-judge.r1.v1 accepted stage 6 frozen finish stop chars 10107

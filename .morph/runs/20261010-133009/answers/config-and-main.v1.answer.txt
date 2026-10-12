@@ -1,0 +1,293 @@
+FILE: cmd/morphd/config.go
+```
+package main
+
+import (
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"morphstudio/queue"
+)
+
+// Config is the daemon's runtime configuration.
+type Config struct {
+	Token             string
+	Port              int
+	StateDir          string
+	ProjectsDir       string
+	ClaudeBin         string
+	MorphBin          string
+	TGToken           string
+	TGChatID          string
+	Model             string
+	ExtraArgs         []string
+	Defaults          queue.Caps
+	StretchUSD        float64
+	MaxParallel       int
+	ResumesPerHour    int
+	StallMinutes      int
+	UsageAlertPercent int
+}
+
+// ParseDotenv parses a .env file's text into a key/value map.
+func ParseDotenv(text string) map[string]string {
+	out := map[string]string{}
+	for _, raw := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		eq := strings.Index(line, "=")
+		if eq < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.TrimSpace(line[eq+1:])
+		if len(val) >= 2 {
+			first, last := val[0], val[len(val)-1]
+			if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		out[key] = val
+	}
+	return out
+}
+
+// Load builds the Config from getenv, falling back to dotenv and defaults.
+func Load(getenv func(string) string, dotenv map[string]string) (Config, error) {
+	get := func(key string) string {
+		if v := getenv(key); v != "" {
+			return v
+		}
+		return dotenv[key]
+	}
+	parseInt := func(key, def string) (int, error) {
+		v := get(key)
+		if v == "" {
+			v = def
+		}
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, fmt.Errorf("config: %s: not a number: %s", key, v)
+		}
+		return n, nil
+	}
+	parseFloat := func(key, def string) (float64, error) {
+		v := get(key)
+		if v == "" {
+			v = def
+		}
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("config: %s: not a number: %s", key, v)
+		}
+		return f, nil
+	}
+
+	var c Config
+	c.Token = get("MORPHD_TOKEN")
+	if c.Token == "" {
+		return Config{}, errors.New("config: MORPHD_TOKEN is required")
+	}
+
+	var err error
+	if c.Port, err = parseInt("MORPHD_PORT", "7080"); err != nil {
+		return Config{}, err
+	}
+
+	home := getenv("HOME")
+	c.StateDir = get("MORPHD_STATE_DIR")
+	if c.StateDir == "" {
+		c.StateDir = home + "/.local/state/morphd"
+	}
+	c.ProjectsDir = get("MORPHD_PROJECTS_DIR")
+	if c.ProjectsDir == "" {
+		c.ProjectsDir = home + "/projects"
+	}
+
+	c.ClaudeBin = get("MORPHD_CLAUDE_BIN")
+	if c.ClaudeBin == "" {
+		c.ClaudeBin = "claude"
+	}
+	c.MorphBin = get("MORPHD_MORPH_BIN")
+	if c.MorphBin == "" {
+		c.MorphBin = "morph"
+	}
+	c.TGToken = get("TG_BOT_TOKEN")
+	c.TGChatID = get("TG_CHAT_ID")
+	c.Model = get("MORPHD_MODEL")
+	if s := get("MORPHD_CLAUDE_EXTRA_ARGS"); s != "" {
+		c.ExtraArgs = strings.Fields(s)
+	}
+
+	if c.Defaults.ClaudeUSD, err = parseFloat("MORPHD_CLAUDE_USD", "30"); err != nil {
+		return Config{}, err
+	}
+	if c.Defaults.Hours, err = parseFloat("MORPHD_HOURS", "3"); err != nil {
+		return Config{}, err
+	}
+	if c.Defaults.ExecutorUSD, err = parseFloat("MORPHD_EXECUTOR_USD", "5"); err != nil {
+		return Config{}, err
+	}
+	if c.StretchUSD, err = parseFloat("MORPHD_STRETCH_USD", "30"); err != nil {
+		return Config{}, err
+	}
+	if c.MaxParallel, err = parseInt("MORPHD_MAX_PARALLEL", "1"); err != nil {
+		return Config{}, err
+	}
+	if c.ResumesPerHour, err = parseInt("MORPHD_RESUMES_PER_HOUR", "3"); err != nil {
+		return Config{}, err
+	}
+	if c.StallMinutes, err = parseInt("MORPHD_STALL_MINUTES", "30"); err != nil {
+		return Config{}, err
+	}
+	if c.UsageAlertPercent, err = parseInt("MORPHD_USAGE_ALERT", "50"); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+// UUIDv4 renders b as a lower-case RFC 4122 version 4 UUID.
+func UUIDv4(b [16]byte) string {
+	b[6] = 0x40 | (b[6] & 0x0f)
+	b[8] = 0x80 | (b[8] & 0x3f)
+	h := hex.EncodeToString(b[:])
+	var out [36]byte
+	copy(out[0:8], h[0:8])
+	out[8] = '-'
+	copy(out[9:13], h[8:12])
+	out[13] = '-'
+	copy(out[14:18], h[12:16])
+	out[18] = '-'
+	copy(out[19:23], h[16:20])
+	out[23] = '-'
+	copy(out[24:36], h[20:32])
+	return string(out[:])
+}
+```
+
+FILE: cmd/morphd/main.go
+```
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"morphstudio/api"
+	"morphstudio/claude"
+	"morphstudio/control"
+	"morphstudio/daemon"
+	"morphstudio/mcpserver"
+	"morphstudio/registry"
+	"morphstudio/runner"
+	"morphstudio/supervisor"
+	"morphstudio/telegram"
+)
+
+// newID returns a fresh version 4 UUID string.
+func newID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return UUIDv4(b)
+}
+
+// Build assembles the HTTP handler from the control surface and MCP mounts.
+func Build(d control.Control, known func(string) bool, session func(string) (string, bool), token string) http.Handler {
+	return api.NewRouter(api.Handlers{Control: d}, token, mcpserver.Handler(d, known, mcpserver.Tokens{API: token, Session: session}))
+}
+
+func main() {
+	var dotenv map[string]string
+	if data, err := os.ReadFile(".env"); err == nil {
+		dotenv = ParseDotenv(string(data))
+	}
+	cfg, err := Load(os.Getenv, dotenv)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	reg, err := registry.Open(cfg.StateDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	deps := daemon.Deps{
+		Registry: reg,
+		Runner:   runner.OS{},
+		Spawn: func(ctx context.Context, l claude.Launch) (claude.Process, error) {
+			return claude.Start(ctx, l.Bin, claude.Args(l), l.Dir, claude.Env(l))
+		},
+		Post:     telegram.Client{Token: cfg.TGToken, ChatID: cfg.TGChatID, Do: http.DefaultClient.Do}.Post,
+		GitHubDo: http.DefaultClient.Do,
+		Now:      time.Now,
+		NewID:    newID,
+		Config: daemon.Config{
+			ClaudeBin:   cfg.ClaudeBin,
+			MorphBin:    cfg.MorphBin,
+			ProjectsDir: cfg.ProjectsDir,
+			MCPBaseURL:  "http://127.0.0.1:" + strconv.Itoa(cfg.Port),
+			Model:       cfg.Model,
+			ExtraArgs:   cfg.ExtraArgs,
+			Defaults:    cfg.Defaults,
+			MaxParallel: cfg.MaxParallel,
+			Loop: supervisor.Config{
+				MaxResumesPerHour: cfg.ResumesPerHour,
+				StallMinutes:      cfg.StallMinutes,
+				StretchUSD:        cfg.StretchUSD,
+				UsageAlertPercent: cfg.UsageAlertPercent,
+			},
+		},
+	}
+
+	ctx := context.Background()
+	d, err := daemon.Open(ctx, deps)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
+	known := func(name string) bool {
+		_, err := reg.Get(name)
+		return err == nil
+	}
+	session := func(name string) (string, bool) {
+		tok, err := reg.ReadSecret(name, "session-token")
+		if err != nil || tok == "" {
+			return "", false
+		}
+		return tok, true
+	}
+
+	handler := Build(d, known, session, cfg.Token)
+
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			d.Tick(ctx)
+		}
+	}()
+
+	addr := "127.0.0.1:" + strconv.Itoa(cfg.Port)
+	fmt.Println("morphd listening on " + addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+```

@@ -1,0 +1,238 @@
+```
+package control
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/github"
+	"morphstudio/internal/testhelp"
+	"morphstudio/session"
+)
+
+// ccMarshal marshals v and returns the JSON as a string, failing the test on error.
+func ccMarshal(t testing.TB, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(b)
+}
+
+// ccOct8 returns the time 2026-10-08 at h:m:s UTC.
+func ccOct8(h, m, s int) time.Time {
+	return time.Date(2026, time.October, 8, h, m, s, 0, time.UTC)
+}
+
+// TestControlContractExample1 covers example 1: Status marshals in declaration
+// order with no stop key.
+func TestControlContractExample1(t *testing.T) {
+	st := Status{
+		State:     "busy",
+		Phase:     "P18",
+		Minutes:   37,
+		CostUSD:   1.92,
+		FiveHour:  22,
+		SevenDay:  60,
+		SessionID: "s-1",
+		Queue: QueueView{
+			State:    "running",
+			Approved: "7b31dfe",
+			Index:    1,
+			Phases:   3,
+			Current:  "P18",
+		},
+		Repo: github.Access{
+			Checked:   true,
+			Reachable: true,
+			Push:      true,
+			CheckedAt: ccOct8(15, 0, 0),
+		},
+	}
+	got := ccMarshal(t, st)
+	want := `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}`
+	testhelp.Equal(t, "Status marshal", got, want)
+	testhelp.Equal(t, "no stop key", strings.Contains(got, `"stop"`), false)
+}
+
+// TestControlContractExample2 covers example 2: a Status with a stop ends with
+// the stop record and holds no issue_url.
+func TestControlContractExample2(t *testing.T) {
+	st := Status{
+		State: "waiting",
+		Stop: &Stop{
+			Kind:   "not_pushed",
+			Phase:  "P17",
+			Reason: "not pushed: HEAD bbb222, origin/main aaa111",
+			At:     ccOct8(16, 0, 0),
+		},
+	}
+	got := ccMarshal(t, st)
+	suffix := `,"stop":{"kind":"not_pushed","phase":"P17","reason":"not pushed: HEAD bbb222, origin/main aaa111","at":"2026-10-08T16:00:00Z"}}`
+	testhelp.Equal(t, "Status ends with stop", strings.HasSuffix(got, suffix), true)
+	testhelp.Equal(t, "Status holds issue_url", strings.Contains(got, "issue_url"), false)
+}
+
+// TestControlContractExample3 covers example 3: Question marshals in
+// declaration order.
+func TestControlContractExample3(t *testing.T) {
+	q := Question{
+		RequestID: "9f4ffa22-2676-4391-bfd9-bd7d16c3866c",
+		Text:      "Which option do you want: A or B?",
+		Header:    "A or B",
+		Options:   []string{"Option A", "Option B"},
+		AskedAt:   ccOct8(13, 9, 8),
+	}
+	got := ccMarshal(t, q)
+	want := `{"request_id":"9f4ffa22-2676-4391-bfd9-bd7d16c3866c","text":"Which option do you want: A or B?","header":"A or B","options":["Option A","Option B"],"asked_at":"2026-10-08T13:09:08Z"}`
+	testhelp.Equal(t, "Question marshal", got, want)
+}
+
+// TestControlContractExample4 covers example 4: Percent rounds to the nearest
+// whole percent and clamps to 0..100.
+func TestControlContractExample4(t *testing.T) {
+	testhelp.Equal(t, "Percent(0.22)", Percent(0.22), 22)
+	testhelp.Equal(t, "Percent(0.6)", Percent(0.6), 60)
+	testhelp.Equal(t, "Percent(0.005)", Percent(0.005), 1)
+	testhelp.Equal(t, "Percent(1.3)", Percent(1.3), 100)
+	testhelp.Equal(t, "Percent(-0.1)", Percent(-0.1), 0)
+	testhelp.Equal(t, "Percent(0.995)", Percent(0.995), 100)
+}
+
+// TestControlContractExample5 covers example 5: Code maps each error identity
+// to its HTTP status and stable code.
+func TestControlContractExample5(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		code int
+		key  string
+	}{
+		{"nil", nil, 200, ""},
+		{"unknown project", ErrUnknownProject, 404, "unknown_project"},
+		{"wrapped bad option", fmt.Errorf("wrap: %w", ErrBadOption), 400, "bad_option"},
+		{"bad token", ErrBadToken, 401, "bad_session_token"},
+		{"exists", ErrExists, 409, "exists"},
+		{"no session", ErrNoSession, 409, "no_session"},
+		{"busy", ErrBusy, 409, "busy"},
+		{"no question", ErrNoQuestion, 409, "no_question"},
+		{"not busy", ErrNotBusy, 409, "not_busy"},
+		{"not waiting", ErrNotWaiting, 409, "not_waiting"},
+		{"bad input", ErrBadInput, 400, "bad_input"},
+		{"internal", errors.New("disk full"), 500, "internal"},
+	}
+	for _, c := range cases {
+		code, key := Code(c.err)
+		testhelp.Equal(t, c.name+" code", code, c.code)
+		testhelp.Equal(t, c.name+" name", key, c.key)
+	}
+}
+
+// TestControlContractExample6 covers example 6: the re-exported session errors
+// share identity, and Control has exactly 17 methods.
+func TestControlContractExample6(t *testing.T) {
+	testhelp.Equal(t, "ErrNoQuestion", ErrNoQuestion, session.ErrNoQuestion)
+	testhelp.Equal(t, "ErrBadOption", ErrBadOption, session.ErrBadOption)
+	testhelp.Equal(t, "ErrNotBusy", ErrNotBusy, session.ErrNotBusy)
+	if n := reflect.TypeOf((*Control)(nil)).Elem().NumMethod(); n != 17 {
+		t.Errorf("Control has %d methods, want 17", n)
+	}
+}
+
+// TestControlContractExample7 covers example 7: Usage marshals in declaration
+// order with the limit fields set.
+func TestControlContractExample7(t *testing.T) {
+	u := Usage{
+		FiveHour:         22,
+		SevenDay:         60,
+		FiveHourResetsAt: 1791469200,
+		SevenDayResetsAt: 1791853200,
+		SessionCostUSD:   0.0064,
+		StretchCostUSD:   5.2609,
+		LimitsAt:         ccOct8(13, 9, 3),
+	}
+	got := ccMarshal(t, u)
+	want := `{"five_hour":22,"seven_day":60,"five_hour_resets_at":1791469200,"seven_day_resets_at":1791853200,"session_cost_usd":0.0064,"stretch_cost_usd":5.2609,"limits_at":"2026-10-08T13:09:03Z"}`
+	testhelp.Equal(t, "Usage marshal", got, want)
+}
+
+// TestControlContractExample8 covers example 8: LimitsUnknown writes the limit
+// fields as null and hides the underlying ints.
+func TestControlContractExample8(t *testing.T) {
+	idle := ccMarshal(t, Status{State: "idle", LimitsUnknown: true})
+	wantIdle := `{"state":"idle","phase":"","minutes":0,"cost_usd":0,"five_hour":null,"seven_day":null,"session_id":"","queue":{"state":"","approved":"","index":0,"phases":0,"current":"","reason":""},"repo":{"checked":false,"reachable":false,"push":false,"reason":"","checked_at":"0001-01-01T00:00:00Z"}}`
+	testhelp.Equal(t, "idle Status", idle, wantIdle)
+
+	busy := ccMarshal(t, Status{
+		State:         "busy",
+		Phase:         "S1",
+		Minutes:       2,
+		CostUSD:       0.03,
+		FiveHour:      77,
+		SevenDay:      72,
+		LimitsUnknown: true,
+		SessionID:     "s-9",
+	})
+	testhelp.Equal(t, "busy Status holds null limits", strings.Contains(busy, `,"five_hour":null,"seven_day":null,"session_id":"s-9",`), true)
+	testhelp.Equal(t, "busy Status begins", strings.HasPrefix(busy, `{"state":"busy","phase":"S1","minutes":2,"cost_usd":0.03,`), true)
+	testhelp.Equal(t, "busy Status hides 77", strings.Contains(busy, "77"), false)
+	testhelp.Equal(t, "busy Status hides 72", strings.Contains(busy, "72"), false)
+	testhelp.Equal(t, "busy Status no stop", strings.Contains(busy, `"stop"`), false)
+	testhelp.Equal(t, "busy Status no last_exit", strings.Contains(busy, `"last_exit"`), false)
+	testhelp.Equal(t, "busy Status no limits_unknown", strings.Contains(busy, "limits_unknown"), false)
+}
+
+// TestControlContractExample9 covers example 9: zero Usage writes the limit
+// fields as null.
+func TestControlContractExample9(t *testing.T) {
+	zero := ccMarshal(t, Usage{})
+	wantZero := `{"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0,"stretch_cost_usd":0,"limits_at":null}`
+	testhelp.Equal(t, "zero Usage", zero, wantZero)
+
+	cost := ccMarshal(t, Usage{SessionCostUSD: 0.5, StretchCostUSD: 1.25})
+	wantCost := `{"five_hour":null,"seven_day":null,"five_hour_resets_at":null,"seven_day_resets_at":null,"session_cost_usd":0.5,"stretch_cost_usd":1.25,"limits_at":null}`
+	testhelp.Equal(t, "cost Usage", cost, wantCost)
+}
+
+// TestControlContractExample10 covers example 10: Exit marshals in declaration
+// order and a Status carries stop and last_exit.
+func TestControlContractExample10(t *testing.T) {
+	exit := Exit{
+		Code:     1,
+		At:       time.Date(2026, time.October, 9, 8, 14, 2, 0, time.UTC),
+		Stderr:   "Error: Invalid session ID. Must be a valid UUID.",
+		Restarts: 3,
+	}
+	gotExit := ccMarshal(t, exit)
+	wantExit := `{"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}`
+	testhelp.Equal(t, "Exit marshal", gotExit, wantExit)
+
+	st := Status{
+		State:         "waiting",
+		Phase:         "S1",
+		LimitsUnknown: true,
+		Stop: &Stop{
+			Kind:   "crash",
+			Phase:  "S1",
+			Reason: "exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.",
+			At:     time.Date(2026, time.October, 9, 8, 14, 2, 0, time.UTC),
+		},
+		LastExit: &Exit{
+			Code:     1,
+			At:       time.Date(2026, time.October, 9, 8, 14, 2, 0, time.UTC),
+			Stderr:   "Error: Invalid session ID. Must be a valid UUID.",
+			Restarts: 3,
+		},
+	}
+	got := ccMarshal(t, st)
+	suffix := `,"stop":{"kind":"crash","phase":"S1","reason":"exited 4 times within an hour (last code 1): Error: Invalid session ID. Must be a valid UUID.","at":"2026-10-09T08:14:02Z"},"last_exit":{"code":1,"at":"2026-10-09T08:14:02Z","stderr":"Error: Invalid session ID. Must be a valid UUID.","restarts":3}}`
+	testhelp.Equal(t, "Status ends with stop and last_exit", strings.HasSuffix(got, suffix), true)
+	testhelp.Equal(t, "Status holds null five_hour", strings.Contains(got, `"five_hour":null`), true)
+}
+```

@@ -1,0 +1,238 @@
+{
+  "runId": "20261008-171107",
+  "completedAt": 1791479785817,
+  "branch": "morph/20261008-171107",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "exec-runner",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "exec-runner.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "563256a8c98439e5137cbec36efb669904152ee7",
+      "diffstat": {
+        "files": 1,
+        "insertions": 104,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "parse-event",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "parse-event.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "af7545f7376ea8b5c87d4c2a7119c809596c9489",
+      "diffstat": {
+        "files": 1,
+        "insertions": 330,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-queue",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "phase-queue.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== build\n# morphstudio/queue\nqueue/queue.go:107:9: cannot use q.Current() (value of type bool) as error value in return statement: bool does not implement error (missing method Error)\n"
+      ],
+      "commit": "c9d3a17025ce727ff100851d613da4907a8fb0de",
+      "diffstat": {
+        "files": 1,
+        "insertions": 168,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "encode-lines",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "encode-lines.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "ece4280386c28c0464edeff498969cadaabe1aa4",
+      "diffstat": {
+        "files": 1,
+        "insertions": 110,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "exec-runner-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "exec-runner-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard runner/runner_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "e0f0ca7dcbcf5d43b1c048358ed24b748ff92cb1",
+      "diffstat": {
+        "files": 1,
+        "insertions": 109,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "parse-event-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "parse-event-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard stream/parse_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "304a5679ecc77803d72b6ef918464108f19aebb0",
+      "diffstat": {
+        "files": 1,
+        "insertions": 204,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-queue-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-queue-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard queue/queue_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "10de0f66ef80923713c488257cf486ff39e37d6e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 248,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "encode-lines-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "encode-lines-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard stream/encode_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "af6efbcce58fe3542ccfdba4bd802af5378557ab",
+      "diffstat": {
+        "files": 1,
+        "insertions": 113,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 92977,
+    "outputTokens": 59534,
+    "cost": 0.049528710000000004,
+    "requests": 9
+  },
+  "requests": [
+    {
+      "customId": "exec-runner.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479467-2ulMDZEQDrwmgOZHeKzH",
+      "inputTokens": 2001,
+      "outputTokens": 2054,
+      "cost": 0.00153255,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "parse-event.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479467-DPf4E35D90boK34mRnkk",
+      "inputTokens": 2827,
+      "outputTokens": 11395,
+      "cost": 0.00726105,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-queue.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479467-rYgkHKq01mATMCuSCbZa",
+      "inputTokens": 2725,
+      "outputTokens": 7806,
+      "cost": 0.00509235,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-queue.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479575-2VyY95F1G9hnd4MU12oS",
+      "inputTokens": 9905,
+      "outputTokens": 1369,
+      "cost": 0.00230715,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "encode-lines.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479585-IcK7Bx7NmVax1hgvIy5k",
+      "inputTokens": 4696,
+      "outputTokens": 5204,
+      "cost": 0.0038268,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "exec-runner-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479585-y2wXXgcruJHCn2jwLTtg",
+      "inputTokens": 2155,
+      "outputTokens": 2738,
+      "cost": 0.00196605,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "parse-event-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479585-NKcpxerzP9ZoIo3rbH8C",
+      "inputTokens": 32506,
+      "outputTokens": 17176,
+      "cost": 0.0151815,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-queue-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479607-HLy0GZC9gRRHGAAAAnNI",
+      "inputTokens": 3199,
+      "outputTokens": 6754,
+      "cost": 0.00453225,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "encode-lines-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791479739-dpe1Tw6H4L6o06xaJlxJ",
+      "inputTokens": 32963,
+      "outputTokens": 5038,
+      "cost": 0.00782901,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "runId": "20261008-201843",
+  "completedAt": 1791491159975,
+  "branch": "morph/20261008-201843",
+  "processor": "ds",
+  "generations": 1,
+  "outcomes": [
+    {
+      "customId": "pm-tools-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n# morphstudio/mcpserver\n# [morphstudio/mcpserver]\nvet: mcpserver/mount.go:49:10: undefined: SessionServer\n== gofmt\n== guard mcpserver/pm_examples_test.go\n== own\n# morphstudio/mcpserver [morphstudio/mcpserver.test]\nmcpserver/mount.go:49:10: undefined: SessionServer\nmcpserver/pm_examples_test.go:438:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\nmcpserver/pm_examples_test.go:442:49: cannot use res (variable of type *mcp.ListToolsResult) as *mcp.CallToolResult value in argument to ptText\nmcpserver/pm_examples_test.go:444:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\nmcpserver/pm_examples_test.go:451:50: cannot use res (variable of type *mcp.ListToolsResult) as *mcp.CallToolResult value in argument to ptText\nmcpserver/session_examples_test.go:146:21: undefined: SessionServer\nmcpserver/session_examples_test.go:162:21: undefined: SessionServer\nmcpserver/session_examples_test.go:190:21: undefined: SessionServer\nmcpserver/session_examples_test.go:218:21: undefined: SessionServer\nmcpserver/session_examples_test.go:247:21: undefined: SessionServer\nmcpserver/session_examples_test.go:247:21: too many errors\nFAIL\tmorphstudio/mcpserver [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/mcpserver\n# [morphstudio/mcpserver]\nvet: mcpserver/mount.go:49:10: undefined: SessionServer\n== gofmt\n== guard mcpserver/pm_examples_test.go\n== own\n# morphstudio/mcpserver [morphstudio/mcpserver.test]\nmcpserver/mount.go:49:10: undefined: SessionServer\nmcpserver/pm_examples_test.go:436:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\nmcpserver/pm_examples_test.go:440:52: cannot use res (variable of type *mcp.ListToolsResult) as *mcp.CallToolResult value in argument to ptText\nmcpserver/pm_examples_test.go:442:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\nmcpserver/pm_examples_test.go:446:53: cannot use res (variable of type *mcp.ListToolsResult) as *mcp.CallToolResult value in argument to ptText\nmcpserver/session_examples_test.go:146:21: undefined: SessionServer\nmcpserver/session_examples_test.go:162:21: undefined: SessionServer\nmcpserver/session_examples_test.go:190:21: undefined: SessionServer\nmcpserver/session_examples_test.go:218:21: undefined: SessionServer\nmcpserver/session_examples_test.go:247:21: undefined: SessionServer\nmcpserver/session_examples_test.go:247:21: too many errors\nFAIL\tmorphstudio/mcpserver [build failed]\nFAIL\n",
+        "== vet\n# morphstudio/mcpserver\n# [morphstudio/mcpserver]\nvet: mcpserver/mount.go:49:10: undefined: SessionServer\n== gofmt\n== guard mcpserver/pm_examples_test.go\n== own\n# morphstudio/mcpserver [morphstudio/mcpserver.test]\nmcpserver/mount.go:49:10: undefined: SessionServer\nmcpserver/session_examples_test.go:146:21: undefined: SessionServer\nmcpserver/session_examples_test.go:162:21: undefined: SessionServer\nmcpserver/session_examples_test.go:190:21: undefined: SessionServer\nmcpserver/session_examples_test.go:218:21: undefined: SessionServer\nmcpserver/session_examples_test.go:247:21: undefined: SessionServer\nmcpserver/session_examples_test.go:276:21: undefined: SessionServer\nFAIL\tmorphstudio/mcpserver [build failed]\nFAIL\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 48987,
+    "outputTokens": 55398,
+    "cost": 0.040586849999999994,
+    "requests": 3
+  },
+  "requests": [
+    {
+      "customId": "pm-tools-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490723-WMlOn2m9tirqarPY7Arr",
+      "inputTokens": 12551,
+      "outputTokens": 12880,
+      "cost": 0.00961065,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pm-tools-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490817-6DGtpwdxtHy91DApvWeN",
+      "inputTokens": 18319,
+      "outputTokens": 15488,
+      "cost": 0.01204065,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pm-tools-judge.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490934-84AgUov7NvpjtoILeJYp",
+      "inputTokens": 18117,
+      "outputTokens": 27030,
+      "cost": 0.01893555,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

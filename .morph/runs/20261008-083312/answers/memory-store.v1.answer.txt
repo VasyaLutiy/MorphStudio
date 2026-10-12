@@ -1,0 +1,107 @@
+```go
+package store
+
+import (
+	"errors"
+	"sort"
+	"sync"
+
+	"morphstudio/project"
+)
+
+var ErrNotFound = errors.New("not found")
+var ErrSlugTaken = errors.New("slug taken")
+
+type Store interface {
+	List() ([]project.Project, error)
+	Get(id string) (project.Project, error)
+	Create(p project.Project) error
+	Update(p project.Project) error
+	Delete(id string) error
+}
+
+type Mem struct {
+	mu       sync.Mutex
+	projects map[string]project.Project
+}
+
+func NewMem() *Mem {
+	return &Mem{
+		projects: make(map[string]project.Project),
+	}
+}
+
+func (m *Mem) List() ([]project.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	out := make([]project.Project, 0, len(m.projects))
+	for _, p := range m.projects {
+		out = append(out, p)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+
+	return out, nil
+}
+
+func (m *Mem) Get(id string) (project.Project, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	p, ok := m.projects[id]
+	if !ok {
+		return project.Project{}, ErrNotFound
+	}
+	return p, nil
+}
+
+func (m *Mem) Create(p project.Project) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, existing := range m.projects {
+		if existing.Slug == p.Slug {
+			return ErrSlugTaken
+		}
+	}
+
+	m.projects[p.ID] = p
+	return nil
+}
+
+func (m *Mem) Update(p project.Project) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.projects[p.ID]; !ok {
+		return ErrNotFound
+	}
+
+	for id, existing := range m.projects {
+		if id != p.ID && existing.Slug == p.Slug {
+			return ErrSlugTaken
+		}
+	}
+
+	m.projects[p.ID] = p
+	return nil
+}
+
+func (m *Mem) Delete(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.projects[id]; !ok {
+		return ErrNotFound
+	}
+
+	delete(m.projects, id)
+	return nil
+}
+```

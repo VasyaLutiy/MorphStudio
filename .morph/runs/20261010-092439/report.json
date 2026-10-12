@@ -1,0 +1,471 @@
+{
+  "runId": "20261010-092439",
+  "completedAt": 1791627499168,
+  "branch": "morph/20261010-092439",
+  "processor": "ds",
+  "generations": 7,
+  "outcomes": [
+    {
+      "customId": "control-contract",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.414s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.010s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.002s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.007s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.003s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.032s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.010s\nok  \tmorphstudio/runner\t0.708s\nok  \tmorphstudio/session\t0.018s\nok  \tmorphstudio/stream\t0.009s\nok  \tmorphstudio/supervisor\t0.002s\nok  \tmorphstudio/telegram\t0.004s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.417s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "control-contract-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.417s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.008s\nok  \tmorphstudio/cmd/morphd\t0.008s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.012s\nok  \tmorphstudio/github\t0.003s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.031s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.711s\nok  \tmorphstudio/session\t0.018s\nok  \tmorphstudio/stream\t0.011s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.002s\nFAIL\n",
+        "== vet\n== gofmt\n== guard control/control_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.413s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "phase-loop",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.406s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.004s\nok  \tmorphstudio/bootstrap\t0.003s\nok  \tmorphstudio/claude\t0.009s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.010s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.004s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.033s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.009s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.022s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.416s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "phase-loop-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.402s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.005s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.010s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.003s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.012s\nok  \tmorphstudio/github\t0.002s\nok  \tmorphstudio/gitrules\t0.003s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.028s\nok  \tmorphstudio/queue\t0.002s\nok  \tmorphstudio/registry\t0.008s\nok  \tmorphstudio/runner\t0.709s\nok  \tmorphstudio/session\t0.015s\nok  \tmorphstudio/stream\t0.011s\nok  \tmorphstudio/supervisor\t0.003s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+        "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.411s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "runtime-guard",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.411s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.003s\nok  \tmorphstudio/bootstrap\t0.004s\nok  \tmorphstudio/claude\t0.009s\nok  \tmorphstudio/cmd/morphd\t0.007s\nok  \tmorphstudio/control\t0.005s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.014s\nok  \tmorphstudio/github\t0.004s\nok  \tmorphstudio/gitrules\t0.005s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.030s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.012s\nok  \tmorphstudio/runner\t0.710s\nok  \tmorphstudio/session\t0.020s\nok  \tmorphstudio/stream\t0.010s\nok  \tmorphstudio/supervisor\t0.005s\nok  \tmorphstudio/telegram\t0.003s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.413s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "daemon-core",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.422s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== build\n== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard\n== probe\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.403s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "runtime-guard-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.403s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.012s\nok  \tmorphstudio/bootstrap\t0.018s\nok  \tmorphstudio/claude\t0.033s\nok  \tmorphstudio/cmd/morphd\t0.011s\nok  \tmorphstudio/control\t0.004s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.018s\nok  \tmorphstudio/github\t0.005s\nok  \tmorphstudio/gitrules\t0.008s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.069s\nok  \tmorphstudio/queue\t0.005s\nok  \tmorphstudio/registry\t0.016s\nok  \tmorphstudio/runner\t0.727s\nok  \tmorphstudio/session\t0.044s\nok  \tmorphstudio/stream\t0.020s\nok  \tmorphstudio/supervisor\t0.005s\nok  \tmorphstudio/telegram\t0.010s\nFAIL\n",
+        "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.422s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "pump",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.407s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== build\n== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard\n== probe\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.410s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "config-and-main",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.416s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\n== full\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nok  \tmorphstudio/api\t0.007s\nok  \tmorphstudio/bootstrap\t0.005s\nok  \tmorphstudio/claude\t0.014s\nok  \tmorphstudio/cmd/morphd\t0.010s\nok  \tmorphstudio/control\t0.006s\nFAIL\tmorphstudio/daemon [build failed]\nok  \tmorphstudio/eventlog\t0.013s\nok  \tmorphstudio/github\t0.008s\nok  \tmorphstudio/gitrules\t0.009s\n?   \tmorphstudio/internal/testhelp\t[no test files]\nok  \tmorphstudio/mcpserver\t0.051s\nok  \tmorphstudio/queue\t0.003s\nok  \tmorphstudio/registry\t0.022s\nok  \tmorphstudio/runner\t0.716s\nok  \tmorphstudio/session\t0.025s\nok  \tmorphstudio/stream\t0.014s\nok  \tmorphstudio/supervisor\t0.004s\nok  \tmorphstudio/telegram\t0.004s\nFAIL\n",
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== listen\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.416s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "daemon-core-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard daemon/daemon_examples_test.go\n== own\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.415s\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard daemon/daemon_examples_test.go\n== own\n# morphstudio/daemon [morphstudio/daemon.test]\ndaemon/daemon_examples_test.go:333:2: declared and not used: h\nFAIL\tmorphstudio/daemon [build failed]\nFAIL\n",
+        "== vet\n== gofmt\n== guard daemon/daemon_examples_test.go\n== own\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.406s\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "pump-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 2,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard daemon/pump_examples_test.go\nguard: daemon/pump_examples_test.go does not mention the example literal \"state.json\"\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/daemon\n# [morphstudio/daemon]\nvet: daemon/daemon_examples_test.go:333:2: declared and not used: h\n== gofmt\n== guard daemon/pump_examples_test.go\nguard: daemon/pump_examples_test.go does not mention the example literal \"state.json\"\n",
+        "== vet\n== gofmt\n== guard daemon/pump_examples_test.go\nguard: daemon/pump_examples_test.go does not mention the example literal \"state.json\"\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "config-and-main-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.414s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard cmd/morphd/config_examples_test.go\nguard: cmd/morphd/config_examples_test.go does not mention the example literal \"401\"\n",
+        "== vet\n== gofmt\n== guard cmd/morphd/config_examples_test.go\n== own\n== full\n--- FAIL: TestDaemonCoreExample4 (0.00s)\n    daemon_examples_test.go:411: launch2 budget:\n        got:  30\n        want: 30\n--- FAIL: TestDaemonCoreExample5 (0.00s)\n    daemon_examples_test.go:450: launch2 budget:\n        got:  12\n        want: 12\n--- FAIL: TestDaemonCoreExample6 (0.00s)\n    daemon_examples_test.go:510: launch2 budget:\n        got:  12\n        want: 12\nFAIL\tmorphstudio/daemon\t0.417s\n?   \tmorphstudio/internal/testhelp\t[no test files]\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 669307,
+    "outputTokens": 607759,
+    "cost": 0.9267851399999998,
+    "requests": 26
+  },
+  "requests": [
+    {
+      "customId": "control-contract.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624280-tLVkgU8RsLs2k7cKenSx",
+      "inputTokens": 9690,
+      "outputTokens": 4561,
+      "cost": 0.0083802,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624313-OBQwcqY3skznHoTq0bw1",
+      "inputTokens": 10490,
+      "outputTokens": 6393,
+      "cost": 0.0108186,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624313-xBB1RMlOg97Z9VD1tAhX",
+      "inputTokens": 10339,
+      "outputTokens": 16640,
+      "cost": 0.02251674,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624445-669ysOSakB53Ew1f7g7l",
+      "inputTokens": 11354,
+      "outputTokens": 16264,
+      "cost": 0.02237004,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624445-iUsfA0NrJfbJ2azVUoBM",
+      "inputTokens": 11580,
+      "outputTokens": 12485,
+      "cost": 0.01790304,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624603-8mMkF0UDSPlUlM8mCSHh",
+      "inputTokens": 31902,
+      "outputTokens": 34530,
+      "cost": 0.0510066,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624603-WmdvblyTs1mdUnBmcvuh",
+      "inputTokens": 16977,
+      "outputTokens": 19994,
+      "cost": 0.0290859,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791624925-hAJOhPqPHdDUItSMxZWO",
+      "inputTokens": 22299,
+      "outputTokens": 21808,
+      "cost": 0.0328593,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791625165-DdV2DvjUBRk3y9Rv8w8F",
+      "inputTokens": 27236,
+      "outputTokens": 7589,
+      "cost": 0.0172776,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791625165-INjQbVIHGdO6eLdJOwNu",
+      "inputTokens": 29444,
+      "outputTokens": 49795,
+      "cost": 0.0685872,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791625166-Y0CHZbx6avgrIaZvPCw2",
+      "inputTokens": 56225,
+      "outputTokens": 47626,
+      "cost": 0.0740187,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791625691-wyqmFy7fAKkGvbv8pacW",
+      "inputTokens": 11624,
+      "outputTokens": 15599,
+      "cost": 0.022206,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791625854-TiASe2eTlnElFH86ABXE",
+      "inputTokens": 38067,
+      "outputTokens": 42560,
+      "cost": 0.0624921,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791625854-DQJ6mEoruUcjcbwryA1O",
+      "inputTokens": 17573,
+      "outputTokens": 16328,
+      "cost": 0.0248655,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626304-Ed24HNtfenytvJklzBNh",
+      "inputTokens": 20726,
+      "outputTokens": 19726,
+      "cost": 0.029889,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "control-contract-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626304-Xnm90xTWdpyNXwDPrBnK",
+      "inputTokens": 16476,
+      "outputTokens": 11105,
+      "cost": 0.0182688,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626304-aDje9U5A83YbrfyvLMih",
+      "inputTokens": 23322,
+      "outputTokens": 15683,
+      "cost": 0.0258162,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626411-7xIEjiD9EBQUAYpwb3ov",
+      "inputTokens": 17440,
+      "outputTokens": 17862,
+      "cost": 0.0266664,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626488-gti7ZUwD9bL9G0xS6S6Q",
+      "inputTokens": 24720,
+      "outputTokens": 23859,
+      "cost": 0.03549384,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626575-2hDZlKXWvEd49cMjqXAF",
+      "inputTokens": 48208,
+      "outputTokens": 55932,
+      "cost": 0.0815808,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626581-KMs22Bdy4lknCBZIrAaS",
+      "inputTokens": 23156,
+      "outputTokens": 23597,
+      "cost": 0.03498672,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626784-f1FvTdZZQlaGRkwIPYJq",
+      "inputTokens": 36343,
+      "outputTokens": 14965,
+      "cost": 0.0288609,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626821-LmdeRvySyrL1DwnrHUsa",
+      "inputTokens": 38398,
+      "outputTokens": 20366,
+      "cost": 0.0359586,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "daemon-core-judge.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791626969-Y4IY9RHPeWYEXblCicN5",
+      "inputTokens": 35643,
+      "outputTokens": 30520,
+      "cost": 0.0473169,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pump-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791627046-16538AkEo0QsqqMRrLvC",
+      "inputTokens": 62248,
+      "outputTokens": 45299,
+      "cost": 0.07220376,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "config-and-main-judge.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791627175-CzoMw3F2w7jSbxjkOmr8",
+      "inputTokens": 17827,
+      "outputTokens": 16673,
+      "cost": 0.0253557,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

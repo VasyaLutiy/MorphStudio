@@ -1,0 +1,251 @@
+{
+  "runId": "20261008-181657",
+  "completedAt": 1791483865587,
+  "branch": "morph/20261008-181657",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "launch-args",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "launch-args.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "1708feef67cf2ee2537da5071adac011ee8c4d6e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 105,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "repo-access",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "repo-access.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\nimports: package github imports strconv (allowed: context, encoding/json, errors, fmt, io, net/http, net/url, strings, time)\n"
+      ],
+      "commit": "09e92bc9d119d710da9e3bfe8901af3be386db81",
+      "diffstat": {
+        "files": 1,
+        "insertions": 129,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "launch-args-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "launch-args-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard claude/args_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "2775456764f5c07ab63ee119e91d8d771bce4bf3",
+      "diffstat": {
+        "files": 1,
+        "insertions": 145,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "process",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "process.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "9f5b0012688379bc36f3ed204cd4537f431b2315",
+      "diffstat": {
+        "files": 1,
+        "insertions": 289,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-create",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "project-create.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "40ebf97f939c8c6551368d9af393282a29034ad5",
+      "diffstat": {
+        "files": 1,
+        "insertions": 118,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "repo-access-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "repo-access-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard github/access_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "34f16f2bb0510ed18971ff4a1310c64def92c5aa",
+      "diffstat": {
+        "files": 1,
+        "insertions": 164,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "process-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "process-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard claude/process_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "8ed60662216a6d9f75e26e5cc02a9b075d80fd98",
+      "diffstat": {
+        "files": 1,
+        "insertions": 192,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "project-create-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "project-create-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard bootstrap/create_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard bootstrap/create_examples_test.go\nguard: bootstrap/create_examples_test.go does not mention the example literal \"--module demo\"\nguard: bootstrap/create_examples_test.go does not mention the example literal \"git rev-parse --verify -q origin/main\"\nguard: bootstrap/create_examples_test.go does not mention the example literal \"git push -q -u origin main\"\n"
+      ],
+      "commit": "0adb169c57db67dc0c4b92c79a09b9956bb4b394",
+      "diffstat": {
+        "files": 1,
+        "insertions": 255,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 45583,
+    "outputTokens": 90619,
+    "cost": 0.060794129999999995,
+    "requests": 10
+  },
+  "requests": [
+    {
+      "customId": "launch-args.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483418-OrYsUPp7Qw5FZCjnm24n",
+      "inputTokens": 2204,
+      "outputTokens": 4113,
+      "cost": 0.0027984,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "repo-access.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483418-yMkW0Gg9xZ8IyouBpvel",
+      "inputTokens": 2114,
+      "outputTokens": 9327,
+      "cost": 0.0059133,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "repo-access.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483497-HpTuCfqQ2uL7wXkPSrVU",
+      "inputTokens": 9038,
+      "outputTokens": 1777,
+      "cost": 0.00228366,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "launch-args-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483511-Jg915sEdHd2fvIYyEoZK",
+      "inputTokens": 2425,
+      "outputTokens": 9345,
+      "cost": 0.00597075,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "process.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483511-OxreJV7nhGyaC33lifHb",
+      "inputTokens": 3205,
+      "outputTokens": 19012,
+      "cost": 0.01174971,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-create.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483511-SJfHf1Qp99yCwLTdBQ0e",
+      "inputTokens": 4634,
+      "outputTokens": 5898,
+      "cost": 0.0042339,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "repo-access-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483560-QcCNKncwa9wkNk9hRS83",
+      "inputTokens": 2576,
+      "outputTokens": 4111,
+      "cost": 0.00271476,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "process-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483650-3aiskAHfchp9hH4uuKzB",
+      "inputTokens": 4364,
+      "outputTokens": 5264,
+      "cost": 0.003813,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-create-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483650-AvpFiFyepWVg3UVxpuwJ",
+      "inputTokens": 4856,
+      "outputTokens": 23860,
+      "cost": 0.0150444,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "project-create-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791483815-Q6lrT32Ww8MJWyddnv7e",
+      "inputTokens": 10167,
+      "outputTokens": 7912,
+      "cost": 0.00627225,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+```
+package project
+
+import (
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+)
+
+func TestBuildProjectExample1(t *testing.T) {
+	in := Input{Name: "Alpha", Slug: "alpha", Description: "first", Status: "draft"}
+	now := time.Date(2026, time.October, 8, 9, 0, 0, 0, time.UTC)
+	got := New(in, "p1", now)
+	want := Project{
+		ID:          "p1",
+		Name:        "Alpha",
+		Slug:        "alpha",
+		Description: "first",
+		Status:      "draft",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	testhelp.Equal(t, "New", got, want)
+}
+
+func TestBuildProjectExample2(t *testing.T) {
+	in := Input{Name: "Gamma", Slug: "gamma-2", Description: "", Status: "active"}
+	now := time.Date(2025, time.January, 2, 3, 4, 5, 0, time.UTC)
+	got := New(in, "7f3a", now)
+	want := Project{
+		ID:          "7f3a",
+		Name:        "Gamma",
+		Slug:        "gamma-2",
+		Description: "",
+		Status:      "active",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	testhelp.Equal(t, "New", got, want)
+}
+
+func TestBuildProjectExample3(t *testing.T) {
+	in := Input{Name: " x ", Slug: "BAD", Description: "d", Status: ""}
+	now := time.Date(2026, time.October, 8, 9, 0, 0, 0, time.UTC)
+	got := New(in, "q", now)
+	want := Project{
+		ID:          "q",
+		Name:        " x ",
+		Slug:        "BAD",
+		Description: "d",
+		Status:      "",
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	testhelp.Equal(t, "New", got, want)
+}
+
+func TestBuildProjectExample4(t *testing.T) {
+	p := Project{
+		ID:          "p1",
+		Name:        "Alpha",
+		Slug:        "alpha",
+		Description: "first",
+		Status:      "draft",
+		CreatedAt:   time.Date(2026, time.October, 8, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, time.October, 8, 9, 0, 0, 0, time.UTC),
+	}
+	in := Input{Name: "Beta", Slug: "beta", Description: "", Status: "archived"}
+	now := time.Date(2026, time.October, 9, 10, 30, 0, 0, time.UTC)
+	got := Apply(p, in, now)
+	want := Project{
+		ID:          "p1",
+		Name:        "Beta",
+		Slug:        "beta",
+		Description: "",
+		Status:      "archived",
+		CreatedAt:   time.Date(2026, time.October, 8, 9, 0, 0, 0, time.UTC),
+		UpdatedAt:   now,
+	}
+	testhelp.Equal(t, "Apply", got, want)
+}
+```

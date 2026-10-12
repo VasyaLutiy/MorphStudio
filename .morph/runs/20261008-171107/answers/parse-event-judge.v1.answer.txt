@@ -1,0 +1,206 @@
+```
+package stream
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+)
+
+// parseExamplesProbePath is the recorded probe log that the Parse Event examples read their lines from.
+const parseExamplesProbePath = "../tests/fixtures/stream/probe.jsonl"
+
+// parseExamplesLine parses line n (1-based) of the probe fixture and returns the event and Parse's error.
+func parseExamplesLine(t testing.TB, n int) (Event, error) {
+	t.Helper()
+	_, msg := testhelp.ProbeLine(t, parseExamplesProbePath, n)
+	return Parse(msg)
+}
+
+// parseExamplesObject decodes raw as a JSON object, so two inputs compare as decoded values.
+func parseExamplesObject(t testing.TB, raw []byte) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("decode %s: %v", raw, err)
+	}
+	return m
+}
+
+// parseExamplesErrorText is err's text, or "" when err is nil.
+func parseExamplesErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// Parse Event example 1: a system init line and a control_response line.
+func TestParseEventExample1(t *testing.T) {
+	dir, msg := testhelp.ProbeLine(t, parseExamplesProbePath, 4)
+	testhelp.Equal(t, "line 4 direction", dir, "out")
+
+	ev, err := Parse(msg)
+	testhelp.Equal(t, "line 4 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 4 Type", ev.Type, "system")
+	testhelp.Equal(t, "line 4 Subtype", ev.Subtype, "init")
+	testhelp.Equal(t, "line 4 SessionID", ev.SessionID, "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e")
+	testhelp.Equal(t, "line 4 Text", ev.Text, "")
+	testhelp.Equal(t, "line 4 Question", ev.Question, (*Question)(nil))
+	testhelp.Equal(t, "line 4 Result", ev.Result, (*Result)(nil))
+	testhelp.Equal(t, "line 4 Limits", ev.Limits, (*Limits)(nil))
+
+	_, msg = testhelp.ProbeLine(t, parseExamplesProbePath, 16)
+	ev, err = Parse(msg)
+	testhelp.Equal(t, "line 16 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 16 Type", ev.Type, "control_response")
+	testhelp.Equal(t, "line 16 Subtype", ev.Subtype, "success")
+	testhelp.Equal(t, "line 16 RequestID", ev.RequestID, "int-1")
+	testhelp.Equal(t, "line 16 SessionID", ev.SessionID, "")
+}
+
+// Parse Event example 2: only the text parts of an assistant message count.
+func TestParseEventExample2(t *testing.T) {
+	ev, err := parseExamplesLine(t, 5)
+	testhelp.Equal(t, "line 5 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 5 Type", ev.Type, "assistant")
+	testhelp.Equal(t, "line 5 SessionID", ev.SessionID, "967e8f4d-a2eb-4aa6-968b-b9054a1c3d7e")
+	testhelp.Equal(t, "line 5 Text", ev.Text, "PONG")
+
+	ev, err = parseExamplesLine(t, 12)
+	testhelp.Equal(t, "line 12 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 12 Text", ev.Text, "")
+
+	ev, err = parseExamplesLine(t, 13)
+	testhelp.Equal(t, "line 13 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 13 Text", ev.Text, "")
+}
+
+// Parse Event example 3: a rate_limit_event line.
+func TestParseEventExample3(t *testing.T) {
+	ev, err := parseExamplesLine(t, 6)
+	testhelp.Equal(t, "line 6 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 6 Type", ev.Type, "rate_limit_event")
+	want := &Limits{
+		FiveHour: Window{Utilization: 0.22, ResetsAt: 1791469200},
+		SevenDay: Window{Utilization: 0.6, ResetsAt: 1791853200},
+	}
+	testhelp.Equal(t, "line 6 Limits", ev.Limits, want)
+	testhelp.Equal(t, "line 6 Result", ev.Result, (*Result)(nil))
+}
+
+// Parse Event example 4: the result of the PONG turn.
+func TestParseEventExample4(t *testing.T) {
+	ev, err := parseExamplesLine(t, 7)
+	testhelp.Equal(t, "line 7 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 7 Type", ev.Type, "result")
+	testhelp.Equal(t, "line 7 Subtype", ev.Subtype, "success")
+	testhelp.Equal(t, "line 7 Text", ev.Text, "PONG")
+	want := &Result{
+		Subtype:        "success",
+		IsError:        false,
+		NumTurns:       1,
+		TotalCostUSD:   0.0021784900000000004,
+		TerminalReason: "completed",
+		DurationMS:     958,
+		Errors:         nil,
+	}
+	testhelp.Equal(t, "line 7 Result", ev.Result, want)
+	testhelp.Equal(t, "line 7 Limits", ev.Limits, (*Limits)(nil))
+}
+
+// Parse Event example 5: the result after the interrupt.
+func TestParseEventExample5(t *testing.T) {
+	ev, err := parseExamplesLine(t, 19)
+	testhelp.Equal(t, "line 19 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 19 Type", ev.Type, "result")
+	testhelp.Equal(t, "line 19 Subtype", ev.Subtype, "error_during_execution")
+	want := &Result{
+		Subtype:        "error_during_execution",
+		IsError:        true,
+		NumTurns:       3,
+		TotalCostUSD:   0.0028906000000000005,
+		TerminalReason: "aborted_streaming",
+		DurationMS:     3032,
+		Errors:         []string{"[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=tool_use"},
+	}
+	testhelp.Equal(t, "line 19 Result", ev.Result, want)
+	testhelp.Equal(t, "line 19 Text", ev.Text, "")
+}
+
+// Parse Event example 6: a control_request asking permission to use AskUserQuestion.
+func TestParseEventExample6(t *testing.T) {
+	_, msg := testhelp.ProbeLine(t, parseExamplesProbePath, 27)
+	ev, err := Parse(msg)
+	testhelp.Equal(t, "line 27 Parse error", err, error(nil))
+	testhelp.Equal(t, "line 27 Type", ev.Type, "control_request")
+	testhelp.Equal(t, "line 27 Subtype", ev.Subtype, "can_use_tool")
+	testhelp.Equal(t, "line 27 RequestID", ev.RequestID, "9f4ffa22-2676-4391-bfd9-bd7d16c3866c")
+	testhelp.Equal(t, "line 27 Tool", ev.Tool, "AskUserQuestion")
+	want := &Question{
+		Text:        "Which option do you want: A or B?",
+		Header:      "A or B",
+		Options:     []string{"Option A", "Option B"},
+		MultiSelect: false,
+		ToolUseID:   "toolu_01FUdZWoHspVQKBCdwkjgj1R",
+	}
+	testhelp.Equal(t, "line 27 Question", ev.Question, want)
+
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(msg, &probe); err != nil {
+		t.Fatalf("line 27 msg: %v", err)
+	}
+	var req map[string]json.RawMessage
+	if err := json.Unmarshal(probe["request"], &req); err != nil {
+		t.Fatalf("line 27 request: %v", err)
+	}
+	testhelp.Equal(t, "line 27 Input", parseExamplesObject(t, ev.Input), parseExamplesObject(t, req["input"]))
+}
+
+// Parse Event example 7: a control_request for a tool that is not AskUserQuestion.
+func TestParseEventExample7(t *testing.T) {
+	line := []byte(`{"type":"control_request","request_id":"r-7","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"toolu_x"}}`)
+	ev, err := Parse(line)
+	testhelp.Equal(t, "Parse error", err, error(nil))
+	testhelp.Equal(t, "Type", ev.Type, "control_request")
+	testhelp.Equal(t, "Subtype", ev.Subtype, "can_use_tool")
+	testhelp.Equal(t, "RequestID", ev.RequestID, "r-7")
+	testhelp.Equal(t, "Tool", ev.Tool, "Bash")
+	testhelp.Equal(t, "Question", ev.Question, (*Question)(nil))
+	testhelp.Equal(t, "Input", ev.Input, json.RawMessage(`{"command":"ls"}`))
+	testhelp.Equal(t, "SessionID", ev.SessionID, "")
+}
+
+// Parse Event example 8: malformed lines fail, each leaving a zero Event.
+func TestParseEventExample8(t *testing.T) {
+	ev, err := Parse([]byte(""))
+	testhelp.Equal(t, "empty line Event", ev, Event{})
+	testhelp.Equal(t, "empty line error", parseExamplesErrorText(err), "stream: empty line")
+
+	ev, err = Parse([]byte(" \n"))
+	testhelp.Equal(t, "whitespace line Event", ev, Event{})
+	testhelp.Equal(t, "whitespace line error", parseExamplesErrorText(err), "stream: empty line")
+
+	ev, err = Parse([]byte("[1,2]"))
+	testhelp.Equal(t, "array Event", ev, Event{})
+	testhelp.Equal(t, "array error", parseExamplesErrorText(err), "stream: not an object")
+
+	ev, err = Parse([]byte(`{"a":1}`))
+	testhelp.Equal(t, "no type Event", ev, Event{})
+	testhelp.Equal(t, "no type error", parseExamplesErrorText(err), "stream: no type")
+
+	ev, err = Parse([]byte(`{"type":"result"`))
+	testhelp.Equal(t, "cut json Event", ev, Event{})
+	if err == nil {
+		t.Errorf("cut json error:\ngot:  nil\nwant prefix: %q", "stream: bad json")
+	} else if got := err.Error(); !strings.HasPrefix(got, "stream: bad json") {
+		t.Errorf("cut json error:\ngot:  %q\nwant prefix: %q", got, "stream: bad json")
+	}
+
+	ev, err = Parse([]byte(`{"type":7}`))
+	testhelp.Equal(t, "non-string type Event", ev, Event{})
+	testhelp.Equal(t, "non-string type error", parseExamplesErrorText(err), "stream: no type")
+}
+```

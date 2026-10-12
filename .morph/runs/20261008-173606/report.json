@@ -1,0 +1,251 @@
+{
+  "runId": "20261008-173606",
+  "completedAt": 1791481585670,
+  "branch": "morph/20261008-173606",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "event-log",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "event-log.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "49b2dc4949194def35c3359f443b85c04da1aa53",
+      "diffstat": {
+        "files": 1,
+        "insertions": 150,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "milestone-post",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "milestone-post.r1.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== net\n== full\n== frozen\n",
+      "earlierFailures": [
+        "The previous answer was cut off mid-file: it opened a ``` code fence and never closed it, so the file body could not be extracted. Answer again with the COMPLETE file, and close the fence."
+      ],
+      "commit": "1ae306c8dc7c1e18c08170f43a178c411b40f294",
+      "diffstat": {
+        "files": 1,
+        "insertions": 124,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "session-machine",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "session-machine.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "2c8fea21c1110bbd402e27cd183f837de8e1364f",
+      "diffstat": {
+        "files": 1,
+        "insertions": 131,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "event-log-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "event-log-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard eventlog/log_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "32cb17cbcb28695eeb9792e61f87f7d492138393",
+      "diffstat": {
+        "files": 1,
+        "insertions": 255,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "milestone-post-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "milestone-post-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard telegram/post_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "f31cbc8002801e220a5a235fe93babfe6eda3b18",
+      "diffstat": {
+        "files": 1,
+        "insertions": 130,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "order-queue",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "order-queue.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "1401594222d0151178e1e8f4f10e1ed1601f13e0",
+      "diffstat": {
+        "files": 1,
+        "insertions": 63,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "session-machine-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "session-machine-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard session/machine_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "28561a6fc88694638e74f660e0023e0025967163",
+      "diffstat": {
+        "files": 1,
+        "insertions": 230,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "order-queue-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "order-queue-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard session/orders_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard session/orders_examples_test.go\nguard: session/orders_examples_test.go does not mention the example literal \"  third  \"\n"
+      ],
+      "commit": "0f76351a6ae69df24d988b4d0521e088e1cb9563",
+      "diffstat": {
+        "files": 1,
+        "insertions": 275,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 133097,
+    "outputTokens": 87786,
+    "cost": 0.07222143,
+    "requests": 10
+  },
+  "requests": [
+    {
+      "customId": "event-log.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791480967-4vmYOLXV7AGlQRcrcIgp",
+      "inputTokens": 2431,
+      "outputTokens": 4583,
+      "cost": 0.00311445,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "milestone-post.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791480967-tH4J3DOEO6HyCpZchCIY",
+      "inputTokens": 2421,
+      "outputTokens": 2671,
+      "cost": 0.00196575,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "session-machine.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791480967-NWWJQvW5iP5C7jg1g5mO",
+      "inputTokens": 6270,
+      "outputTokens": 8114,
+      "cost": 0.0058089,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "milestone-post.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481053-gUm3NR8LV5KDKG2IgUhs",
+      "inputTokens": 2497,
+      "outputTokens": 2473,
+      "cost": 0.00158187,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "event-log-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481079-pJkIO3zgtHoKpmqXrUCf",
+      "inputTokens": 2881,
+      "outputTokens": 13085,
+      "cost": 0.00828315,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "milestone-post-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481079-C1bZfnRAokQkfB1dlqy7",
+      "inputTokens": 2664,
+      "outputTokens": 3336,
+      "cost": 0.0024012,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "order-queue.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481079-7ali2Ml0UwyE4r6W4tr7",
+      "inputTokens": 3944,
+      "outputTokens": 1521,
+      "cost": 0.0015042,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "session-machine-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481093-ny6skcwn7WSbGsP6u9Vi",
+      "inputTokens": 34478,
+      "outputTokens": 12560,
+      "cost": 0.0127077,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "order-queue-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481222-x64VybD5cuuLEtRJcWmv",
+      "inputTokens": 35278,
+      "outputTokens": 28234,
+      "cost": 0.02209386,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "order-queue-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791481474-4Ym6583LoLDzw3zGTD6L",
+      "inputTokens": 40233,
+      "outputTokens": 11209,
+      "cost": 0.01276035,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

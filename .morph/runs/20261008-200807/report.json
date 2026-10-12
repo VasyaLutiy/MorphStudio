@@ -1,0 +1,194 @@
+{
+  "runId": "20261008-200807",
+  "completedAt": 1791490645505,
+  "branch": "morph/20261008-200807",
+  "processor": "ds",
+  "generations": 4,
+  "outcomes": [
+    {
+      "customId": "pm-tools",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "pm-tools.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "1b6c3709e89b0e62e9b9392e8239d5942c182fbf",
+      "diffstat": {
+        "files": 1,
+        "insertions": 257,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "pm-tools-judge",
+      "status": "failed",
+      "reason": "acceptance failed",
+      "attempts": 3,
+      "winningVariant": null,
+      "acceptanceLog": "== vet\n# morphstudio/mcpserver\n# [morphstudio/mcpserver]\nvet: mcpserver/pm_examples_test.go:161:60: undefined: Milestone\n== gofmt\n== guard mcpserver/pm_examples_test.go\n== own\n# morphstudio/mcpserver [morphstudio/mcpserver.test]\nmcpserver/pm_examples_test.go:161:60: undefined: Milestone\nFAIL\tmorphstudio/mcpserver [build failed]\nFAIL\n",
+      "earlierFailures": [
+        "== vet\n# morphstudio/mcpserver\n# [morphstudio/mcpserver]\nvet: mcpserver/pm_examples_test.go:424:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\n== gofmt\n== guard mcpserver/pm_examples_test.go\n== own\n# morphstudio/mcpserver [morphstudio/mcpserver.test]\nmcpserver/pm_examples_test.go:424:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\nmcpserver/pm_examples_test.go:428:47: cannot use res (variable of type *mcp.ListToolsResult) as *mcp.CallToolResult value in argument to ptText\nmcpserver/pm_examples_test.go:430:13: cannot use cs.CallTool(ctx, &mcp.CallToolParams{…}) (value of type *mcp.CallToolResult) as *mcp.ListToolsResult value in assignment\nmcpserver/pm_examples_test.go:441:45: cannot use res (variable of type *mcp.ListToolsResult) as *mcp.CallToolResult value in argument to ptText\nFAIL\tmorphstudio/mcpserver [build failed]\nFAIL\n",
+        "== vet\n== gofmt\n== guard mcpserver/pm_examples_test.go\n== own\n--- FAIL: TestPMToolsExample6 (0.00s)\n    pm_examples_test.go:410: calls:\n        got:  []mcpserver.ptCall{mcpserver.ptCall{Method:\"Projects\", Args:[]interface {}(nil)}, mcpserver.ptCall{Method:\"CreateProject\", Args:[]interface {}{\"demo\", \"go\", \"https://github.com/o/demo\"}}}\n        want: []mcpserver.ptCall{mcpserver.ptCall{Method:\"CreateProject\", Args:[]interface {}{\"demo\", \"go\", \"https://github.com/o/demo\"}}}\nFAIL\tmorphstudio/mcpserver\t0.034s\nfirst difference at char 44 of 124/187: expected \"...pserver.ptCall{mcpserver.ptCall{Method:\\\"CreateProject\\\", Args:[]interface {}{\\\"dem\" received \"...pserver.ptCall{mcpserver.ptCall{Method:\\\"Projects\\\", Args:[]interface {}(nil)}, mc\"\n"
+      ],
+      "commit": null,
+      "diffstat": null
+    },
+    {
+      "customId": "session-tools",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "session-tools.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "a18a428adcf3a5766ac44f9c339554ae8255900e",
+      "diffstat": {
+        "files": 1,
+        "insertions": 102,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "mcp-mount",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "mcp-mount.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "2b4d66e18e368bad0412c5a2dfeabc58de33d6c6",
+      "diffstat": {
+        "files": 1,
+        "insertions": 108,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "session-tools-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "session-tools-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard mcpserver/session_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "d9bcfc3a64f8f461d0947a8ca940572aefe9aa27",
+      "diffstat": {
+        "files": 1,
+        "insertions": 288,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "mcp-mount-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "mcp-mount-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard mcpserver/mount_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "70882c9e1a284bc0e0f80025a9b2c79e8bd97fb0",
+      "diffstat": {
+        "files": 1,
+        "insertions": 333,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 99757,
+    "outputTokens": 74910,
+    "cost": 0.05797419,
+    "requests": 8
+  },
+  "requests": [
+    {
+      "customId": "pm-tools.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490087-8Focv2pwFUqFLLIr2StM",
+      "inputTokens": 7492,
+      "outputTokens": 12775,
+      "cost": 0.0087888,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pm-tools-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490206-eJt7ul9e5ZK2MuXRAThZ",
+      "inputTokens": 12513,
+      "outputTokens": 11939,
+      "cost": 0.00876387,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "session-tools.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490207-ZCb6G1KSpy8M3GYfDdvi",
+      "inputTokens": 7588,
+      "outputTokens": 2654,
+      "cost": 0.00231588,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pm-tools-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490301-6JHBXPZ8WZg0LJYmQvfM",
+      "inputTokens": 18232,
+      "outputTokens": 10600,
+      "cost": 0.00895656,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "pm-tools-judge.r2.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490377-GMSzfeorB6OdNcI03ZH1",
+      "inputTokens": 18149,
+      "outputTokens": 12965,
+      "cost": 0.01022487,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "mcp-mount.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490481-wh4hcGKEGF0CRwzqXews",
+      "inputTokens": 8943,
+      "outputTokens": 6324,
+      "cost": 0.00485937,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "session-tools-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490481-7Hzg8PlI2ArDg6bzEyOZ",
+      "inputTokens": 13308,
+      "outputTokens": 8443,
+      "cost": 0.00678552,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "mcp-mount-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791490569-eX8R1IjViVguEPsFCHKx",
+      "inputTokens": 13532,
+      "outputTokens": 9210,
+      "cost": 0.00727932,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

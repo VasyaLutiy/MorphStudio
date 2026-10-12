@@ -1,0 +1,206 @@
+```
+package supervisor
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/stream"
+)
+
+// Event records that a line was seen from the running process.
+func (l *Loop) Event(now time.Time) {
+	l.LastEventAt = now
+}
+
+// Exited handles a process exit the daemon saw while the loop still wanted
+// the session — a crash, whatever the code.
+func (l *Loop) Exited(code int, stderr string, now time.Time, cfg Config) []Action {
+	switch l.State {
+	case "running", "paused", "starting":
+	default:
+		return nil
+	}
+
+	line := firstStderrLine(stderr)
+
+	var kept []time.Time
+	for _, t := range l.Restarts {
+		if now.Sub(t) < time.Hour {
+			kept = append(kept, t)
+		}
+	}
+	l.Restarts = kept
+	n := len(kept)
+
+	if n < cfg.MaxResumesPerHour {
+		l.Restarts = append(kept, now)
+		l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n + 1}
+		l.State = "starting"
+		numbers := fmt.Sprintf("restart %d of %d this hour", n+1, cfg.MaxResumesPerHour)
+		if line != "" {
+			numbers += " · " + line
+		}
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: fmt.Sprintf("%s: session exited (code %d), restarting", l.Phase, code),
+				Numbers:  numbers,
+			}},
+			{Kind: "start_check", Phase: l.Phase},
+		}
+	}
+
+	l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n}
+	reason := fmt.Sprintf("exited %d times within an hour (last code %d)", n+1, code)
+	if line != "" {
+		reason += ": " + line
+	}
+	l.State = "waiting"
+	l.Stop = &control.Stop{Kind: "crash", Phase: l.Phase, Reason: reason, At: now}
+	l.Queue.Stop("crash")
+	return []Action{
+		{Kind: "post", Milestone: control.Milestone{
+			Kind:     "stop",
+			Headline: l.Phase + ": session keeps exiting",
+			Numbers:  reason,
+		}},
+	}
+}
+
+// Turn records a finished turn and enforces the stretch cap.
+func (l *Loop) Turn(r stream.Result, now time.Time, cfg Config) []Action {
+	l.SessionUSD = r.TotalCostUSD
+	if cfg.StretchUSD > 0 && l.StretchUSD+l.SessionUSD >= cfg.StretchUSD &&
+		(l.State == "running" || l.State == "paused") {
+		sum := l.StretchUSD + l.SessionUSD
+		reason := fmt.Sprintf("stretch cap $%.2f reached ($%.4f)", cfg.StretchUSD, sum)
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+		l.Queue.Stop("cap")
+		return []Action{
+			{Kind: "kill"},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "stop",
+				Headline: l.Phase + ": stretch cap",
+				Numbers:  reason,
+			}},
+		}
+	}
+	return nil
+}
+
+// Limits reacts to a rate limit event: pause on exhaustion, alert once on
+// the weekly threshold.
+func (l *Loop) Limits(lim stream.Limits, now time.Time, cfg Config) []Action {
+	if l.State != "running" {
+		return nil
+	}
+
+	fiveExhausted := lim.FiveHour.Utilization >= 1
+	sevenExhausted := lim.SevenDay.Utilization >= 1
+	if fiveExhausted || sevenExhausted {
+		var resets int64
+		switch {
+		case fiveExhausted && sevenExhausted:
+			if lim.SevenDay.ResetsAt > lim.FiveHour.ResetsAt {
+				resets = lim.SevenDay.ResetsAt
+			} else {
+				resets = lim.FiveHour.ResetsAt
+			}
+		case fiveExhausted:
+			resets = lim.FiveHour.ResetsAt
+		default:
+			resets = lim.SevenDay.ResetsAt
+		}
+		l.State = "paused"
+		l.PausedUntil = time.Unix(resets, 0).UTC()
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": usage limit, paused",
+				Numbers:  "until " + l.PausedUntil.Format(time.RFC3339),
+			}},
+		}
+	}
+
+	if cfg.UsageAlertPercent > 0 && !l.Alerted &&
+		lim.SevenDay.Utilization*100 >= float64(cfg.UsageAlertPercent) {
+		l.Alerted = true
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "info",
+				Headline: fmt.Sprintf("%s: weekly usage %d%%", l.Phase, control.Percent(lim.SevenDay.Utilization)),
+				Numbers:  "resets " + time.Unix(lim.SevenDay.ResetsAt, 0).UTC().Format(time.RFC3339),
+			}},
+		}
+	}
+	return nil
+}
+
+// Tick drives the paused resume, the wall clock cap and the stall nudge.
+func (l *Loop) Tick(now time.Time, cfg Config) []Action {
+	if l.State == "paused" && !now.Before(l.PausedUntil) {
+		l.State = "running"
+		l.LastEventAt = now
+		return []Action{
+			{Kind: "write", Line: "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": resumed after the limit",
+				Numbers:  "",
+			}},
+		}
+	}
+
+	if l.State == "running" {
+		caps := l.phaseCaps()
+		if caps.Hours > 0 && now.Sub(l.PhaseStartedAt) >= time.Duration(caps.Hours*float64(time.Hour)) {
+			reason := fmt.Sprintf("wall clock cap %s h reached", fnum(caps.Hours))
+			l.State = "waiting"
+			l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+			l.Queue.Stop("cap")
+			return []Action{
+				{Kind: "kill"},
+				{Kind: "post", Milestone: control.Milestone{
+					Kind:     "stop",
+					Headline: l.Phase + ": wall clock cap",
+					Numbers:  reason,
+				}},
+			}
+		}
+		if cfg.StallMinutes > 0 && !l.Nudged &&
+			now.Sub(l.LastEventAt) >= time.Duration(cfg.StallMinutes)*time.Minute {
+			l.Nudged = true
+			return []Action{
+				{Kind: "post", Milestone: control.Milestone{
+					Kind:     "watchdog",
+					Headline: fmt.Sprintf("%s: no events for %d min", l.Phase, cfg.StallMinutes),
+					Numbers:  "one nudge sent",
+				}},
+				{Kind: "write", Line: fmt.Sprintf("Nothing has happened for %d minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first.", cfg.StallMinutes)},
+			}
+		}
+	}
+	return nil
+}
+
+// firstStderrLine returns the first non-blank line of stderr, trimmed and
+// cut to 200 runes.
+func firstStderrLine(stderr string) string {
+	for _, raw := range strings.Split(stderr, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		runes := []rune(line)
+		if len(runes) > 200 {
+			runes = runes[:200]
+		}
+		return string(runes)
+	}
+	return ""
+}
+```

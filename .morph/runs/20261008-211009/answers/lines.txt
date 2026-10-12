@@ -1,0 +1,8 @@
+morph run: daemon-core.v1 accepted stage 10 frozen finish stop chars 18318
+morph run: pump.v1 accepted stage 10 frozen finish stop chars 3058
+morph run: config-and-main.v1 rejected stage 7 listen finish stop chars 7641
+morph run: daemon-core-judge.v1 rejected stage 4 own finish stop chars 25667
+morph run: pump-judge.v1 accepted stage 6 frozen finish stop chars 18701
+morph run: config-and-main.r1.v1 accepted stage 9 frozen finish stop chars 7620
+morph run: daemon-core-judge.r1.v1 accepted stage 6 frozen finish stop chars 19736
+morph run: config-and-main-judge.v1 accepted stage 6 frozen finish stop chars 7973

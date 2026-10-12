@@ -1,0 +1,12 @@
+morph run: control-contract.v1 accepted stage 10 frozen finish stop chars 5183
+morph run: phase-start-check.v1 accepted stage 9 frozen finish stop chars 3620
+morph run: project-registry.v1 accepted stage 9 frozen finish stop chars 4349
+morph run: control-contract-judge.v1 rejected stage 4 own finish stop chars 4497
+morph run: phase-end-check.v1 accepted stage 9 frozen finish stop chars 3057
+morph run: phase-start-check-judge.v1 accepted stage 6 frozen finish stop chars 7675
+morph run: project-registry-judge.v1 accepted stage 6 frozen finish stop chars 6046
+morph run: secret-files.v1 accepted stage 9 frozen finish stop chars 2381
+morph run: control-contract-judge.r1.v1 accepted stage 6 frozen finish stop chars 4584
+morph run: phase-end-check-judge.v1 rejected stage 3 guard gitrules/end_examples_test.go finish stop chars 5105
+morph run: secret-files-judge.v1 accepted stage 6 frozen finish stop chars 4197
+morph run: phase-end-check-judge.r1.v1 accepted stage 6 frozen finish stop chars 5078

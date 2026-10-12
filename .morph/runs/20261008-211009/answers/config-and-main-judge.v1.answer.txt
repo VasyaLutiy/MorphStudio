@@ -1,0 +1,249 @@
+```go
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/github"
+	"morphstudio/internal/testhelp"
+	"morphstudio/queue"
+	"morphstudio/session"
+)
+
+// cmGetenv builds a getenv-style lookup over a fixed map literal.
+func cmGetenv(m map[string]string) func(string) string {
+	return func(key string) string { return m[key] }
+}
+
+func TestConfigAndMainExample1(t *testing.T) {
+	text := "# comment\n\nMORPHD_TOKEN=abc\nexport TG_BOT_TOKEN=\"123:ABC\"\nTG_CHAT_ID='-100'\nBAD LINE\nMORPHD_PORT = 7181\n"
+	got := ParseDotenv(text)
+	want := map[string]string{
+		"MORPHD_TOKEN": "abc",
+		"TG_BOT_TOKEN": "123:ABC",
+		"TG_CHAT_ID":   "-100",
+		"MORPHD_PORT":  "7181",
+	}
+	testhelp.Equal(t, "ParseDotenv", got, want)
+}
+
+func TestConfigAndMainExample2(t *testing.T) {
+	getenv := cmGetenv(map[string]string{"HOME": "/home/morph"})
+	dotenv := map[string]string{"MORPHD_TOKEN": "abc"}
+	got, err := Load(getenv, dotenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Config{
+		Token:             "abc",
+		Port:              7080,
+		StateDir:          "/home/morph/.local/state/morphd",
+		ProjectsDir:       "/home/morph/projects",
+		ClaudeBin:         "claude",
+		MorphBin:          "morph",
+		TGToken:           "",
+		TGChatID:          "",
+		Model:             "",
+		ExtraArgs:         nil,
+		Defaults:          queue.Caps{ClaudeUSD: 30, Hours: 3, ExecutorUSD: 5},
+		StretchUSD:        30,
+		MaxParallel:       1,
+		ResumesPerHour:    3,
+		StallMinutes:      30,
+		UsageAlertPercent: 50,
+	}
+	testhelp.Equal(t, "Load", got, want)
+}
+
+func TestConfigAndMainExample3(t *testing.T) {
+	getenv := cmGetenv(map[string]string{
+		"HOME":                     "/h",
+		"MORPHD_TOKEN":             "env-tok",
+		"MORPHD_PORT":              "7181",
+		"MORPHD_CLAUDE_EXTRA_ARGS": "--effort high",
+		"MORPHD_CLAUDE_USD":        "12.5",
+		"MORPHD_MAX_PARALLEL":      "2",
+	})
+	dotenv := map[string]string{
+		"MORPHD_TOKEN": "file-tok",
+		"MORPHD_HOURS": "1",
+	}
+	got, err := Load(getenv, dotenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Config{
+		Token:             "env-tok",
+		Port:              7181,
+		StateDir:          "/h/.local/state/morphd",
+		ProjectsDir:       "/h/projects",
+		ClaudeBin:         "claude",
+		MorphBin:          "morph",
+		TGToken:           "",
+		TGChatID:          "",
+		Model:             "",
+		ExtraArgs:         []string{"--effort", "high"},
+		Defaults:          queue.Caps{ClaudeUSD: 12.5, Hours: 1, ExecutorUSD: 5},
+		StretchUSD:        30,
+		MaxParallel:       2,
+		ResumesPerHour:    3,
+		StallMinutes:      30,
+		UsageAlertPercent: 50,
+	}
+	testhelp.Equal(t, "Load", got, want)
+}
+
+func TestConfigAndMainExample4(t *testing.T) {
+	_, err := Load(cmGetenv(map[string]string{}), map[string]string{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	testhelp.Equal(t, "no token", err.Error(), "config: MORPHD_TOKEN is required")
+
+	getenv2 := cmGetenv(map[string]string{"MORPHD_TOKEN": "x", "MORPHD_PORT": "80a"})
+	_, err = Load(getenv2, map[string]string{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	testhelp.Equal(t, "bad port", err.Error(), "config: MORPHD_PORT: not a number: 80a")
+
+	getenv3 := cmGetenv(map[string]string{"MORPHD_TOKEN": "x", "MORPHD_STALL_MINUTES": "soon"})
+	_, err = Load(getenv3, map[string]string{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	testhelp.Equal(t, "bad stall", err.Error(), "config: MORPHD_STALL_MINUTES: not a number: soon")
+}
+
+func TestConfigAndMainExample5(t *testing.T) {
+	f := &cmFake{}
+	known := func(p string) bool { return p == "demo" }
+	sessionTok := func(p string) (string, bool) { return "s", p == "demo" }
+	h := Build(f, known, sessionTok, "tok-7")
+
+	{
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "healthz code", rec.Code, 200)
+		testhelp.Equal(t, "healthz body", rec.Body.String(), `{"status":"ok"}`+"\n")
+	}
+
+	{
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/projects/demo/status", nil)
+		req.Header.Set("Authorization", "Bearer tok-7")
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "status code", rec.Code, 200)
+		want := `{"state":"busy","phase":"P18","minutes":37,"cost_usd":1.92,"five_hour":22,"seven_day":60,"session_id":"s-1","queue":{"state":"running","approved":"7b31dfe","index":1,"phases":3,"current":"P18","reason":""},"repo":{"checked":true,"reachable":true,"push":true,"reason":"","checked_at":"2026-10-08T15:00:00Z"}}` + "\n"
+		testhelp.Equal(t, "status body", rec.Body.String(), want)
+	}
+
+	{
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/mcp/demo", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+		req.Header.Set("Authorization", "Bearer tok-7")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "mcp code", rec.Code, 200)
+		var decoded struct {
+			Result struct {
+				Tools []struct {
+					Name string `json:"name"`
+				} `json:"tools"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+			t.Fatalf("decode mcp body: %v", err)
+		}
+		testhelp.Equal(t, "mcp tool count", len(decoded.Result.Tools), 10)
+		found := false
+		for _, tool := range decoded.Result.Tools {
+			if tool.Name == "status" {
+				found = true
+			}
+		}
+		testhelp.Equal(t, "mcp has status tool", found, true)
+	}
+
+	{
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/projects/demo/status", nil)
+		h.ServeHTTP(rec, req)
+		testhelp.Equal(t, "no auth code", rec.Code, 401)
+	}
+}
+
+// cmFake is the test's fake control.Control, answering Status for "demo" and
+// refusing every other project with ErrUnknownProject.
+type cmFake struct{}
+
+func (f *cmFake) Projects() []control.ProjectView { return nil }
+
+func (f *cmFake) CreateProject(ctx context.Context, name, language, repoURL string) (control.ProjectView, error) {
+	return control.ProjectView{}, nil
+}
+
+func (f *cmFake) Status(project string) (control.Status, error) {
+	if project != "demo" {
+		return control.Status{}, control.ErrUnknownProject
+	}
+	return control.Status{
+		State:     "busy",
+		Phase:     "P18",
+		Minutes:   37,
+		CostUSD:   1.92,
+		FiveHour:  22,
+		SevenDay:  60,
+		SessionID: "s-1",
+		Queue:     control.QueueView{State: "running", Approved: "7b31dfe", Index: 1, Phases: 3, Current: "P18"},
+		Repo:      github.Access{Checked: true, Reachable: true, Push: true, CheckedAt: time.Date(2026, 10, 8, 15, 0, 0, 0, time.UTC)},
+	}, nil
+}
+
+func (f *cmFake) Events(project string, since int64, max int) (control.Events, error) {
+	return control.Events{}, nil
+}
+
+func (f *cmFake) Order(project, text string) (session.OrderResult, error) {
+	return session.OrderResult{}, nil
+}
+
+func (f *cmFake) Pending(project string) (*control.Question, error) { return nil, nil }
+
+func (f *cmFake) Answer(project string, option int) error { return nil }
+
+func (f *cmFake) Interrupt(project string) error { return nil }
+
+func (f *cmFake) Usage(project string) (control.Usage, error) { return control.Usage{}, nil }
+
+func (f *cmFake) Restart(project string, force bool) error { return nil }
+
+func (f *cmFake) PlanLoad(project string, plan queue.Plan) (control.QueueView, error) {
+	return control.QueueView{}, nil
+}
+
+func (f *cmFake) Continue(project string) error { return nil }
+
+func (f *cmFake) StopCheck(project string) (*control.Stop, error) { return nil, nil }
+
+func (f *cmFake) PutGithubToken(ctx context.Context, project, token string) (control.TokenResult, error) {
+	return control.TokenResult{}, nil
+}
+
+func (f *cmFake) PhaseDone(project, sessionToken, phase, next string) error { return nil }
+
+func (f *cmFake) WaitOperator(project, sessionToken, kind, reason, issueURL string) error {
+	return nil
+}
+
+func (f *cmFake) Milestone(project, sessionToken string, m control.Milestone) error { return nil }
+```

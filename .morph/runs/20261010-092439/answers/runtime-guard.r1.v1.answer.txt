@@ -1,0 +1,209 @@
+```
+package supervisor
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"morphstudio/control"
+	"morphstudio/stream"
+)
+
+// Event records that the session process produced a line of output.
+func (l *Loop) Event(now time.Time) {
+	l.LastEventAt = now
+}
+
+// Exited reacts to a session process that died while the loop still wanted
+// it alive: a crash, whatever its code.
+func (l *Loop) Exited(code int, stderr string, now time.Time, cfg Config) []Action {
+	switch l.State {
+	case "running", "paused", "starting":
+	default:
+		return nil
+	}
+	line := firstStderrLine(stderr)
+	restarts := pruneRestarts(l.Restarts, now)
+	n := len(restarts)
+	if n < cfg.MaxResumesPerHour {
+		restarts = append(restarts, now)
+		l.Restarts = restarts
+		l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n + 1}
+		l.State = "starting"
+		numbers := fmt.Sprintf("restart %d of %d this hour", n+1, cfg.MaxResumesPerHour)
+		if line != "" {
+			numbers += " · " + line
+		}
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: fmt.Sprintf("%s: session exited (code %d), restarting", l.Phase, code),
+				Numbers:  numbers,
+			}},
+			{Kind: "start_check", Phase: l.Phase},
+		}
+	}
+	l.Restarts = restarts
+	l.LastExit = &control.Exit{Code: code, At: now, Stderr: line, Restarts: n}
+	reason := fmt.Sprintf("exited %d times within an hour (last code %d)", n+1, code)
+	if line != "" {
+		reason += ": " + line
+	}
+	l.State = "waiting"
+	l.Stop = &control.Stop{Kind: "crash", Phase: l.Phase, Reason: reason, At: now}
+	l.Queue.Stop("crash")
+	return []Action{
+		{Kind: "post", Milestone: control.Milestone{
+			Kind:     "stop",
+			Headline: l.Phase + ": session keeps exiting",
+			Numbers:  reason,
+		}},
+	}
+}
+
+// Turn folds one session result into the running spend and checks the
+// stretch cap.
+func (l *Loop) Turn(r stream.Result, now time.Time, cfg Config) []Action {
+	l.SessionUSD = r.TotalCostUSD
+	sum := l.StretchUSD + l.SessionUSD
+	if cfg.StretchUSD > 0 && sum >= cfg.StretchUSD && (l.State == "running" || l.State == "paused") {
+		reason := fmt.Sprintf("stretch cap $%.2f reached ($%.4f)", cfg.StretchUSD, sum)
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+		l.Queue.Stop("cap")
+		return []Action{
+			{Kind: "kill"},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "stop",
+				Headline: l.Phase + ": stretch cap",
+				Numbers:  reason,
+			}},
+		}
+	}
+	return nil
+}
+
+// Limits records the rate-limit windows and reacts to exhaustion and to the
+// weekly alert threshold.
+func (l *Loop) Limits(lim stream.Limits, now time.Time, cfg Config) []Action {
+	if l.State == "running" {
+		five := lim.FiveHour.Utilization >= 1
+		seven := lim.SevenDay.Utilization >= 1
+		if five || seven {
+			var reset int64
+			switch {
+			case five && seven:
+				reset = lim.FiveHour.ResetsAt
+				if lim.SevenDay.ResetsAt > reset {
+					reset = lim.SevenDay.ResetsAt
+				}
+			case five:
+				reset = lim.FiveHour.ResetsAt
+			default:
+				reset = lim.SevenDay.ResetsAt
+			}
+			l.State = "paused"
+			l.PausedUntil = time.Unix(reset, 0).UTC()
+			return []Action{
+				{Kind: "post", Milestone: control.Milestone{
+					Kind:     "watchdog",
+					Headline: l.Phase + ": usage limit, paused",
+					Numbers:  "until " + l.PausedUntil.Format(time.RFC3339),
+				}},
+			}
+		}
+	}
+	if cfg.UsageAlertPercent > 0 && !l.Alerted && lim.SevenDay.Utilization*100 >= float64(cfg.UsageAlertPercent) {
+		l.Alerted = true
+		pct := control.Percent(lim.SevenDay.Utilization)
+		resets := time.Unix(lim.SevenDay.ResetsAt, 0).UTC().Format(time.RFC3339)
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "info",
+				Headline: fmt.Sprintf("%s: weekly usage %d%%", l.Phase, pct),
+				Numbers:  "resets " + resets,
+			}},
+		}
+	}
+	return nil
+}
+
+// Tick drives the loop's own checks: resuming after a limit, the wall clock
+// cap and the stall nudge.
+func (l *Loop) Tick(now time.Time, cfg Config) []Action {
+	if l.State == "paused" && !now.Before(l.PausedUntil) {
+		l.State = "running"
+		l.LastEventAt = now
+		return []Action{
+			{Kind: "write", Line: "Continue by docs/AUTONOMY.md from where you stopped; the usage window has reset."},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": resumed after the limit",
+				Numbers:  "",
+			}},
+		}
+	}
+	if l.State != "running" {
+		return nil
+	}
+	caps := l.currentCaps()
+	if caps.Hours > 0 && now.Sub(l.PhaseStartedAt) >= time.Duration(caps.Hours*float64(time.Hour)) {
+		reason := "wall clock cap " + strconv.FormatFloat(caps.Hours, 'f', -1, 64) + " h reached"
+		l.State = "waiting"
+		l.Stop = &control.Stop{Kind: "cap", Phase: l.Phase, Reason: reason, At: now}
+		l.Queue.Stop("cap")
+		return []Action{
+			{Kind: "kill"},
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "stop",
+				Headline: l.Phase + ": wall clock cap",
+				Numbers:  reason,
+			}},
+		}
+	}
+	if cfg.StallMinutes > 0 && !l.Nudged && now.Sub(l.LastEventAt) >= time.Duration(cfg.StallMinutes)*time.Minute {
+		l.Nudged = true
+		mins := strconv.Itoa(cfg.StallMinutes)
+		return []Action{
+			{Kind: "post", Milestone: control.Milestone{
+				Kind:     "watchdog",
+				Headline: l.Phase + ": no events for " + mins + " min",
+				Numbers:  "one nudge sent",
+			}},
+			{Kind: "write", Line: "Nothing has happened for " + mins + " minutes. Check the state of your agents and the run branch, then continue by docs/AUTONOMY.md; post the current state first."},
+		}
+	}
+	return nil
+}
+
+// firstStderrLine returns the first non-blank line of stderr, trimmed and
+// cut to its first 200 runes, or "" when there is none.
+func firstStderrLine(stderr string) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" {
+			continue
+		}
+		runes := []rune(t)
+		if len(runes) > 200 {
+			runes = runes[:200]
+		}
+		return string(runes)
+	}
+	return ""
+}
+
+// pruneRestarts drops restarts older than an hour, returning nil when none
+// remain.
+func pruneRestarts(rs []time.Time, now time.Time) []time.Time {
+	var out []time.Time
+	for _, t := range rs {
+		if now.Sub(t) < time.Hour {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+```

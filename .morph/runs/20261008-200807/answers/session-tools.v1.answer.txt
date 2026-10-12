@@ -1,0 +1,104 @@
+```
+// Package mcpserver exposes the daemon's control surface as MCP tools.
+package mcpserver
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"morphstudio/control"
+)
+
+// MilestoneKinds lists the milestone kinds a session may report.
+var MilestoneKinds = []string{"start", "gate", "run", "fail", "merge", "smoke", "stop", "debt", "end", "info", "watchdog", "idle", "ask"}
+
+// waitKinds lists the wait_operator kinds a session may report.
+var waitKinds = []string{"smoke", "gate", "emergency", "no-next"}
+
+// phaseDoneInput is the input of phase_done.
+type phaseDoneInput struct {
+	Phase string `json:"phase" jsonschema:"the phase the session just finished"`
+	Next  string `json:"next,omitempty" jsonschema:"the phase that follows, empty for the last phase"`
+}
+
+// waitOperatorInput is the input of wait_operator.
+type waitOperatorInput struct {
+	Kind     string `json:"kind" jsonschema:"the kind of wait"`
+	Reason   string `json:"reason" jsonschema:"the reason the session stopped"`
+	IssueURL string `json:"issue_url,omitempty" jsonschema:"the issue URL to hand to the operator"`
+}
+
+// milestoneInput is the input of milestone.
+type milestoneInput struct {
+	Kind     string `json:"kind" jsonschema:"the milestone kind"`
+	Headline string `json:"headline" jsonschema:"the milestone headline"`
+	Numbers  string `json:"numbers,omitempty" jsonschema:"the milestone numbers"`
+}
+
+// badInputResult renders a bad input as the one text content of an error result.
+func badInputResult(text string) (*mcp.CallToolResult, any, error) {
+	return &mcp.CallToolResult{
+		IsError: true,
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+	}, nil, nil
+}
+
+// containsKind reports whether s is one of list.
+func containsKind(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// SessionServer builds the per-session MCP server a VPS session reports through.
+func SessionServer(c control.Control, project, token string) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: ServerName, Version: ServerVersion}, nil)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "phase_done",
+		Description: "Report that a phase finished and name the next one.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in phaseDoneInput) (*mcp.CallToolResult, any, error) {
+		if err := c.PhaseDone(project, token, in.Phase, in.Next); err != nil {
+			return errorResult(err)
+		}
+		return jsonResult(okView{OK: true})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "wait_operator",
+		Description: "Stop the walk and wait for the operator.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in waitOperatorInput) (*mcp.CallToolResult, any, error) {
+		if !containsKind(waitKinds, in.Kind) {
+			return badInputResult("bad_input: kind must be one of smoke, gate, emergency, no-next")
+		}
+		if err := c.WaitOperator(project, token, in.Kind, in.Reason, in.IssueURL); err != nil {
+			return errorResult(err)
+		}
+		return jsonResult(okView{OK: true})
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "milestone",
+		Description: "Report a milestone of the running session.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in milestoneInput) (*mcp.CallToolResult, any, error) {
+		if !containsKind(MilestoneKinds, in.Kind) {
+			return badInputResult(fmt.Sprintf("bad_input: unknown milestone kind %q", in.Kind))
+		}
+		if err := c.Milestone(project, token, control.Milestone{
+			Kind:     in.Kind,
+			Headline: in.Headline,
+			Numbers:  in.Numbers,
+		}); err != nil {
+			return errorResult(err)
+		}
+		return jsonResult(okView{OK: true})
+	})
+
+	return s
+}
+```

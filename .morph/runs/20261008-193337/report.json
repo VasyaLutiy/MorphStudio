@@ -1,0 +1,251 @@
+{
+  "runId": "20261008-193337",
+  "completedAt": 1791488630913,
+  "branch": "morph/20261008-193337",
+  "processor": "ds",
+  "generations": 3,
+  "outcomes": [
+    {
+      "customId": "http-handlers",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "http-handlers.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "1a0403f3ee0363b6df217c940f6a8e797f059a42",
+      "diffstat": {
+        "files": 1,
+        "insertions": 288,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-loop",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-loop.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "7ee46b132bf0123f56d48453fd7779ef653c0420",
+      "diffstat": {
+        "files": 1,
+        "insertions": 261,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "http-handlers-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "http-handlers-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard api/handlers_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "3fb76b139b278eee3feea9d17032c7216fae068d",
+      "diffstat": {
+        "files": 1,
+        "insertions": 416,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "phase-loop-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "phase-loop-judge.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/loop_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "126e51c271d6937cd3a5c5851841bd8298b83578",
+      "diffstat": {
+        "files": 1,
+        "insertions": 328,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "router",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "router.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== net\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "df87ba468f1d44cd12211dd1ab2a0b20cf974564",
+      "diffstat": {
+        "files": 1,
+        "insertions": 71,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "runtime-guard",
+      "status": "written",
+      "reason": null,
+      "attempts": 1,
+      "winningVariant": "runtime-guard.v1",
+      "acceptanceLog": "== build\n== vet\n== gofmt\n== guard\n== probe\n== imports\n== clock\n== full\n== frozen\n",
+      "earlierFailures": [],
+      "commit": "83230b624067c2eb3bc60a9cfaee430bb1462321",
+      "diffstat": {
+        "files": 1,
+        "insertions": 150,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "router-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "router-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard api/router_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard api/router_examples_test.go\nguard: api/router_examples_test.go does not mention the example literal \"405\"\n"
+      ],
+      "commit": "f952ce448ae3f12f0fc7b28a648c10e71bafd1c8",
+      "diffstat": {
+        "files": 1,
+        "insertions": 292,
+        "deletions": 0
+      }
+    },
+    {
+      "customId": "runtime-guard-judge",
+      "status": "written",
+      "reason": null,
+      "attempts": 2,
+      "winningVariant": "runtime-guard-judge.r1.v1",
+      "acceptanceLog": "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n== frozen\n",
+      "earlierFailures": [
+        "== vet\n== gofmt\n== guard supervisor/guard_examples_test.go\n== own\n== full\n== frozen\nfiles left in the tree: .morph-map.json.swp\n"
+      ],
+      "commit": "51b350ea6ae62ec250fb7561a87ba76ccf816955",
+      "diffstat": {
+        "files": 1,
+        "insertions": 269,
+        "deletions": 0
+      }
+    }
+  ],
+  "usageTotals": {
+    "inputTokens": 104160,
+    "outputTokens": 112727,
+    "cost": 0.08173956,
+    "requests": 10
+  },
+  "requests": [
+    {
+      "customId": "http-handlers.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488017-9CEoTaQANuBS2GzJOMqd",
+      "inputTokens": 5943,
+      "outputTokens": 6257,
+      "cost": 0.00464565,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488017-xskGilc0nlPEycOKDNRK",
+      "inputTokens": 9127,
+      "outputTokens": 16619,
+      "cost": 0.01134045,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "http-handlers-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488187-LA70aoaKqcviBGWv8OEU",
+      "inputTokens": 10360,
+      "outputTokens": 20121,
+      "cost": 0.01321188,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "phase-loop-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488187-l20DfDJSlrFIUOlgWscz",
+      "inputTokens": 10131,
+      "outputTokens": 13325,
+      "cost": 0.00923817,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "router.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488187-Hk0xJAjEEW8Wv3j3aZJw",
+      "inputTokens": 5694,
+      "outputTokens": 1968,
+      "cost": 0.0020349,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488205-Fe8CHMjz0ZqLAo05J81V",
+      "inputTokens": 9748,
+      "outputTokens": 7261,
+      "cost": 0.00568056,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "router-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488377-OUzza3ZuwYubFeOASszj",
+      "inputTokens": 6506,
+      "outputTokens": 14244,
+      "cost": 0.0095223,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard-judge.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488377-skvKNOST4zXelJFbUNmP",
+      "inputTokens": 14791,
+      "outputTokens": 18220,
+      "cost": 0.01315065,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "router-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488545-2RbzTavIr8kwicd7ZS6q",
+      "inputTokens": 11593,
+      "outputTokens": 6661,
+      "cost": 0.00559731,
+      "finishReason": "stop",
+      "error": null
+    },
+    {
+      "customId": "runtime-guard-judge.r1.v1",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "Alibaba",
+      "generationId": "gen-1791488545-14BbluBRvwggPVeeeyvM",
+      "inputTokens": 20267,
+      "outputTokens": 8051,
+      "cost": 0.00731769,
+      "finishReason": "stop",
+      "error": null
+    }
+  ]
+}

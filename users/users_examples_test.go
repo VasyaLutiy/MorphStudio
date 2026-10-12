@@ -1,0 +1,207 @@
+package users
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+)
+
+// urBob is the bob user of example 2, created at 2026-10-12T10:00:00Z.
+func urBob() User {
+	return User{
+		Name:      "bob",
+		LinuxUser: "bob-ux",
+		ChatID:    42,
+		TokenHash: "a0a996e6da7d3784ee7348bee3e43d60f64b72a3ea18196d9f0fbc99a40a8dbd",
+		CreatedAt: time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC),
+	}
+}
+
+// urAlice is the alice user of example 2, created at 2026-10-12T10:01:00Z.
+func urAlice() User {
+	return User{
+		Name:      "alice",
+		LinuxUser: "alice-ux",
+		ChatID:    7,
+		TokenHash: "61fdf299956e0522e0a49b4ae572f446b7f811dd73234bc6ddc67aac81d9dcf2",
+		CreatedAt: time.Date(2026, 10, 12, 10, 1, 0, 0, time.UTC),
+	}
+}
+
+// urSeed opens a fresh registry at base and fills it with bob then alice, leaving
+// base/users.json holding exactly the state of example 2.
+func urSeed(t testing.TB, base string) *Users {
+	t.Helper()
+	reg, err := Open(base, "")
+	if err != nil {
+		t.Fatalf("Open(%q): %v", base, err)
+	}
+	if reg == nil {
+		t.Fatal("Open returned a nil *Users")
+	}
+	if err := reg.Add(urBob()); err != nil {
+		t.Fatalf("Add bob: %v", err)
+	}
+	if err := reg.Add(urAlice()); err != nil {
+		t.Fatalf("Add alice: %v", err)
+	}
+	return reg
+}
+
+func TestUserRegistryExample1(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "ustate")
+
+	reg, err := Open(base, "")
+	testhelp.Equal(t, "Open error", err, nil)
+	if reg == nil {
+		t.Fatal("Open returned a nil *Users")
+	}
+
+	testhelp.Equal(t, "List", reg.List(), []User{})
+
+	got, err := reg.Get("alice")
+	testhelp.Equal(t, "Get alice user", got, User{})
+	testhelp.Equal(t, "Get alice error", err, ErrNotFound)
+
+	testhelp.Equal(t, "Base", reg.Base(), base)
+
+	fi, err := os.Stat(base)
+	if err != nil {
+		t.Fatalf("Stat base: %v", err)
+	}
+	testhelp.Equal(t, "base mode", fi.Mode()&0o777, os.FileMode(0o700))
+}
+
+func TestUserRegistryExample2(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "ustate")
+
+	reg, err := Open(base, "")
+	testhelp.Equal(t, "Open error", err, nil)
+	if reg == nil {
+		t.Fatal("Open returned a nil *Users")
+	}
+
+	testhelp.Equal(t, "Add bob error", reg.Add(urBob()), nil)
+	testhelp.Equal(t, "Add alice error", reg.Add(urAlice()), nil)
+
+	list := reg.List()
+	names := make([]string, 0, len(list))
+	for _, u := range list {
+		names = append(names, u.Name)
+	}
+	testhelp.Equal(t, "List names", names, []string{"alice", "bob"})
+
+	data, err := os.ReadFile(filepath.Join(base, "users.json"))
+	if err != nil {
+		t.Fatalf("ReadFile users.json: %v", err)
+	}
+	var decoded []User
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal users.json: %v", err)
+	}
+	testhelp.Equal(t, "decoded users.json", decoded, list)
+
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		t.Fatalf("ReadDir base: %v", err)
+	}
+	fileNames := make([]string, 0, len(entries))
+	for _, e := range entries {
+		fileNames = append(fileNames, e.Name())
+	}
+	testhelp.Equal(t, "base entries", fileNames, []string{"users.json"})
+}
+
+func TestUserRegistryExample3(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "ustate")
+	reg := urSeed(t, base)
+
+	testhelp.Equal(t, "Add alice again",
+		reg.Add(User{Name: "alice", LinuxUser: "x", ChatID: 9, TokenHash: "h2"}), ErrExists)
+	testhelp.Equal(t, "Add carol",
+		reg.Add(User{Name: "carol", LinuxUser: "c", ChatID: 42, TokenHash: "h3"}), ErrChatTaken)
+	testhelp.Equal(t, "Add Carol",
+		reg.Add(User{Name: "Carol"}), ErrBadName)
+	testhelp.Equal(t, "Add 41 a's",
+		reg.Add(User{Name: strings.Repeat("a", 41)}), ErrBadName)
+
+	testhelp.Equal(t, "List", reg.List(), []User{urAlice(), urBob()})
+}
+
+func TestUserRegistryExample4(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "ustate")
+	first := urSeed(t, base)
+	want := first.List()
+
+	reopened, err := Open(base, "admin-op-9")
+	testhelp.Equal(t, "Open error", err, nil)
+	if reopened == nil {
+		t.Fatal("Open returned a nil *Users")
+	}
+
+	testhelp.Equal(t, "List", reopened.List(), want)
+
+	got, err := reopened.Get("bob")
+	testhelp.Equal(t, "Get bob user", got, urBob())
+	testhelp.Equal(t, "Get bob error", err, nil)
+}
+
+func TestUserRegistryExample5(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "ustate")
+	reg := urSeed(t, base)
+
+	secret := filepath.Join(base, "bob", "anthropic-key")
+	if err := os.MkdirAll(filepath.Dir(secret), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(secret, []byte("sk-secret"), 0o600); err != nil {
+		t.Fatalf("WriteFile secret: %v", err)
+	}
+
+	testhelp.Equal(t, "Delete bob error", reg.Delete("bob"), nil)
+
+	got, err := reg.Get("bob")
+	testhelp.Equal(t, "Get bob user", got, User{})
+	testhelp.Equal(t, "Get bob error", err, ErrNotFound)
+
+	_, err = os.Stat(filepath.Join(base, "bob"))
+	testhelp.Equal(t, "base/bob removed", os.IsNotExist(err), true)
+
+	testhelp.Equal(t, "List", reg.List(), []User{urAlice()})
+
+	testhelp.Equal(t, "Delete nope", reg.Delete("nope"), ErrNotFound)
+}
+
+func TestUserRegistryExample6(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "ustate")
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "users.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("WriteFile users.json: %v", err)
+	}
+
+	reg, err := Open(base, "x")
+	testhelp.Equal(t, "registry", reg, (*Users)(nil))
+	if err == nil {
+		t.Fatal("Open succeeded; want an error")
+	}
+	testhelp.Equal(t, "error prefix", strings.HasPrefix(err.Error(), "users: read "), true)
+}
+
+func TestUserRegistryExample7(t *testing.T) {
+	testhelp.Equal(t, "bob CreatedAt", urBob().CreatedAt.Format(time.RFC3339), "2026-10-12T10:00:00Z")
+	testhelp.Equal(t, "alice CreatedAt", urAlice().CreatedAt.Format(time.RFC3339), "2026-10-12T10:01:00Z")
+
+	testhelp.Equal(t, "ErrNotFound", ErrNotFound.Error(), "user not found")
+	testhelp.Equal(t, "ErrExists", ErrExists.Error(), "user exists")
+	testhelp.Equal(t, "ErrBadName", ErrBadName.Error(), "bad user name")
+	testhelp.Equal(t, "ErrChatTaken", ErrChatTaken.Error(), "chat already has a user")
+
+	testhelp.Equal(t, "ChatID int64", urBob().ChatID, int64(42))
+}

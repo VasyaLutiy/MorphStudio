@@ -1,20 +1,17 @@
 package users
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
 
 var (
-	ErrNotFound  = errStub("user not found")
-	ErrExists    = errStub("user exists")
-	ErrBadName   = errStub("bad user name")
-	ErrChatTaken = errStub("chat already has a user")
+	ErrNotFound  = errors.New("user not found")
+	ErrExists    = errors.New("user exists")
+	ErrBadName   = errors.New("bad user name")
+	ErrChatTaken = errors.New("chat already has a user")
 )
-
-type errStub string
-
-func (e errStub) Error() string { return string(e) }
 
 type User struct {
 	Name      string    `json:"name"`

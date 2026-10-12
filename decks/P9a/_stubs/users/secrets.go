@@ -1,8 +1,10 @@
 package users
 
+import "errors"
+
 var (
-	ErrNoSecret    = errStub("no secret")
-	ErrEmptySecret = errStub("empty secret")
+	ErrNoSecret    = errors.New("no secret")
+	ErrEmptySecret = errors.New("empty secret")
 )
 
 var SecretKinds = []string{"anthropic-key", "github-token"}

@@ -1,0 +1,264 @@
+package users
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+)
+
+// urOpen opens the store at base with no admin token, reports the error with
+// testhelp.Equal, and fails when Open returned no store.
+func urOpen(t *testing.T, base string) *Store {
+	t.Helper()
+	s, err := Open(base, "")
+	testhelp.Equal(t, "Open error", err, nil)
+	if s == nil {
+		t.Fatal("Open returned a nil store")
+	}
+	return s
+}
+
+// urAdd adds u with token and reports the error with testhelp.Equal.
+func urAdd(t *testing.T, s *Store, u User, token string) {
+	t.Helper()
+	testhelp.Equal(t, "Add error", s.Add(u, token), nil)
+}
+
+// urNames returns the names of us in order.
+func urNames(us []User) []string {
+	names := make([]string, len(us))
+	for i, u := range us {
+		names[i] = u.Name
+	}
+	return names
+}
+
+// urEntries returns the entry names of dir; os.ReadDir already sorts them.
+func urEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	testhelp.Equal(t, "ReadDir error", err, nil)
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.Name()
+	}
+	return names
+}
+
+// urWriteUsersFile writes text to base/users.json, creating base when missing.
+func urWriteUsersFile(t *testing.T, base, text string) {
+	t.Helper()
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "users.json"), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// urWriteUsers writes text to base/users.json and returns the users decoded
+// from it.
+func urWriteUsers(t *testing.T, base, text string) []User {
+	t.Helper()
+	urWriteUsersFile(t, base, text)
+	var us []User
+	if err := json.Unmarshal([]byte(text), &us); err != nil {
+		t.Fatal(err)
+	}
+	return us
+}
+
+func TestUserRegistryExample1(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "users")
+
+	s, err := Open(base, "")
+	testhelp.Equal(t, "Open error", err, nil)
+	if s == nil {
+		t.Fatal("Open returned a nil store")
+	}
+
+	info, err := os.Stat(base)
+	testhelp.Equal(t, "Stat error", err, nil)
+	if info != nil {
+		testhelp.Equal(t, "base mode", info.Mode()&0o777, os.FileMode(0o700))
+	}
+
+	testhelp.Equal(t, "List", s.List(), []User{})
+
+	got, err := s.Get("ada")
+	testhelp.Equal(t, "Get ada error", err, ErrNotFound)
+	testhelp.Equal(t, "Get ada user", got, User{})
+
+	testhelp.Equal(t, "Base", s.Base(), base)
+}
+
+func TestUserRegistryExample2(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "users")
+	s := urOpen(t, base)
+
+	testhelp.Equal(t, "Add ada error", s.Add(User{
+		Name:      "ada",
+		LinuxUser: "mu-ada",
+		ChatID:    111,
+		TokenHash: "given",
+		CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+	}, "tok-ada"), nil)
+	testhelp.Equal(t, "Add zoe error", s.Add(User{
+		Name:      "zoe",
+		LinuxUser: "mu-zoe",
+		ChatID:    999,
+		CreatedAt: time.Date(2026, 10, 11, 9, 1, 0, 0, time.UTC),
+	}, "tok-zoe"), nil)
+
+	got := s.List()
+	if testhelp.Equal(t, "List names", urNames(got), []string{"ada", "zoe"}) {
+		testhelp.Equal(t, "List ada token hash", got[0].TokenHash, "92ba63901405cdae3c83bde1abe474f1d6d4124de3c42b6d25090ab18eaab9cd")
+		testhelp.Equal(t, "List zoe token hash", got[1].TokenHash, "501ce40fcde8d3659605c9f745cc9dd6de0a503f13c47579da118d9c71da5ea7")
+	}
+
+	data, err := os.ReadFile(filepath.Join(base, "users.json"))
+	testhelp.Equal(t, "ReadFile error", err, nil)
+
+	var decoded []User
+	testhelp.Equal(t, "Unmarshal error", json.Unmarshal(data, &decoded), nil)
+	testhelp.Equal(t, "decoded users.json", decoded, got)
+
+	testhelp.Equal(t, "base entries", urEntries(t, base), []string{"users.json"})
+}
+
+func TestUserRegistryExample3(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "users")
+	s := urOpen(t, base)
+	urAdd(t, s, User{
+		Name:      "ada",
+		LinuxUser: "mu-ada",
+		ChatID:    111,
+		CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+	}, "tok-ada")
+	urAdd(t, s, User{
+		Name:      "zoe",
+		LinuxUser: "mu-zoe",
+		ChatID:    999,
+		CreatedAt: time.Date(2026, 10, 11, 9, 1, 0, 0, time.UTC),
+	}, "tok-zoe")
+
+	testhelp.Equal(t, "Add existing ada", s.Add(User{Name: "ada"}, "t"), ErrExists)
+	testhelp.Equal(t, "Add Ada", s.Add(User{Name: "Ada"}, "t"), ErrBadName)
+	testhelp.Equal(t, "Add -x", s.Add(User{Name: "-x"}, "t"), ErrBadName)
+	testhelp.Equal(t, "Add 41 a's", s.Add(User{Name: strings.Repeat("a", 41)}, "t"), ErrBadName)
+	testhelp.Equal(t, "Add ok-user empty token", s.Add(User{Name: "ok-user"}, ""), ErrEmptyToken)
+
+	testhelp.Equal(t, "List names", urNames(s.List()), []string{"ada", "zoe"})
+}
+
+func TestUserRegistryExample4(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "users")
+	first := urOpen(t, base)
+	urAdd(t, first, User{
+		Name:      "ada",
+		LinuxUser: "mu-ada",
+		ChatID:    111,
+		CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+	}, "tok-ada")
+	urAdd(t, first, User{
+		Name:      "zoe",
+		LinuxUser: "mu-zoe",
+		ChatID:    999,
+		CreatedAt: time.Date(2026, 10, 11, 9, 1, 0, 0, time.UTC),
+	}, "tok-zoe")
+
+	second, err := Open(base, "")
+	testhelp.Equal(t, "Open error", err, nil)
+	if second == nil {
+		t.Fatal("Open returned a nil store")
+	}
+
+	testhelp.Equal(t, "List", second.List(), first.List())
+
+	got, err := second.Get("zoe")
+	testhelp.Equal(t, "Get zoe error", err, nil)
+	testhelp.Equal(t, "Get zoe", got, User{
+		Name:      "zoe",
+		LinuxUser: "mu-zoe",
+		ChatID:    999,
+		TokenHash: "501ce40fcde8d3659605c9f745cc9dd6de0a503f13c47579da118d9c71da5ea7",
+		CreatedAt: time.Date(2026, 10, 11, 9, 1, 0, 0, time.UTC),
+	})
+}
+
+func TestUserRegistryExample5(t *testing.T) {
+	text, err := os.ReadFile("../tests/fixtures/users/users-3.json")
+	testhelp.Equal(t, "ReadFile fixture error", err, nil)
+
+	base := filepath.Join(t.TempDir(), "users")
+	want := urWriteUsers(t, base, string(text))
+
+	s := urOpen(t, base)
+	got := s.List()
+	testhelp.Equal(t, "List names", urNames(got), []string{"ada", "mid", "zoe"})
+	testhelp.Equal(t, "List", got, want)
+
+	mid, err := s.Get("mid")
+	testhelp.Equal(t, "Get mid error", err, nil)
+	testhelp.Equal(t, "Get mid", mid, User{
+		Name:      "mid",
+		LinuxUser: "mu-mid",
+		ChatID:    555,
+		TokenHash: "73e7b18a59cc7b6e1ac782816c55896f5b6660cda36d65b5911111c0791b690f",
+		CreatedAt: time.Date(2026, 10, 11, 9, 2, 0, 0, time.UTC),
+	})
+}
+
+func TestUserRegistryExample6(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "users")
+	urWriteUsersFile(t, base, "{not json")
+
+	s, err := Open(base, "")
+	testhelp.Equal(t, "Open store", s, (*Store)(nil))
+
+	if err == nil {
+		t.Fatalf("Open error: got nil, want an error beginning %q", "users: read ")
+	}
+	if got := err.Error(); !strings.HasPrefix(got, "users: read ") {
+		t.Errorf("Open error:\ngot:  %q\nwant: an error beginning %q", got, "users: read ")
+	}
+}
+
+func TestUserRegistryExample7(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "users")
+	s := urOpen(t, base)
+	urAdd(t, s, User{
+		Name:      "ada",
+		LinuxUser: "mu-ada",
+		ChatID:    111,
+		CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+	}, "tok-ada")
+
+	us := s.List()
+	if testhelp.Equal(t, "List length", len(us), 1) {
+		us[0].Name = "changed"
+	}
+	_ = append(us, User{Name: "extra"})
+
+	g, err := s.Get("ada")
+	testhelp.Equal(t, "Get ada error", err, nil)
+	g.Name = "changed"
+
+	want := User{
+		Name:      "ada",
+		LinuxUser: "mu-ada",
+		ChatID:    111,
+		TokenHash: "92ba63901405cdae3c83bde1abe474f1d6d4124de3c42b6d25090ab18eaab9cd",
+		CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+	}
+	testhelp.Equal(t, "List", s.List(), []User{want})
+
+	got, err := s.Get("ada")
+	testhelp.Equal(t, "Get ada error", err, nil)
+	testhelp.Equal(t, "Get ada", got, want)
+}

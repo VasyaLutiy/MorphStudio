@@ -1,0 +1,42 @@
+package users
+
+import (
+	"crypto/subtle"
+)
+
+// Caller identifies who a bearer token belongs to: a user, or the operator's
+// admin token, which sees every project.
+type Caller struct {
+	User  string
+	Admin bool
+}
+
+// Sees reports whether the caller may see a project owned by owner. The admin
+// sees every project; a user sees only their own. A project with an empty
+// owner belongs to the operator and is visible only to the admin.
+func (c Caller) Sees(owner string) bool {
+	if c.Admin {
+		return true
+	}
+	return c.User != "" && owner == c.User
+}
+
+// Lookup resolves bearer to a caller by comparing only SHA-256 hashes, in
+// constant time. It holds r.mu for the duration.
+func (r *Registry) Lookup(adminToken, bearer string) (Caller, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if bearer == "" {
+		return Caller{}, false
+	}
+	h := HashToken(bearer)
+	if adminToken != "" && subtle.ConstantTimeCompare([]byte(h), []byte(HashToken(adminToken))) == 1 {
+		return Caller{Admin: true}, true
+	}
+	for _, u := range r.users {
+		if u.TokenHash != "" && subtle.ConstantTimeCompare([]byte(h), []byte(u.TokenHash)) == 1 {
+			return Caller{User: u.Name}, true
+		}
+	}
+	return Caller{}, false
+}

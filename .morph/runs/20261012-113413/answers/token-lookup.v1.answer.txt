@@ -1,0 +1,45 @@
+```
+// Package users implements the user registry that backs the per-user HTTP
+// and MCP bearer tokens.
+package users
+
+import "crypto/subtle"
+
+// Lookup returns the user owning token. An empty token yields (User{}, false),
+// as does a token matching no stored user. The token is hashed with hashToken
+// and its lowercase hex SHA-256 is compared with crypto/subtle's
+// ConstantTimeCompare against the TokenHash of every stored user, in Name
+// order. A match yields a copy of that user and true; the returned user never
+// aliases the store.
+func (s *Store) Lookup(token string) (User, bool) {
+	if token == "" {
+		return User{}, false
+	}
+	sum := hashToken(token)
+	var (
+		found User
+		ok    bool
+	)
+	for _, u := range s.sorted() {
+		if subtle.ConstantTimeCompare([]byte(sum), []byte(u.TokenHash)) == 1 && !ok {
+			found = u
+			ok = true
+		}
+	}
+	if !ok {
+		return User{}, false
+	}
+	return found, true
+}
+
+// IsAdminToken reports whether token is the operator's admin token given to
+// Open. A store opened with an empty admin token has no admin, so it always
+// reports false. The comparison is a constant-time compare of the lowercase
+// hex SHA-256 of token against the stored admin hash.
+func (s *Store) IsAdminToken(token string) bool {
+	if s.adminTokenHash == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(hashToken(token)), []byte(s.adminTokenHash)) == 1
+}
+```

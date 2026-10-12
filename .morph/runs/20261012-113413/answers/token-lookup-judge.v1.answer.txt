@@ -1,0 +1,94 @@
+```
+package users
+
+import (
+	"path/filepath"
+	"testing"
+	"time"
+
+	"morphstudio/internal/testhelp"
+)
+
+// tlAda is the ada user of the examples.
+func tlAda() User {
+	return User{Name: "ada", LinuxUser: "mu-ada", ChatID: 111, CreatedAt: time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)}
+}
+
+// tlZoe is the zoe user of the examples.
+func tlZoe() User {
+	return User{Name: "zoe", LinuxUser: "mu-zoe", ChatID: 999, CreatedAt: time.Date(2026, 10, 11, 9, 1, 0, 0, time.UTC)}
+}
+
+// tlAdd stores the two example users under their example tokens.
+func tlAdd(t *testing.T, s *Store) {
+	t.Helper()
+	if err := s.Add(tlAda(), "tok-ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Add(tlZoe(), "tok-zoe"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// tlStore opens the example store with the admin token "admin-0" and fills it.
+func tlStore(t *testing.T) *Store {
+	t.Helper()
+	s, err := Open(filepath.Join(t.TempDir(), "users"), "admin-0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlAdd(t, s)
+	return s
+}
+
+func TestTokenLookupExample1(t *testing.T) {
+	s := tlStore(t)
+
+	got, ok := s.Lookup("tok-ada")
+	testhelp.Equal(t, "Lookup(tok-ada) user", got, tlAda())
+	testhelp.Equal(t, "Lookup(tok-ada) ok", ok, true)
+
+	got, ok = s.Lookup("tok-zoe")
+	testhelp.Equal(t, "Lookup(tok-zoe) user", got, tlZoe())
+	testhelp.Equal(t, "Lookup(tok-zoe) ok", ok, true)
+
+	got, ok = s.Lookup("tok-mid")
+	testhelp.Equal(t, "Lookup(tok-mid) user", got, User{})
+	testhelp.Equal(t, "Lookup(tok-mid) ok", ok, false)
+}
+
+func TestTokenLookupExample2(t *testing.T) {
+	s := tlStore(t)
+
+	testhelp.Equal(t, "IsAdminToken(admin-0)", s.IsAdminToken("admin-0"), true)
+	testhelp.Equal(t, "IsAdminToken(tok-ada)", s.IsAdminToken("tok-ada"), false)
+	testhelp.Equal(t, "IsAdminToken()", s.IsAdminToken(""), false)
+
+	got, ok := s.Lookup("admin-0")
+	testhelp.Equal(t, "Lookup(admin-0) user", got, User{})
+	testhelp.Equal(t, "Lookup(admin-0) ok", ok, false)
+}
+
+func TestTokenLookupExample3(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "users"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlAdd(t, s)
+
+	testhelp.Equal(t, "IsAdminToken(admin-0)", s.IsAdminToken("admin-0"), false)
+	testhelp.Equal(t, "IsAdminToken()", s.IsAdminToken(""), false)
+}
+
+func TestTokenLookupExample4(t *testing.T) {
+	s := tlStore(t)
+
+	u, ok := s.Lookup("tok-ada")
+	testhelp.Equal(t, "Lookup(tok-ada) ok", ok, true)
+	u.Name = "changed"
+
+	got, ok := s.Lookup("tok-ada")
+	testhelp.Equal(t, "Lookup(tok-ada) user", got, tlAda())
+	testhelp.Equal(t, "Lookup(tok-ada) ok", ok, true)
+}
+```

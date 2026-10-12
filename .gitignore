@@ -2,3 +2,6 @@ probe/
 *.env
 /tmp/
 /morphd
+.morph/*
+!.morph/runs/
+.morph/runs/*/requests/

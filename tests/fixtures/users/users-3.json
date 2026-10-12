@@ -1,0 +1,23 @@
+[
+  {
+    "name": "ada",
+    "linux_user": "mu-ada",
+    "chat_id": 111,
+    "token_hash": "92ba63901405cdae3c83bde1abe474f1d6d4124de3c42b6d25090ab18eaab9cd",
+    "created_at": "2026-10-11T09:00:00Z"
+  },
+  {
+    "name": "mid",
+    "linux_user": "mu-mid",
+    "chat_id": 555,
+    "token_hash": "73e7b18a59cc7b6e1ac782816c55896f5b6660cda36d65b5911111c0791b690f",
+    "created_at": "2026-10-11T09:02:00Z"
+  },
+  {
+    "name": "zoe",
+    "linux_user": "mu-zoe",
+    "chat_id": 999,
+    "token_hash": "501ce40fcde8d3659605c9f745cc9dd6de0a503f13c47579da118d9c71da5ea7",
+    "created_at": "2026-10-11T09:03:00Z"
+  }
+]

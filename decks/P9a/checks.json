@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "phase": "P9a",
+  "parts": "decks/P9a/parts",
+  "frozen": [
+    "contour.yaml",
+    "morph-map.json",
+    "docs",
+    "decks",
+    "tests/fixtures",
+    "go.mod",
+    "go.sum",
+    "internal",
+    "vendor",
+    "stream",
+    "runner",
+    "queue",
+    "session",
+    "eventlog",
+    "telegram",
+    "claude",
+    "github",
+    "bootstrap",
+    "gitrules",
+    "control",
+    "supervisor",
+    "daemon",
+    "api",
+    "mcpserver",
+    "cmd",
+    "registry/secrets.go",
+    "registry/secrets_examples_test.go"
+  ],
+  "cards": [
+    {
+      "id": "user-registry",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./users) || exit 1; for i in $I; do case $i in crypto/sha256|crypto/subtle|encoding/hex|encoding/json|errors|fmt|os|path/filepath|regexp|sort|strings|time) ;; *) echo \"imports: package users imports $i (allowed: crypto/sha256, crypto/subtle, encoding/hex, encoding/json, errors, fmt, os, path/filepath, regexp, sort, strings, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' users/registry.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' users/registry.go 2>&1); [ -z \"$C\" ] || { echo \"clock: users/registry.go reads time.Now or time.Since (the clock is the caller's CreatedAt)\"; exit 1; }\n"
+    },
+    {
+      "id": "user-secrets",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./users) || exit 1; for i in $I; do case $i in crypto/sha256|crypto/subtle|encoding/hex|encoding/json|errors|fmt|os|path/filepath|regexp|sort|strings|time) ;; *) echo \"imports: package users imports $i (allowed: crypto/sha256, crypto/subtle, encoding/hex, encoding/json, errors, fmt, os, path/filepath, regexp, sort, strings, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' users/secrets.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' users/secrets.go 2>&1); [ -z \"$C\" ] || { echo \"clock: users/secrets.go reads time.Now or time.Since\"; exit 1; }\n"
+    },
+    {
+      "id": "token-lookup",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./users) || exit 1; for i in $I; do case $i in crypto/sha256|crypto/subtle|encoding/hex|encoding/json|errors|fmt|os|path/filepath|regexp|sort|strings|time) ;; *) echo \"imports: package users imports $i (allowed: crypto/sha256, crypto/subtle, encoding/hex, encoding/json, errors, fmt, os, path/filepath, regexp, sort, strings, time)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' users/token.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' users/token.go 2>&1); [ -z \"$C\" ] || { echo \"clock: users/token.go reads time.Now or time.Since\"; exit 1; }\n"
+    },
+    {
+      "id": "project-registry",
+      "extra": "echo '== imports'; I=$(go list -e -overlay $P/overlay.json -f '{{join .Imports \" \"}}' ./registry) || exit 1; for i in $I; do case $i in encoding/json|errors|fmt|os|path/filepath|regexp|slices|sort|strings|sync|time|morphstudio/queue) ;; *) echo \"imports: package registry imports $i (allowed: encoding/json, errors, fmt, os, path/filepath, regexp, slices, sort, strings, sync, time, morphstudio/queue)\"; exit 1;; esac; done\necho '== clock'; C=$(gofmt -l -r 'time.Now -> time.Time' registry/registry.go 2>&1)$(gofmt -l -r 'time.Since -> time.Time' registry/registry.go 2>&1); [ -z \"$C\" ] || { echo \"clock: registry/registry.go reads time.Now or time.Since (the clock is the now argument)\"; exit 1; }\n"
+    },
+    {
+      "id": "user-registry-judge",
+      "files": [
+        {
+          "file": "users/registry_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestUserRegistryExample1",
+            "TestUserRegistryExample2",
+            "TestUserRegistryExample3",
+            "TestUserRegistryExample4",
+            "TestUserRegistryExample5",
+            "TestUserRegistryExample6",
+            "TestUserRegistryExample7",
+            "users.json",
+            "users/users-3.json",
+            "mu-ada",
+            "mu-zoe",
+            "mu-mid",
+            "92ba63901405cdae3c83bde1abe474f1d6d4124de3c42b6d25090ab18eaab9cd",
+            "501ce40fcde8d3659605c9f745cc9dd6de0a503f13c47579da118d9c71da5ea7",
+            "73e7b18a59cc7b6e1ac782816c55896f5b6660cda36d65b5911111c0791b690f",
+            "users: read ",
+            "{not json",
+            "ErrNotFound",
+            "ErrExists",
+            "ErrBadName",
+            "ErrEmptyToken",
+            "changed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "user-secrets-judge",
+      "files": [
+        {
+          "file": "users/secrets_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": true,
+          "lits": [
+            "TestUserSecretsExample1",
+            "TestUserSecretsExample2",
+            "TestUserSecretsExample3",
+            "TestUserSecretsExample4",
+            "TestUserSecretsExample5",
+            "TestUserSecretsExample6",
+            "TestUserSecretsExample7",
+            "ada",
+            "sk-ant-xyz1",
+            "sk-ant-new",
+            "ghp_abc",
+            "anthropic-key",
+            "github-token",
+            "users: unknown secret kind ",
+            "password",
+            "sk-very-secret-2",
+            "ghp-very-secret-2",
+            "tok-9",
+            "nope",
+            "ErrNoSecret",
+            "ErrEmptySecret",
+            "ErrNotFound",
+            "Chmod"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "token-lookup-judge",
+      "files": [
+        {
+          "file": "users/token_examples_test.go",
+          "min": 4,
+          "max": 10,
+          "new": true,
+          "lits": [
+            "TestTokenLookupExample1",
+            "TestTokenLookupExample2",
+            "TestTokenLookupExample3",
+            "TestTokenLookupExample4",
+            "admin-0",
+            "tok-ada",
+            "tok-zoe",
+            "tok-mid",
+            "changed"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project-registry-judge",
+      "files": [
+        {
+          "file": "registry/registry_examples_test.go",
+          "min": 7,
+          "max": 13,
+          "new": false,
+          "lits": [
+            "TestProjectRegistryExample1",
+            "TestProjectRegistryExample2",
+            "TestProjectRegistryExample3",
+            "TestProjectRegistryExample4",
+            "TestProjectRegistryExample5",
+            "TestProjectRegistryExample6",
+            "TestProjectRegistryExample7",
+            "projects.json",
+            "state.json",
+            "mu-zeta",
+            "mu-alpha",
+            "zeta",
+            "alpha",
+            "https://github.com/o/zeta",
+            "/p/zeta",
+            "/p/alpha",
+            "python",
+            "Alpha",
+            "-x",
+            "registry: read ",
+            "{not json",
+            "ErrNotFound",
+            "ErrExists",
+            "ErrBadName",
+            "ErrNoState",
+            "changed"
+          ]
+        }
+      ]
+    }
+  ]
+}

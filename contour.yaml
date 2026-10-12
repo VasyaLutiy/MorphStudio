@@ -16,6 +16,7 @@ System:
     - Claude Behind An Interface
     - Bearer Token On Every Route
     - The Session Reports Only Itself
+    - Per-User Tokens
   guardrails:
     - Injected Clock And Ids
     - No Network In Tests
@@ -747,6 +748,121 @@ System:
             - given: 'a dir := t.TempDir() with contour.yaml; the runner of example 1 but "git remote get-url origin": {Stdout: "https://github.com/o/a-1-b/\n"}; AdoptSpec{Name: "a-1-b", Language: "typescript", RepoURL: "git@github.com:o/a-1-b.git", Dir: dir, CredentialsFile: "/var/morphd/a-1-b/git-credentials"}'
               when: Adopt
               then: 'nil; Steps[3] == "git config credential.helper store --file=/var/morphd/a-1-b/git-credentials"; Report.Dir == dir; 4 calls, every env exactly []string{"GIT_TERMINAL_PROMPT=0"}'
+    - name: users
+      description: >
+        Package users in users/: the user store (users.json), the user secret files and the token lookup. A user is a
+        name, a Linux user, a Telegram chat id and a created time; the MCP/API token of a user is stored only as its
+        SHA-256 hex. Imports crypto/sha256, crypto/subtle, encoding/hex, encoding/json, errors, fmt, os, path/filepath,
+        regexp, sort, strings, time and nothing of the module.
+      language: go
+      functions:
+        - name: User Registry
+          description: The user store in one JSON file, rewritten whole and atomically; the token of a user is stored as a hash.
+          behavior: >
+            Declares in users/registry.go: `var ErrNotFound = errors.New("user not found")`,
+            `var ErrExists = errors.New("user exists")`, `var ErrBadName = errors.New("bad user name")`,
+            `var ErrEmptyToken = errors.New("empty token")`, `type User struct { Name string `json:"name"`;
+            LinuxUser string `json:"linux_user"`; ChatID int64 `json:"chat_id"`; TokenHash string `json:"token_hash"`;
+            CreatedAt time.Time `json:"created_at"` }`, `type Store struct` (unexported fields: the base directory, the
+            users, the hashed admin token), `func hashToken(token string) string` (sha256, lowercase hex),
+            `func Open(base string, adminToken string) (*Store, error)`, `func (s *Store) Base() string`,
+            `func (s *Store) Add(u User, token string) error`, `func (s *Store) Get(name string) (User, error)` and
+            `func (s *Store) List() []User`. Open creates base (0o700) when missing and reads base/users.json: missing →
+            empty; not a JSON array of User → (nil, an error beginning "users: read "). adminToken is hashed with
+            hashToken and kept unexported; "" means no admin token. Add: Name must match ^[a-z0-9][a-z0-9-]{0,39}$ else
+            ErrBadName; a stored name → ErrExists; token "" → ErrEmptyToken; else the user's TokenHash is set to
+            hashToken(token) (the TokenHash given in u is overwritten) and the user stored, the whole list written as a
+            JSON array sorted by Name (json.MarshalIndent with two spaces, an empty list as []) to a temporary file in
+            base then renamed onto users.json. Get → the user or (User{}, ErrNotFound). List → a new slice sorted by
+            Name (empty non-nil). Every error of the file system is returned as is (never one of the sentinels). Values
+            are copies.
+          steps:
+            - produces: User
+          examples:
+            - given: 'base := filepath.Join(t.TempDir(), "users") (missing)'
+              when: 'Open(base, ""); List(); Get("ada"); Base()'
+              then: 'a non-nil *Store, nil; the directory exists; []User{} (non-nil, empty); (User{}, ErrNotFound); base'
+            - given: 'the store of example 1; Add({Name "ada", LinuxUser "mu-ada", ChatID 111, TokenHash "given", CreatedAt 2026-10-11T09:00:00Z}, "tok-ada"); Add({Name "zoe", LinuxUser "mu-zoe", ChatID 999, CreatedAt 2026-10-11T09:01:00Z}, "tok-zoe")'
+              when: 'Add twice, then List, then decode base/users.json'
+              then: 'both nil; List names in order "ada", "zoe", their TokenHash "92ba63901405cdae3c83bde1abe474f1d6d4124de3c42b6d25090ab18eaab9cd" and "501ce40fcde8d3659605c9f745cc9dd6de0a503f13c47579da118d9c71da5ea7" (the TokenHash "given" of the first Add overwritten); the file decodes (json.Unmarshal into []User) to exactly List(); the directory base holds only users.json'
+            - given: 'the store after example 2'
+              when: 'Add({Name "ada"} with token "t"); Add({Name "Ada"}, "t"); Add({Name "-x"}, "t"); Add(41 x "a" name, "t"); Add({Name "ok-user"}, "")'
+              then: 'ErrExists; ErrBadName; ErrBadName; ErrBadName; ErrEmptyToken; List still 2'
+            - given: 'the file written by example 2, Open(base, "") again'
+              when: 'List; Get("zoe")'
+              then: 'equal field by field to the first store''s List (times round-trip through JSON); Get returns the zoe user with TokenHash "501ce40fcde8d3659605c9f745cc9dd6de0a503f13c47579da118d9c71da5ea7"'
+            - given: 'base/users.json holding the text of tests/fixtures/users/users-3.json (three users ada, mid, zoe, sorted by name); Open(base, "")'
+              when: 'List; Get("mid")'
+              then: 'List equals the fixture decoded into []User (names "ada", "mid", "zoe"); Get returns mid: LinuxUser "mu-mid", ChatID 555, TokenHash "73e7b18a59cc7b6e1ac782816c55896f5b6660cda36d65b5911111c0791b690f", CreatedAt 2026-10-11T09:02:00Z'
+            - given: 'base/users.json holding the text {not json'
+              when: Open
+              then: '(nil, an error beginning "users: read ")'
+            - given: 'the store of example 1 after Add({Name "ada", LinuxUser "mu-ada", ChatID 111, CreatedAt 2026-10-11T09:00:00Z}, "tok-ada")'
+              when: 'u := List(); u[0].Name = "changed"; u = append(u, User{Name: "extra"}); g, _ := Get("ada"); g.Name = "changed"; then List() and Get("ada")'
+              then: 'List() is exactly []User{{Name: "ada", LinuxUser: "mu-ada", ChatID: 111, TokenHash: "92ba63901405cdae3c83bde1abe474f1d6d4124de3c42b6d25090ab18eaab9cd", CreatedAt: 2026-10-11T09:00:00Z}} and Get("ada") returns that user, nil: writes to returned values never reach the store'
+        - name: User Secrets
+          description: Secrets stored per user as files of mode 0600 that are never returned and never appear in an error text.
+          behavior: >
+            Declares in users/secrets.go, over the Store of users/registry.go: `var ErrNoSecret = errors.New("no secret")`,
+            `var ErrEmptySecret = errors.New("empty secret")`, `var SecretKinds = []string{"anthropic-key", "github-token"}`,
+            `func (s *Store) SecretPath(name, kind string) string` = filepath.Join(base, name, kind),
+            `func (s *Store) PutSecret(name, kind, value string) error`, `func (s *Store) HasSecret(name, kind string) bool`,
+            `func (s *Store) ReadSecret(name, kind string) (string, error)` and `func (s *Store) DeleteSecret(name, kind string) error`.
+            PutSecret: unknown user → ErrNotFound; kind not in SecretKinds → fmt.Errorf("users: unknown secret kind %q", kind);
+            value "" → ErrEmptySecret; else the user directory is created (0o700) and value written by a temporary file
+            (0o600) in that directory renamed onto SecretPath; the written file has mode 0o600 even when it existed with
+            another mode. HasSecret: the file exists. ReadSecret: the content verbatim; missing → ("", ErrNoSecret);
+            unknown user → ErrNotFound. DeleteSecret removes the file; missing → nil. No error of this Function ever
+            contains the secret value (Guardrail Secrets Never Logged).
+          steps:
+            - calls: User Registry
+            - produces: secret file
+          examples:
+            - given: 'a store with user "ada" (Add); PutSecret("ada", "anthropic-key", "sk-ant-xyz1")'
+              when: 'PutSecret; HasSecret; ReadSecret; os.Stat(SecretPath("ada", "anthropic-key"))'
+              then: 'nil; true; ("sk-ant-xyz1", nil); mode & 0o777 == 0o600; the directory base/ada mode & 0o777 == 0o700; the directory holds only anthropic-key'
+            - given: 'the store of example 1'
+              when: 'PutSecret("ada", "github-token", "ghp_abc"); ReadSecret of it; os.Stat of it'
+              then: 'nil; exactly "ghp_abc"; mode & 0o777 == 0o600; the directory base/ada holds exactly anthropic-key and github-token'
+            - given: 'the store of example 1'
+              when: 'PutSecret("nope", "anthropic-key", "x-1"); PutSecret("ada", "password", "x-1"); PutSecret("ada", "github-token", "")'
+              then: 'ErrNotFound; error text ''users: unknown secret kind "password"''; ErrEmptySecret; the directory base/ada still holds only anthropic-key'
+            - given: 'the store of example 1'
+              when: 'PutSecret("nope", "anthropic-key", "sk-very-secret-2"); PutSecret("nope", "github-token", "ghp-very-secret-2")'
+              then: 'both ErrNotFound, and neither error text contains its value ("sk-very-secret-2", "ghp-very-secret-2"): the guardrail per kind'
+            - given: 'the store of example 1; os.Chmod(SecretPath("ada", "anthropic-key"), 0o644); PutSecret("ada", "anthropic-key", "sk-ant-new")'
+              when: 'PutSecret then Stat and ReadSecret'
+              then: 'mode & 0o777 == 0o600 again; "sk-ant-new"'
+            - given: 'the store of example 1'
+              when: 'HasSecret("ada", "github-token"); ReadSecret("ada", "github-token"); ReadSecret("nope", "anthropic-key"); DeleteSecret("ada", "github-token")'
+              then: 'false; ("", ErrNoSecret); ("", ErrNotFound); nil'
+            - given: 'the store of example 1 after PutSecret("ada", "github-token", "tok-9")'
+              when: 'DeleteSecret("ada", "github-token"); HasSecret'
+              then: 'nil; false; the directory holds only anthropic-key'
+        - name: Token Lookup
+          description: A bearer token to its user by a constant-time compare of the hashes; the operator's admin token sees all.
+          behavior: >
+            Declares in users/token.go, over the Store of users/registry.go: `func (s *Store) Lookup(token string) (User, bool)`
+            and `func (s *Store) IsAdminToken(token string) bool`. Lookup: token "" → (User{}, false); else hashToken(token)
+            compared with crypto/subtle.ConstantTimeCompare against every stored TokenHash in Name order; a match → (a
+            copy of that user, true); none → (User{}, false). IsAdminToken: hashToken(token) compared constant-time
+            against the stored admin hash; a store opened with adminToken "" → always false. The comparison is on the
+            hex strings, so a token's length leaks nothing.
+          steps:
+            - calls: User Registry
+          examples:
+            - given: 'a store holding ada (token "tok-ada") and zoe (token "tok-zoe"), opened with Open(base, "admin-0")'
+              when: 'Lookup("tok-ada"); Lookup("tok-zoe"); Lookup("tok-mid")'
+              then: '(the ada user, true); (the zoe user, true); (User{}, false)'
+            - given: 'the store of example 1'
+              when: 'IsAdminToken("admin-0"); IsAdminToken("tok-ada"); IsAdminToken(""); Lookup("admin-0")'
+              then: 'true; false; false; (User{}, false): the admin token is not a user''s'
+            - given: 'the same two users in a store opened with Open(base, "") (no admin token)'
+              when: 'IsAdminToken("admin-0"); IsAdminToken("")'
+              then: 'false; false'
+            - given: 'the store of example 1; u, _ := Lookup("tok-ada"); u.Name = "changed"'
+              when: 'Lookup("tok-ada") again'
+              then: 'the ada user unchanged: the returned user is a copy'
     - name: registry
       description: >
         Package registry in registry/: the project registry file, the per-project state file and the secret files
@@ -759,7 +875,7 @@ System:
           behavior: >
             Declares in registry/registry.go: `var ErrNotFound = errors.New("project not found")`, `var ErrExists = errors.New("project exists")`,
             `var ErrBadName = errors.New("bad project name")`, `var ErrNoState = errors.New("no state")`,
-            `type Project struct { Name string `json:"name"`; Language string `json:"language"`; RepoURL string `json:"repo_url"`; Dir string `json:"dir"`;
+            `type Project struct { Name string `json:"name"`; Language string `json:"language"`; RepoURL string `json:"repo_url"`; Dir string `json:"dir"`; User string `json:"user"`;
             Caps queue.Caps `json:"caps"`; CreatedAt time.Time `json:"created_at"` }`, `type Registry struct` (unexported fields),
             `func Open(base string) (*Registry, error)`, `func (r *Registry) Base() string`, `func (r *Registry) Add(p Project) error`,
             `func (r *Registry) Get(name string) (Project, error)`, `func (r *Registry) List() []Project`,
@@ -779,7 +895,7 @@ System:
             - given: 'base := filepath.Join(t.TempDir(), "state") (missing)'
               when: 'Open(base); List(); Get("demo"); Base()'
               then: 'a non-nil *Registry, nil; the directory exists; []Project{} (non-nil, empty); (Project{}, ErrNotFound); base'
-            - given: 'the registry of example 1; Add({Name "zeta", Language "go", RepoURL "https://github.com/o/zeta", Dir "/p/zeta", Caps {30, 3, 5}, CreatedAt 2026-10-08T15:00:00Z}); Add({Name "alpha", Language "python", …, CreatedAt 2026-10-08T15:01:00Z})'
+            - given: 'the registry of example 1; Add({Name "zeta", Language "go", RepoURL "https://github.com/o/zeta", Dir "/p/zeta", User "mu-zeta", Caps {30, 3, 5}, CreatedAt 2026-10-08T15:00:00Z}); Add({Name "alpha", Language "python", …, User "mu-alpha", CreatedAt 2026-10-08T15:01:00Z})'
               when: 'Add twice, then List, then decode base/projects.json'
               then: 'both nil; List names in order "alpha", "zeta"; the file decodes (json.Unmarshal into []Project) to exactly List(); the directory base holds only projects.json'
             - given: 'the registry after example 2'
@@ -794,9 +910,9 @@ System:
             - given: 'base/projects.json holding the text {not json'
               when: Open
               then: '(nil, an error beginning "registry: read ")'
-            - given: 'the registry of example 1 after Add({Name "alpha", Language "go", Dir "/p/alpha"})'
+            - given: 'the registry of example 1 after Add({Name "alpha", Language "go", Dir "/p/alpha", User "mu-alpha"})'
               when: 'p := List(); p[0].Name = "changed"; p = append(p, Project{Name: "extra"}); g, _ := Get("alpha"); g.Name = "changed"; then List() and Get("alpha")'
-              then: 'List() is exactly []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha"}} and Get("alpha") returns that project, nil: writes to returned values never reach the registry'
+              then: 'List() is exactly []Project{{Name: "alpha", Language: "go", Dir: "/p/alpha", User: "mu-alpha"}} and Get("alpha") returns that project, nil: writes to returned values never reach the registry'
         - name: Secret Files
           description: Secrets stored per project as files of mode 0600 that are never returned by the API.
           behavior: >
@@ -1874,6 +1990,8 @@ Guardrail:
       The API token, the session tokens, the GitHub token and the Telegram token never appear in a response body, a log
       line, a milestone, an error text or the argv of a spawned process; secrets live in files of mode 0600 under the
       state directory; the git credentials reach git through a credential store file, never through a URL or an argument.
+      The user secrets (claude tokens, API keys, GitHub PATs, MCP tokens) and one-time links are the same: a secret value
+      never appears in an error text, a reply or a log, and the MCP/API tokens of users are stored only as SHA-256 hashes.
 Requirement:
   - name: Claude Behind An Interface
     description: >
@@ -1889,3 +2007,8 @@ Requirement:
       A VPS session can call phase_done, wait_operator and milestone only through its own endpoint
       /mcp/{project}/session with the token morphd minted for that spawn; the token changes on every spawn, so a past
       session or another project cannot report.
+  - name: Per-User Tokens
+    description: >
+      Every HTTP / MCP bearer token belongs to one user and sees only that user's projects; only the operator's admin
+      token sees all. A user's token is stored as its SHA-256 hash (users.json), never as text; a lookup compares the
+      hashes constant-time; the admin token is given to the store at Open and compared the same way.

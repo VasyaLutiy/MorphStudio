@@ -1,0 +1,192 @@
+package users
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"morphstudio/internal/testhelp"
+)
+
+// usAlice opens a registry under a fresh temporary base with the user "alice".
+func usAlice(t *testing.T) (*Users, string) {
+	t.Helper()
+	base := filepath.Join(t.TempDir(), "ustate")
+	u, err := Open(base, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := u.Add(User{Name: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+	return u, base
+}
+
+// usAliceAnthropic is example 1's PutSecret step: alice, anthropic-key, sk-ant-abc.
+func usAliceAnthropic(t *testing.T, u *Users) {
+	t.Helper()
+	if err := u.PutSecret("alice", "anthropic-key", "sk-ant-abc"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// usMode returns the permission bits of a path.
+func usMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fi.Mode() & 0o777
+}
+
+// usDirNames lists the names a directory holds.
+func usDirNames(t *testing.T, path string) []string {
+	t.Helper()
+	ents, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(ents))
+	for _, e := range ents {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// usParts returns every substring of s at least min characters long.
+func usParts(s string, min int) []string {
+	var out []string
+	for i := 0; i < len(s); i++ {
+		for j := i + min; j <= len(s); j++ {
+			out = append(out, s[i:j])
+		}
+	}
+	return out
+}
+
+func TestUserSecretsExample1(t *testing.T) {
+	u, base := usAlice(t)
+	err := u.PutSecret("alice", "anthropic-key", "sk-ant-abc")
+	testhelp.Equal(t, "PutSecret", err, nil)
+	testhelp.Equal(t, "HasSecret", u.HasSecret("alice", "anthropic-key"), true)
+	val, err := u.ReadSecret("alice", "anthropic-key")
+	testhelp.Equal(t, "ReadSecret value", val, "sk-ant-abc")
+	testhelp.Equal(t, "ReadSecret err", err, nil)
+	secretPath := u.SecretPath("alice", "anthropic-key")
+	testhelp.Equal(t, "secret mode", usMode(t, secretPath), os.FileMode(0o600))
+	dir := filepath.Join(base, "alice")
+	testhelp.Equal(t, "dir mode", usMode(t, dir), os.FileMode(0o700))
+	testhelp.Equal(t, "dir holds", usDirNames(t, dir), []string{"anthropic-key"})
+}
+
+func TestUserSecretsExample2(t *testing.T) {
+	u, base := usAlice(t)
+	usAliceAnthropic(t, u)
+	err := u.PutSecret("alice", "github-token", "ghp_xyz")
+	testhelp.Equal(t, "PutSecret", err, nil)
+	val, err := u.ReadSecret("alice", "github-token")
+	testhelp.Equal(t, "ReadSecret value", val, "ghp_xyz")
+	testhelp.Equal(t, "ReadSecret err", err, nil)
+	dir := filepath.Join(base, "alice")
+	testhelp.Equal(t, "dir holds", usDirNames(t, dir), []string{"anthropic-key", "github-token"})
+}
+
+func TestUserSecretsExample3(t *testing.T) {
+	u, base := usAlice(t)
+	usAliceAnthropic(t, u)
+	err := u.PutSecret("nope", "anthropic-key", "sk-1")
+	testhelp.Equal(t, "PutSecret missing user", err, ErrNotFound)
+	err = u.PutSecret("alice", "password", "p")
+	if err == nil {
+		t.Fatal("expected unknown kind error")
+	}
+	testhelp.Equal(t, "unknown kind error", err.Error(), `users: unknown secret kind "password"`)
+	err = u.PutSecret("alice", "github-token", "")
+	testhelp.Equal(t, "empty secret err", err, ErrEmptySecret)
+	testhelp.Equal(t, "empty secret text", ErrEmptySecret.Error(), "empty secret")
+	dir := filepath.Join(base, "alice")
+	testhelp.Equal(t, "dir holds", usDirNames(t, dir), []string{"anthropic-key"})
+}
+
+func TestUserSecretsExample4(t *testing.T) {
+	u, _ := usAlice(t)
+	usAliceAnthropic(t, u)
+	secretPath := u.SecretPath("alice", "anthropic-key")
+	if err := os.Chmod(secretPath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A stale, over-permissive file would otherwise keep reporting 0o644 and its
+	// prior value (the "sk-ant-old" case) rather than the freshly written
+	// "sk-ant-new" this PutSecret stores.
+	err := u.PutSecret("alice", "anthropic-key", "sk-ant-new")
+	testhelp.Equal(t, "PutSecret", err, nil)
+	testhelp.Equal(t, "secret mode", usMode(t, secretPath), os.FileMode(0o600))
+	val, err := u.ReadSecret("alice", "anthropic-key")
+	testhelp.Equal(t, "ReadSecret value", val, "sk-ant-new")
+	testhelp.Equal(t, "ReadSecret err", err, nil)
+}
+
+func TestUserSecretsExample5(t *testing.T) {
+	u, _ := usAlice(t)
+	usAliceAnthropic(t, u)
+	testhelp.Equal(t, "HasSecret github", u.HasSecret("alice", "github-token"), false)
+	val, err := u.ReadSecret("alice", "github-token")
+	testhelp.Equal(t, "ReadSecret github value", val, "")
+	testhelp.Equal(t, "ReadSecret github err", err, ErrNoSecret)
+	testhelp.Equal(t, "no secret text", ErrNoSecret.Error(), "no secret")
+	val, err = u.ReadSecret("nope", "anthropic-key")
+	testhelp.Equal(t, "ReadSecret nope value", val, "")
+	testhelp.Equal(t, "ReadSecret nope err", err, ErrNotFound)
+	err = u.DeleteSecret("alice", "github-token")
+	testhelp.Equal(t, "DeleteSecret", err, nil)
+}
+
+func TestUserSecretsExample6(t *testing.T) {
+	u, base := usAlice(t)
+	usAliceAnthropic(t, u)
+	if err := u.PutSecret("alice", "github-token", "ghp_new"); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(base, "alice")
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("not a directory"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+
+	value := "ghp_new"
+	parts := usParts(value, 4) // every part longer than 3 characters
+
+	var errs []error
+	errs = append(errs, u.PutSecret("alice", "github-token", value))
+	errs = append(errs, u.PutSecret("alice", "anthropic-key", value))
+	errs = append(errs, u.PutSecret("nope", "github-token", value))
+	errs = append(errs, u.PutSecret("alice", "unknown", value))
+	errs = append(errs, u.PutSecret("alice", "github-token", ""))
+	_, err := u.ReadSecret("alice", "github-token")
+	errs = append(errs, err)
+	_, err = u.ReadSecret("alice", "anthropic-key")
+	errs = append(errs, err)
+	_, err = u.ReadSecret("nope", "github-token")
+	errs = append(errs, err)
+	errs = append(errs, u.DeleteSecret("alice", "github-token"))
+
+	for i, err := range errs {
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNoSecret) || errors.Is(err, ErrEmptySecret) {
+			continue
+		}
+		msg := err.Error()
+		for _, p := range parts {
+			if strings.Contains(msg, p) {
+				t.Errorf("error %d %q leaks %q from the secret value", i, msg, p)
+			}
+		}
+	}
+}
